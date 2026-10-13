@@ -1,0 +1,8 @@
+services:
+  mcp:
+    build: .
+    container_name: mem0-mcp
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8890:8890"
