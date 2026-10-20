@@ -1,8 +1,102 @@
+# 圓桌一鍵全包：Postgres（含 pgvector）＋ embedding 模型 ＋ Mem0 ＋ 圓桌伺服器與公告欄。
+# 第一次請用 ./install.sh 產生 .env 再啟動；之後用 docker compose up -d / down。
+# 資料都放在 ./data 底下，備份這個資料夾和 .env 就好（見 docs/operations.md）。
+name: roundtable
+
 services:
-  mcp:
-    build: .
-    container_name: mem0-mcp
+  postgres:
+    image: pgvector/pgvector:0.8.7-pg17
+    restart: unless-stopped
+    shm_size: 128mb
+    environment:
+      POSTGRES_USER: mem0
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?先跑 ./install.sh 產生 .env}
+      POSTGRES_DB: mem0
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./mem0/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -q -U mem0 -d mem0"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  embed:
+    # llama.cpp 的 embedding 伺服器（只用 CPU）。第一次啟動會從 Hugging Face 下載約 640MB 的模型。
+    image: ghcr.io/ggml-org/llama.cpp:${LLAMA_CPP_TAG:-server-b11723}
+    restart: unless-stopped
+    environment:
+      LLAMA_CACHE: /models
+    command: ["--hf-repo", "Qwen/Qwen3-Embedding-0.6B-GGUF", "--hf-file", "Qwen3-Embedding-0.6B-Q8_0.gguf",
+              "--embeddings", "--pooling", "last", "-c", "8192", "-ub", "8192",
+              "--alias", "qwen3-embedding-0.6b", "--host", "0.0.0.0", "--port", "8080"]
+    volumes:
+      - ./data/models:/models
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15m
+
+  mem0:
+    build: ./mem0
+    restart: unless-stopped
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: mem0
+      POSTGRES_USER: mem0
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_COLLECTION_NAME: memories
+      APP_DB_NAME: mem0_app
+      ADMIN_API_KEY: ${MEM0_API_KEY:?先跑 ./install.sh 產生 .env}
+      JWT_SECRET: ${MEM0_JWT_SECRET:?先跑 ./install.sh 產生 .env}
+      OPENAI_API_KEY: not-used        # 圓桌寫入一律 infer=false，不會呼叫 LLM；這裡只是讓 Mem0 能啟動
+      MEM0_DEFAULT_EMBEDDER_MODEL: qwen3-embedding-0.6b
+      EMBED_BASE_URL: http://embed:8080/v1
+      EMBED_DIMS: "1024"
+      HISTORY_DB_PATH: /app/history/history.db
+      DASHBOARD_URL: http://localhost:3000
+    volumes:
+      - ./data/mem0-history:/app/history
+    depends_on:
+      postgres:
+        condition: service_healthy
+      embed:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/docs', timeout=4)"]
+      interval: 10s
+      timeout: 6s
+      retries: 12
+      start_period: 30s
+
+  roundtable:
+    build: ./server
     restart: unless-stopped
     env_file: .env
+    environment:
+      MEM0_URL: http://mem0:8000
+      EMB_URL: http://embed:8080
+      UI_DIR: /ui
+      UPLOAD_DIR: /uploads
+      REVIEW_DIR: /reviews
+      SKILLS_ROOT: /skills-repo
+      BOARD_AUTH_FILE: /board-auth/credential.json
+    volumes:
+      - ./data/ui:/ui
+      - ./data/uploads:/uploads
+      - ./data/reviews:/reviews
+      - ./data/board-auth:/board-auth
+      - ./data/skills:/skills-repo:ro
     ports:
-      - "8890:8890"
+      - "${RT_BIND:-0.0.0.0}:${RT_PORT:-8890}:8890"
+    depends_on:
+      mem0:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8890/health', timeout=4)"]
+      interval: 15s
+      timeout: 6s
+      retries: 5

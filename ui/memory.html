@@ -1,0 +1,515 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="memory-version" content="2.3.0"><meta name="memory-revision" content="1"><meta name="memory-footnotes" content="1"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>圓桌記憶｜預覽</title><style>
+:root{color-scheme:light dark;--bg:#f2f3f5;--side:#e3e5e8;--card:#fff;--tx:#161b26;--mut:#5b6577;--bd:#d4d8df;--ac:#2456d6;--hover:rgba(0,0,0,.04);--ok:#0f7a4b;--pv:#7a3fc4;--warn:#c2410c}
+@media(prefers-color-scheme:dark){:root{--bg:#1e2128;--side:#16181d;--card:#262a33;--tx:#e8ebf1;--mut:#a0a9ba;--bd:#343a46;--ac:#7aa2ff;--hover:rgba(255,255,255,.04);--ok:#4fd39b;--pv:#c39bff;--warn:#ff9a5c}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15.5px/1.6 system-ui,"Segoe UI","Microsoft JhengHei",sans-serif}
+a{color:var(--ac)}button,input,select{font:inherit;color:inherit}button{cursor:pointer}button:disabled{cursor:default;opacity:.5}
+.preview{padding:8px 16px;background:#7a3fc4;color:#fff;display:flex;flex-wrap:wrap;gap:12px;align-items:center;font-size:13px}.preview a{color:inherit}
+.app{display:grid;grid-template-columns:230px minmax(0,1fr);min-height:calc(100vh - 42px)}
+.side{min-width:0;background:var(--side);border-right:1px solid var(--bd);padding:14px 10px}.side nav{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px}.side nav a{font-size:14px;text-decoration:none;padding:6px 8px;border-radius:8px}.side nav .on{background:var(--ac);color:white}
+.side h2{font-size:12px;color:var(--mut);letter-spacing:.08em;margin:12px 8px}.tchip,.all-types{display:block;width:100%;text-align:left;background:none;border:0;border-radius:8px;padding:8px 10px;margin:4px 0;opacity:.55}.tchip.on,.all-types{opacity:1;background:var(--card)}.tchip b{float:right}.tchip:hover{background:var(--hover)}
+main{min-width:0;padding:18px 24px 40px}h1{font-size:22px;margin:0}.summary{font-size:13px;color:var(--mut);margin:2px 0 16px}
+.bar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;align-items:center}.bar input,.bar select,.bar button,.pages button{border:1px solid var(--bd);border-radius:8px;background:var(--card);padding:7px 10px;max-width:100%}.bar input{flex:1;min-width:180px}.bar select{font-size:14px}.cnt{color:var(--mut);font-size:13px}
+.mem{display:flex;gap:12px;padding:14px 12px;border:1px solid var(--bd);border-left:3px solid var(--bd);border-radius:10px;background:var(--card);margin:10px 0}.mem.t-message{border-left-color:#648edf}.mem.t-decision{border-left-color:#c29724}.mem.t-note{border-left-color:#39885c}.mem.t-status{border-left-color:#9567c3}.mem.t-claim{border-left-color:#c57239}
+.avatar{flex:none;display:grid;place-items:center;width:40px;height:40px;border-radius:50%;color:white;font-weight:800;font-size:16px}.content{min-width:0;flex:1}.mh{display:flex;flex-wrap:wrap;align-items:center;gap:7px}.who{font-weight:800}.ty,.tag{font-size:12px;color:var(--mut);border:1px solid var(--bd);border-radius:6px;padding:0 6px;overflow-wrap:anywhere}.when{margin-left:auto;color:var(--mut);font-size:12px}.mt{margin-top:5px;overflow-wrap:anywhere}.bd{white-space:pre-wrap}.sub{font-weight:700}.sub+.bd{margin-top:6px}
+code{font:13px ui-monospace,Consolas,monospace;background:var(--bg);border:1px solid var(--bd);border-radius:4px;padding:0 4px;overflow-wrap:anywhere}pre.blk{white-space:pre;overflow:auto;background:var(--bg);border-left:3px solid var(--ac);padding:10px;border-radius:6px}pre code{border:0;padding:0}.pages{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:18px}.empty{padding:40px 12px;color:var(--mut);text-align:center}
+[hidden]{display:none!important}:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+@media(max-width:760px){.app{grid-template-columns:1fr;grid-template-rows:auto 1fr}.side{padding:8px;border-right:0;border-bottom:1px solid var(--bd)}.side nav{margin:0 0 8px}.side h2{display:none}#chips{display:flex;gap:5px;overflow-x:auto}.tchip,.all-types{width:auto;flex:none;white-space:nowrap;margin:0;padding:5px 9px}.tchip b{float:none;margin-left:5px}main{padding:14px 10px}.mem{padding:12px 8px;gap:9px}.avatar{width:32px;height:32px;border-radius:50%;font-size:13px}.when{margin-left:0}.bar input{flex-basis:100%}.preview{padding:8px 10px}}
+.memory-heading{display:flex;flex-wrap:wrap;align-items:center;gap:12px}.memory-heading h1{margin-right:auto}.memory-heading form{margin:0}.memory-heading a,.memory-heading button{font:inherit;font-size:14px;padding:4px 10px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx);text-decoration:none}.side nav{display:flex;flex-wrap:wrap;gap:4px}.side nav a{flex:1;text-align:center;border:1px solid var(--bd)}
+.releasebar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:8px 14px;background:var(--side);border-bottom:1px solid var(--bd);font-size:13px}.releasebar button{font:inherit;cursor:pointer;background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:8px;padding:4px 10px}#releaseHistory{box-sizing:border-box;background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:12px;width:min(650px,90vw);max-height:80vh;overflow:auto}#releaseHistory::backdrop{background:rgba(0,0,0,.4)}#releaseHistory section{border-bottom:1px solid var(--bd);padding:8px 0}#releaseHistory h3{margin:8px 0}#releaseHistory p{color:var(--mut);font-size:13px}#releaseHistory li{overflow-wrap:anywhere}
+#releaseHistory a{color:var(--ac)}#releaseHistory summary{cursor:pointer;color:var(--ac)}
+#releaseHistory button{font:inherit;cursor:pointer;background:var(--side);color:var(--tx);border:1px solid var(--bd);border-radius:8px;padding:6px 16px}
+#releaseHistory button:hover:not(:disabled){border-color:var(--ac)}#releaseHistory button:disabled{opacity:.5;cursor:default}
+#releaseHistory [data-close-versions]{display:block;margin:12px 0 0 auto}
+#releaseHistory a:focus-visible,#releaseHistory button:focus-visible,#releaseHistory summary:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+#releaseHistory .badge{display:inline-block;font-size:12px;font-weight:700;border-radius:99px;padding:0 9px;border:1px solid currentColor;margin-left:8px;vertical-align:2px}#releaseHistory .badge:empty{display:none}
+#releaseHistory .badge.on{color:var(--ok)}#releaseHistory .badge.pv{color:var(--pv)}#releaseHistory .badge.no{color:var(--mut)}#releaseHistory .tbc{color:var(--warn);font-weight:700}#releaseHistory h4{margin:10px 0 2px}
+#releaseHistory .xclose{position:sticky;top:0;float:right;margin:0 0 0 8px;width:34px;height:34px;padding:0;display:grid;place-items:center;font-size:16px;line-height:1;z-index:1}
+/* 記憶審核分頁：沿用本機審核頁第 3 版（膠囊、說明卡、沉下去），顏色改接記憶頁的變數 */
+.views{display:flex;gap:4px;border-bottom:1px solid var(--bd);margin:6px 0 14px;overflow-x:auto}
+.views button{border:0;background:none;padding:8px 12px;border-bottom:2px solid transparent;color:var(--mut);white-space:nowrap;border-radius:0}
+.views button[aria-selected="true"]{color:var(--tx);border-bottom-color:var(--ac);font-weight:600}
+.views b{display:inline-block;min-width:20px;margin-left:6px;padding:0 6px;border-radius:99px;background:var(--ac);color:#fff;font-size:12px;text-align:center}
+.views b:empty{display:none}
+body.rv-mode .side h2,body.rv-mode #chips{display:none}
+#rv{--surface:var(--card);--surface-2:var(--bg);--border:var(--bd);--text:var(--tx);--muted:var(--mut);--accent:var(--ac);--accent-fg:#fff;
+--blue-bg:#ddf4ff;--blue-fg:#0550ae;--green-bg:#dafbe1;--green-fg:#116329;--red-bg:#ffebe9;--red-fg:#a40e26;--amber-bg:#fff8c5;--amber-fg:#7d4e00;
+--gray-bg:#eaeef2;--gray-fg:#424a53;--purple-bg:#fbefff;--purple-fg:#6639ba;--solid-green:#1f883d;--backdrop:rgba(31,35,40,.45);--flash:#fff3b0;
+--mono:ui-monospace,SFMono-Regular,Consolas,monospace;max-width:1000px}
+@media(prefers-color-scheme:dark){#rv{--accent-fg:#0d1117;--blue-bg:rgba(56,139,253,.16);--blue-fg:#79c0ff;--green-bg:rgba(46,160,67,.16);--green-fg:#56d364;
+--red-bg:rgba(248,81,73,.16);--red-fg:#ff7b72;--amber-bg:rgba(187,128,9,.18);--amber-fg:#e3b341;--gray-bg:rgba(110,118,129,.22);--gray-fg:#b7bdc8;
+--purple-bg:rgba(163,113,247,.16);--purple-fg:#d2a8ff;--solid-green:#238636;--backdrop:rgba(1,4,9,.7);--flash:rgba(187,128,9,.35)}}
+#rv .rvhead{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:4px}
+#rv .rvhead h2{font-size:19px;margin:0;flex:1;min-width:0}
+#rv .rvhead select{border:1px solid var(--border);border-radius:8px;background:var(--surface);padding:5px 8px;max-width:100%}
+#rv .btn{border:1px solid var(--border);background:var(--surface);border-radius:6px;padding:5px 14px;line-height:20px;white-space:nowrap;color:var(--text)}
+#rv .btn:hover:not(:disabled){background:var(--surface-2)}
+#rv .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg);font-weight:600}
+#rv .btn.primary:hover:not(:disabled){filter:brightness(1.08);background:var(--accent)}
+#rv .btn.ghost{border-color:transparent;background:transparent;color:var(--muted)}
+#rv .btn.ghost:hover:not(:disabled){background:var(--hover);color:var(--text)}
+#rv .tabs{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;border-bottom:1px solid var(--border);margin-bottom:6px}
+#rv .tabs::-webkit-scrollbar{display:none}
+#rv .tab{border:0;background:none;padding:8px 12px;border-bottom:2px solid transparent;color:var(--muted);white-space:nowrap;border-radius:0}
+#rv .tab[aria-selected="true"]{color:var(--text);border-bottom-color:var(--accent);font-weight:600}
+#rv .tab .n{font-size:12px;color:var(--muted);margin-left:4px}
+#rv .intro{color:var(--muted);margin:10px 0 14px}#rv .intro p{margin:0 0 4px}
+#rv .banner{border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin:10px 0 14px;background:var(--surface)}
+#rv .banner.ok{border-color:transparent;background:var(--green-bg);color:var(--green-fg)}
+#rv .banner.err{border-color:transparent;background:var(--red-bg);color:var(--red-fg)}
+#rv .banner.test{border-color:transparent;background:var(--purple-bg);color:var(--purple-fg)}
+#rv .banner.help{color:var(--muted);font-size:13.5px}
+#rv section.group{margin:26px 0 8px}
+#rv .ghead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+#rv .ghead h3,#rv details.gwrap>summary h3{font-size:20px;margin:0;line-height:1.3}
+#rv .ghead .desc{color:var(--muted);font-size:13px;flex:1;min-width:160px}
+#rv .ghead .bulk{display:flex;gap:2px}
+#rv details.gwrap>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;padding:8px 0;flex-wrap:wrap}
+#rv details.gwrap>summary::-webkit-details-marker{display:none}
+#rv details.gwrap>summary::before{content:"▸";color:var(--muted);transition:transform .15s}
+#rv details.gwrap[open]>summary::before{transform:rotate(90deg)}
+#rv details.gwrap>summary .sub{color:var(--muted);font-size:13px;font-weight:400}
+#rv .card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin:10px 0}
+#rv .card.compact{padding:10px 12px}
+#rv .card.flash{animation:rvflash 1.6s ease-out}
+@keyframes rvflash{0%,40%{background:var(--flash)}100%{background:var(--surface)}}
+#rv .chead{display:flex;flex-direction:column;gap:4px}
+#rv .chead .meta{display:flex;align-items:center;gap:8px;min-height:22px}
+#rv .chead .meta .sp{flex:1}
+#rv .chead .id{font:12px var(--mono);color:var(--muted)}
+#rv .chead .t{font-weight:600;font-size:17px;line-height:1.45}
+#rv .chead .t.gtext{font-weight:400;font-size:15px}
+#rv .tag{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border:0;border-radius:999px;font-size:12px;line-height:22px;white-space:nowrap;flex:none}
+#rv .tag.blue{background:var(--blue-bg);color:var(--blue-fg)}#rv .tag.green{background:var(--green-bg);color:var(--green-fg)}
+#rv .tag.red{background:var(--red-bg);color:var(--red-fg)}#rv .tag.amber{background:var(--amber-bg);color:var(--amber-fg)}
+#rv .tag.gray{background:var(--gray-bg);color:var(--gray-fg)}#rv .tag.purple{background:var(--purple-bg);color:var(--purple-fg)}
+#rv .tag.solid{background:var(--solid-green);color:#fff}
+#rv .kv{margin:12px 0 0;display:flex;flex-direction:column;gap:8px}
+#rv .kv .line{display:grid;grid-template-columns:18px 7em 1fr;column-gap:8px;align-items:baseline}
+#rv .kv .ar{color:var(--muted);text-align:center}
+#rv .kv .lb{color:var(--muted);font-size:13px;white-space:nowrap}
+#rv .kv .sug .ar,#rv .kv .sug .lb{color:var(--accent);font-weight:600}
+#rv .kv .sug .tx{font-weight:500}
+#rv a.ref{display:inline;padding:1px 8px 1px 6px;border:1px solid var(--border);border-radius:999px;background:var(--surface-2);color:var(--text);text-decoration:none;font-size:13px;line-height:1.55;cursor:pointer;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+#rv a.ref:hover,#rv a.ref:focus-visible{border-color:var(--accent);color:var(--accent);outline:none}
+#rv a.ref code{font:12px var(--mono);color:var(--muted);margin-right:5px;border:0;padding:0;background:none}
+#rv .code{font:13px var(--mono);color:var(--muted)}
+#rv .note{margin-top:10px;font-size:13px;padding:6px 10px;border-radius:6px;background:var(--amber-bg);color:var(--amber-fg)}
+#rv .will{margin-top:10px;font-size:13.5px;border:1px dashed var(--border);border-radius:6px;padding:8px 10px}
+#rv .will b{color:var(--muted);font-weight:600;font-size:12.5px;display:block;margin-bottom:2px}
+#rv .will pre{margin:6px 0 0;padding:8px 10px;white-space:pre-wrap;word-break:break-word;font:14px/1.65 inherit;font-family:inherit;background:var(--surface-2);border-radius:6px;max-height:220px;overflow:auto}
+#rv .reply{margin-top:10px;padding:8px 10px;border-left:3px solid var(--purple-fg);background:var(--surface-2);border-radius:0 6px 6px 0;white-space:pre-wrap}
+#rv .reply b{display:block;font-size:12px;color:var(--purple-fg)}
+#rv details.orig{margin-top:10px}
+#rv details.orig>summary{cursor:pointer;color:var(--accent);font-size:13px;display:inline-block}
+#rv .orig .o{margin-top:8px;border:1px solid var(--border);border-radius:6px;overflow:hidden}
+#rv .orig .meta{font-size:12px;color:var(--muted);padding:5px 8px;background:var(--surface-2);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+#rv .orig pre,#rvDrawer pre{margin:0;padding:8px 10px;white-space:pre-wrap;word-break:break-word;font:14px/1.65 inherit;font-family:inherit;max-height:260px;overflow:auto}
+#rv .choice{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}
+#rv .choice .hint{color:var(--muted);font-size:12.5px;flex-basis:100%}
+#rv textarea.chg{width:100%;min-height:72px;margin-top:8px;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);resize:vertical;font:inherit}
+#rv .gtext{white-space:pre-wrap}
+#rv .result{margin-top:10px;font-size:13px;color:var(--muted)}
+#rv details.done-row{border-top:1px solid var(--border)}
+#rv details.done-row:last-child{border-bottom:1px solid var(--border)}
+#rv details.done-row>summary{list-style:none;cursor:pointer;display:grid;grid-template-columns:auto auto 1fr;gap:10px;align-items:baseline;padding:8px 4px;font-size:14px}
+#rv details.done-row>summary::-webkit-details-marker{display:none}
+#rv details.done-row>summary:hover{background:var(--hover)}
+#rv details.done-row .did{font:12px var(--mono);color:var(--muted)}
+#rv details.done-row .dt{font-weight:500}
+#rv details.done-row .dn{grid-column:3;color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#rv details.done-row[open] .dn{white-space:normal}
+#rv details.done-row .card{margin:4px 0 12px}
+#rv .empty{color:var(--muted);padding:24px 0;text-align:center}
+#rvBack{position:fixed;inset:0;background:var(--backdrop);display:none;z-index:60}#rvBack.open{display:block}
+#rvDrawer{position:fixed;top:0;right:0;bottom:0;width:min(480px,100%);background:var(--surface);color:var(--text);border-left:1px solid var(--border);z-index:61;transform:translateX(105%);transition:transform .2s ease;display:flex;flex-direction:column;visibility:hidden}
+#rvDrawer.open{transform:none;visibility:visible}
+#rvDrawer .dh{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border)}
+#rvDrawer .dh code{font:14px var(--mono);color:var(--muted);flex:1;border:0;background:none}
+#rvDrawer .db{padding:16px;overflow:auto;flex:1}
+#rvDrawer .name{font-size:17px;font-weight:600;margin:0 0 6px;line-height:1.45}
+#rvDrawer .dmeta{color:var(--muted);font-size:13px;margin:0 0 4px}
+#rvDrawer h4{font-size:13px;color:var(--muted);margin:18px 0 6px;font-weight:600}
+#rvDrawer pre{border:1px solid var(--border);border-radius:6px;background:var(--surface-2);max-height:none}
+#rvDrawer .mention{display:flex;gap:8px;align-items:baseline;padding:7px 10px;border:1px solid var(--border);border-radius:6px;margin:4px 0;text-decoration:none;color:var(--text)}
+#rvDrawer .mention:hover{border-color:var(--accent)}
+#rvDrawer .mention .did{font:12px var(--mono);color:var(--muted)}
+#rvDrawer .mention .tag{margin-left:auto}
+#rvToast{position:fixed;left:50%;bottom:max(18px,env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:70;display:flex;align-items:center;gap:12px;
+max-width:calc(100vw - 32px);padding:10px 12px 10px 16px;border-radius:10px;background:var(--tx);color:var(--bg);box-shadow:0 6px 24px rgba(0,0,0,.3);font-size:14.5px}
+#rvToast span{min-width:0;overflow-wrap:anywhere}
+#rvToast button{flex:none;font:inherit;font-weight:700;border:1px solid currentColor;border-radius:8px;background:none;color:inherit;padding:4px 12px}
+@media(max-width:640px){
+#rv .ghead .desc{display:none}#rv .card{padding:12px 14px}
+#rv .kv .line{grid-template-columns:18px 1fr;row-gap:2px}#rv .kv .lb,#rv .kv .tx{grid-column:2}
+#rv details.done-row>summary{grid-template-columns:auto 1fr}#rv details.done-row .dn{grid-column:2}
+#rv .choice .btn{flex:1;padding:8px 10px}
+#rvDrawer{top:auto;left:0;right:0;width:100%;max-height:88vh;border-left:0;border-top:1px solid var(--border);border-radius:12px 12px 0 0;transform:translateY(105%)}
+#rvDrawer.open{transform:none}
+}
+/* 註腳：使用者在決策／筆記底下加的「使用者補充」，原文不動 */
+.feet{margin-top:8px}.feet:empty{display:none}
+.foot{font-size:13.5px;line-height:1.6;color:var(--tx);padding:3px 0 3px 10px;border-left:3px solid var(--warn);white-space:pre-wrap;overflow-wrap:anywhere}
+.foot+.foot{margin-top:4px}
+.foot .fd{color:var(--warn);font-weight:700;font-size:12.5px;margin-right:8px;white-space:nowrap}
+.foot.new{animation:footflash 2.4s ease}
+@keyframes footflash{0%,40%{background:var(--hover);box-shadow:inset 0 0 0 999px rgba(194,65,12,.10)}100%{background:transparent;box-shadow:none}}
+.fadd{display:inline-flex;align-items:center;min-height:32px;margin-top:2px;padding:4px 2px;border:0;background:none;color:var(--mut);font:inherit;font-size:13px;cursor:pointer}
+.fadd:hover,.fadd:focus-visible{color:var(--ac);text-decoration:underline}
+.fbox{margin-top:6px}
+.fbox textarea{display:block;width:100%;box-sizing:border-box;min-height:68px;padding:8px 10px;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--tx);font:inherit;font-size:14px;line-height:1.6;resize:vertical}
+.fbox textarea:focus{outline:2px solid var(--ac);outline-offset:1px}
+.fbox .frow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:6px}
+.fbox .fcount{margin-right:auto;color:var(--mut);font-size:12.5px;font-variant-numeric:tabular-nums}
+.fbox button{min-height:32px;padding:4px 14px;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--tx);font:inherit;font-size:14px;cursor:pointer}
+.fbox button.go{background:var(--ac);border-color:var(--ac);color:var(--card);font-weight:700}
+.fbox button:disabled{opacity:.55;cursor:default}
+.fbox .ferr{margin-top:6px;color:var(--warn);font-size:13.5px}
+#rv .orig .ofeet{padding:0 10px 6px}
+#rv .orig .ofeet .feet{margin-top:0;padding-top:6px;border-top:1px dashed var(--border)}
+#rv .orig .ofeet .feet:empty{display:none}
+/* 經歷區分頁：使用者的個人經歷，每條可以追加補充（10/18） */
+body.ex-mode .side h2:not(.ex-h),body.ex-mode #chips{display:none}
+.side h2.ex-h,#exCats{display:none}body.ex-mode .side h2.ex-h,body.ex-mode #exCats{display:block}
+.views .n{font-size:12px;color:var(--mut);margin-left:5px;font-variant-numeric:tabular-nums}
+.exstat{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13px;color:var(--mut);margin:-8px 0 14px}.exstat b{color:var(--tx);font-variant-numeric:tabular-nums}
+.ex.s-normal{border-left-color:#39885c}.ex.s-sens{border-left-color:#c29724}.ex.s-high{border-left-color:#c0392b}
+.ex .tag.sens{color:var(--warn);border-color:currentColor}.ex .tag.high{color:#c0392b}
+@media(prefers-color-scheme:dark){.ex .tag.high{color:#ff7b72}}
+.exhid{margin-top:6px;padding:8px 10px;border:1px dashed var(--bd);border-radius:8px;color:var(--mut);font-size:14px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.exhid button{border:1px solid var(--bd);border-radius:6px;background:var(--card);padding:3px 12px;font-size:13.5px}
+.ex .bd{line-height:1.75}#exWarn{margin:-6px 0 12px;color:var(--warn)}
+@media(max-width:760px){body.ex-mode .side h2.ex-h{display:none}body.ex-mode #exCats{display:flex;gap:5px;overflow-x:auto}}
+</style><script>/* 預覽跟正式版一樣（沒有待採用的修改）就直接回正式版頁，不讓使用者看到預覽 */(()=>{const m=/^\/board\/preview(\/memory|\/versions)?\/?$/.exec(location.pathname);if(!m)return;const d=document.documentElement,show=()=>{d.style.visibility=''};d.style.visibility='hidden';setTimeout(show,2500);const own=(document.querySelector('meta[name$="-revision"]')||{}).content;fetch('/board',{cache:'no-store'}).then(r=>r.ok?r.text():'').then(t=>{const s=(/board-revision" content="(\d+)/.exec(t)||[])[1];if(own&&s===own)location.replace('/board'+(m[1]||'')+location.search+location.hash);else show()}).catch(show)})()</script></head><body>
+<div class="preview"><b>記憶頁預覽</b><span>審核分頁、「追加補充」按了會真的改記憶或經歷區（測試清單除外）。採用與回滾會和公告欄一起進行。</span><a href="/board/memory">看正式記憶頁</a></div>
+<div class="releasebar"><b data-ui-version>版本</b><span data-ui-rev></span><span data-release-state></span><a href="/board/preview/versions">完整版本更新紀錄</a><button type="button" data-open-versions>版本更新紀錄</button></div>
+<dialog id="releaseHistory" aria-labelledby="releaseTitle"><button type="button" class="xclose" data-close-versions aria-label="關閉">✕</button><h2 id="releaseTitle" tabindex="-1" autofocus>版本更新紀錄</h2><div id="releaseBody"><p>讀取中…</p></div><p><a href="/board/preview/versions">打開完整版本更新紀錄</a></p><button type="button" data-close-versions>關閉</button></dialog>
+<script>(()=>{// 版號讀頁面 meta；版本紀錄只存在版本紀錄頁，視窗打開時才去讀（跟公告欄同一份，不再兩邊各寫一份）
+const d=document.getElementById('releaseHistory'),body=document.getElementById('releaseBody'),q=s=>document.querySelector(s),isPreview=location.pathname.startsWith('/board/preview'),
+page=document.documentElement.outerHTML,meta=k=>(new RegExp('<meta name="memory-'+k+'" content="([^"]+)"').exec(page)||[])[1],v=meta('version'),r=meta('revision');
+if(v)q('[data-ui-version]').textContent='v'+v.replace(/-rc\.\d+$/,'');q('[data-ui-rev]').textContent='';q('[data-release-state]').textContent=isPreview?'預覽版':'正式版';
+const rev=t=>+((/<meta name="board-revision" content="(\d+)"/.exec(t||'')||[])[1]||0),get=u=>fetch(u,{cache:'no-store'}).then(x=>x.ok?x.text():'').catch(()=>'');
+async function fill(){const [vt,s,p]=await Promise.all([get(isPreview?'/board/preview/versions':'/board/versions'),get('/board'),get('/board/preview')]);
+const secs=vt?[...new DOMParser().parseFromString(vt,'text/html').querySelectorAll('main > section')]:[];
+if(!secs.length){body.textContent='讀不到版本更新紀錄，請按下面的連結打開完整頁面。';return}
+const sr=rev(s),pr=rev(p);body.textContent='';secs.forEach(x=>{const n=document.importNode(x,true),b=n.querySelector('[data-badge]'),k=+n.dataset.rev;
+if(b&&k&&(sr||pr)){const st=k<=sr?['on','正式版已包含']:k<=pr?['pv','只在預覽版']:['no','未上線'];b.className='badge '+st[0];b.textContent=st[1]}body.append(n)})}
+document.querySelectorAll('[data-open-versions]').forEach(b=>b.addEventListener('click',()=>{d.showModal();fill()}));d.querySelectorAll('[data-close-versions]').forEach(b=>b.addEventListener('click',()=>d.close()));d.addEventListener('click',e=>{const r=d.getBoundingClientRect();if(e.target===d&&(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom))d.close()})})();</script>
+<div class="app"><aside class="side" aria-label="記憶類型">
+<nav class="top"><a href="/board/preview">公告欄</a><a class="on" href="/board/preview/memory" aria-current="page">記憶</a><a href="/board/memory">正式版</a></nav>
+<h2>記憶類型（可複選）</h2><div id="chips"><button type="button" class="all-types" id="allTypes">全部類型</button>@@CHIPS@@</div>
+<h2 class="ex-h">分類</h2><div id="exCats" role="group" aria-label="我的記憶分類"></div>
+</aside><main><div class="memory-heading"><h1>圓桌記憶</h1><a href="/board/preview/login">帳號</a><form method="post" action="/board/preview/logout"><button type="submit">登出</button></form></div><div class="views" role="tablist" aria-label="記憶頁分頁"><button type="button" role="tab" data-view="all" aria-selected="true">共用記憶</button><button type="button" role="tab" data-view="experience" aria-selected="false">我的記憶<span class="n" id="exN"></span></button><button type="button" role="tab" data-view="review" aria-selected="false">審核<b id="rvN"></b></button></div>
+<div id="allView"><div class="summary">共 @@TOTAL@@ 筆共用記憶，按類型、專案與作者尋找。人格備份維持獨立區。</div>
+<div class="bar"><input type="search" id="q" placeholder="搜尋內容、專案或作者" aria-label="搜尋關鍵字">
+<select id="pj" aria-label="依專案"><option value="">全部專案</option>@@PROJECTS@@</select>
+<select id="ag" aria-label="依人名"><option value="">全部作者</option>@@AGENTS@@</select>
+<select id="so" aria-label="排序"><option value="desc">最新更新在前</option><option value="asc">最早更新在前</option></select>
+<select id="limit" aria-label="每頁筆數"><option>30</option><option selected>50</option><option>100</option></select><button type="button" id="rs">重設</button></div>
+<div class="cnt" id="cnt" role="status"></div><div id="list">@@ROWS@@</div><div id="empty" class="empty" hidden>沒有符合條件的記憶</div>
+<div class="pages"><button type="button" id="prev">上一頁</button><span id="pageCount" class="cnt"></span><button type="button" id="next">下一頁</button></div></div>
+<div id="ex" hidden><div class="summary">跟你本人有關的記憶：經歷區（從 ChatGPT 匯出整理的個人經歷）和共用記憶裡記你偏好、習慣的筆記，所有 AI 都讀得到。每一條底下可以「追加補充」：原文不改，你補的話接在最後面。</div><div class="cnt" id="exWarn" hidden></div>
+<div class="exstat" id="exStat"></div>
+<div class="bar"><input type="search" id="exQ" placeholder="搜尋內容、時間或分類" aria-label="搜尋我的記憶">
+<select id="exSens" aria-label="依敏感度"><option value="">全部敏感度</option><option>一般</option><option>敏感</option><option>高度敏感</option></select>
+<select id="exFeet" aria-label="依補充"><option value="">有沒有補充都看</option><option value="1">只看我補充過的</option></select>
+<select id="exSo" aria-label="排序"><option value="desc">時間新到舊</option><option value="asc">時間舊到新</option></select>
+<button type="button" id="exRs">重設</button></div>
+<div class="cnt" id="exCnt" role="status"></div><div id="exList"><p class="empty">讀取中…</p></div>
+<div class="pages"><button type="button" id="exPrev">上一頁</button><span id="exPage" class="cnt"></span><button type="button" id="exNext">下一頁</button></div></div>
+<div id="rv" hidden><div class="rvhead"><h2 id="rvTitle">記憶審核</h2><select id="rvPick" aria-label="選一份審核" hidden></select></div><nav class="tabs" role="tablist" id="rvTabs" aria-label="審核分類"></nav><div id="rvBanner"></div><div id="rvPanel"><p class="empty">讀取中…</p></div><div id="rvBack"></div><aside id="rvDrawer" role="dialog" aria-modal="true" aria-labelledby="rvCode" aria-hidden="true"><div class="dh"><code id="rvCode"></code><button class="btn ghost" type="button" id="rvDrX" aria-label="關閉">✕ 關閉</button></div><div class="db" id="rvDrBody"></div></aside></div><div id="rvToast" role="status" hidden><span id="rvToastText"></span><button type="button" id="rvUndo">復原</button></div>
+</main></div><script>
+const $=id=>document.getElementById(id),list=$('list'),all=[...list.children],chips=[...document.querySelectorAll('.tchip')];let page=1;
+function apply(reset=false){if(reset)page=1;const types=new Set(chips.filter(c=>c.classList.contains('on')).map(c=>c.dataset.t)),key=$('q').value.trim().toLowerCase();
+const matches=all.filter(e=>types.has(e.dataset.type)&&(!$('ag').value||e.dataset.agent===$('ag').value)&&(!$('pj').value||e.dataset.project===$('pj').value)&&(!key||e.dataset.text.includes(key)));
+matches.sort((a,b)=>($('so').value==='asc'?1:-1)*(Number(a.dataset.ts)-Number(b.dataset.ts)));
+const limit=Number($('limit').value),pages=Math.max(1,Math.ceil(matches.length/limit));page=Math.min(page,pages);all.forEach(e=>e.hidden=true);
+matches.slice((page-1)*limit,page*limit).forEach(e=>{e.hidden=false;list.appendChild(e)});chips.forEach(c=>c.setAttribute('aria-pressed',String(c.classList.contains('on'))));
+$('cnt').textContent='符合 '+matches.length+' / '+all.length+' 筆';$('pageCount').textContent=page+' / '+pages+' 頁';$('prev').disabled=page===1;$('next').disabled=page===pages;$('empty').hidden=matches.length>0;}
+chips.forEach(c=>c.onclick=()=>{c.classList.toggle('on');apply(true)});['q','ag','pj','so','limit'].forEach(id=>$(id).oninput=()=>apply(true));
+$('allTypes').onclick=()=>{chips.forEach(c=>c.classList.add('on'));apply(true)};$('prev').onclick=()=>{page--;apply()};$('next').onclick=()=>{page++;apply()};
+$('rs').onclick=()=>{['q','ag','pj'].forEach(id=>$(id).value='');$('so').value='desc';$('limit').value='50';chips.forEach(c=>c.classList.add('on'));apply(true)};apply();
+</script><script>(async()=>{// 正式版頁面：預覽跟正式一樣時，藏起所有往預覽版的入口
+if(location.pathname.indexOf('/board/preview')===0)return;
+const rev=t=>{const m=/<meta name="board-revision" content="(\d+)"/.exec(t||'');return m?+m[1]:0},get=u=>fetch(u,{cache:'no-store'}).then(r=>r.ok?r.text():'').catch(()=>'');
+const [s,p]=await Promise.all([get('/board'),get('/board/preview')]),sr=rev(s),pr=rev(p);
+const pending=Boolean(pr&&sr&&pr!==sr);
+document.querySelectorAll('a').forEach(a=>{const h=a.getAttribute('href')||'';if(h.indexOf('/board/preview')===0&&!/\/(login|logout|password)$/.test(h)&&!a.closest('#list,main section,#releaseHistory'))a.hidden=!pending});
+const bar=document.querySelector('.preview');if(bar)bar.hidden=!pending})();</script><script>(()=>{'use strict';// 記憶審核分頁：按「照做／不要／改成…」伺服器當場改記憶，5 秒內可復原
+const Q=s=>document.querySelector(s),API='/board/api/review/',UNDO_SEC=5;
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const md=s=>esc(s).replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+const store={get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+const KIND_COLOR={'合併':'purple','刪除':'red','更正':'blue','要你決定':'amber','轉交':'gray','已結案':'gray','等回覆':'amber'};
+const TYPE_NAME={note:'筆記',decision:'決策',status:'狀態',claim:'進行中',message:'留言'};
+const LABELS={memory:{do:'照做',skip:'不要',change:'改成…'},chatgpt:{do:'寫進經歷區',skip:'不要',change:'改成…'}};
+const TOKEN_RE=/\b[0-9a-f]{8}\b/g;
+let impOk=true,has={},list=[],rid='',review=null,state={},refs={},names={},dry=false,curTab=null,mentions={},drafts={},busy=false,loaded=false,toastTimer=null,feetNow={};
+
+// ---- 代號膠囊與說明卡 ----
+function refName(tok){const r=refs[tok];if(!r)return '';if(r.name)return r.name;const t=String(r.text||'').replace(/^\[[^\]]*\]\s*/,'').replace(/\s+/g,' ').trim();return t.length>28?t.slice(0,28)+'…':t}
+function refHtml(tok){return '<a class="ref" href="#ref-'+tok+'" data-ref="'+tok+'" role="button"><code>'+tok+'</code>'+esc(refName(tok))+'</a>'}
+function chip(tok){return refs[tok]?refHtml(tok):'<span class="code">'+esc(tok)+'</span>'}
+function rich(s){return esc(s).replace(TOKEN_RE,tok=>refs[tok]?refHtml(tok):tok)}
+function who(addr){return names[addr]||addr||'對方'}
+function sp(s){return (/^[A-Za-z0-9]/.test(s)?' ':'')+s+(/[A-Za-z0-9]$/.test(s)?' ':'')}// 中英文之間空一格
+
+// ---- 狀態 ----
+function sOf(id){return state[id]||(has[id]?{status:'skipped',note:'經歷區已經有了（'+has[id]+'），不用再寫'}:null)}// 經歷區已有的直接算處理過
+function isDone(id){const s=sOf(id);return !!s&&(s.status==='done'||s.status==='skipped')}
+function isWaiting(id){const s=sOf(id);return !!s&&s.status==='waiting'}
+function decidableTab(t){return t.key!=='codex'}
+function itemsOf(t,onlyDecidable){const out=[];for(const g of t.groups||[]){if(onlyDecidable&&g.readonly)continue;for(const it of g.items||[])out.push(it)}return out}
+function tabCount(t){return decidableTab(t)?itemsOf(t,true).filter(it=>!sOf(it.id)||sOf(it.id).status==='failed').length:itemsOf(t,false).length}
+function openTotal(){return review?review.tabs.filter(decidableTab).reduce((n,t)=>n+tabCount(t),0):0}
+function statusTag(id){const s=sOf(id);
+if(!s)return '<span class="tag gray">○ 還沒選</span>';
+if(s.status==='done')return '<span class="tag solid">✓ 已完成</span>';
+if(s.status==='skipped')return '<span class="tag gray">'+(has[id]?'— 經歷區已有':'— 沒動')+'</span>';
+if(s.status==='waiting')return '<span class="tag amber">⚑ 等'+esc(sp(who(s.waiting_on)))+'回覆</span>';
+return '<span class="tag red">⚑ 沒做成</span>'}
+
+// ---- 卡片 ----
+function willHtml(tab,it){// 照做之前就看得到結果
+if(tab.key==='chatgpt'||isDone(it.id))return '';const s=sOf(it.id)||{};if(s.forwarded)return '';
+const ops=it.ops||[];let h='';
+if(it.needs_to&&s.status!=='waiting')h+='<div class="note">⚑ 要先問 '+esc(who(it.needs_to))+'：第一次按「照做」只會在公告欄問它，它回了你再按一次才會真的做。</div>';
+if(!ops.length||(it.local&&it.local.length))return h+'<div class="will"><b>照做會怎樣</b>這一項伺服器自己做不了，按「照做」會交給'+esc((review.executor||{}).name||'記憶整理人')+'去做。</div>';
+const parts=ops.map(o=>{const tok=String(o.id||'').slice(0,8);
+if(o.op==='update')return '<div><b>照做後 '+chip(tok)+' 會變成</b><pre>'+esc(o.content||'')+'</pre></div>';
+if(o.op==='delete')return '<div><b>照做會刪掉</b>'+chip(tok)+'（可從回收桶還原）</div>';
+if(o.op==='add')return '<div><b>照做會新增一筆</b><pre>'+esc(o.content||'')+'</pre></div>';return ''});
+return h+'<div class="will">'+parts.join('')+'</div>'}
+function changeHint(tab,it){const ops=it.ops||[];
+if(tab.key==='chatgpt')return '寫你要記成的樣子，會照你的字寫進經歷區，標成你本人說的。';
+if(ops.length&&ops.every(o=>o.op==='delete'))return '寫為什麼要刪，會照建議刪掉並記下你的理由。';
+if(ops.filter(o=>o.op==='update').length===1&&!(it.local&&it.local.length))return '寫整筆新內容，會直接取代上面「會變成」那段。';
+return '寫給'+((review.executor||{}).name||'記憶整理人')+'看，它照你的字去做。'}
+function choiceHtml(tab,it){const L=LABELS[tab.key]||LABELS.memory,s=sOf(it.id)||{},id=esc(it.id);let h='';
+if(s.note)h+='<div class="result">'+rich(s.note)+'</div>';
+if(isDone(it.id)||s.forwarded)return h;
+if(tab.key==='chatgpt'&&!impOk)return h+'<div class="note">伺服器還沒更新：現在按會寫進共用記憶的 user-profile（10/16 因此重複過 130 條），先不給按。伺服器更新後會改成寫進經歷區。</div>';
+const again=s.status!=='waiting'?'':(s.replies||[]).length?'對方回了，':'不等了，直接';
+h+='<div class="choice"><button class="btn primary" type="button" data-act="do" data-id="'+id+'">'+again+L.do+'</button><button class="btn" type="button" data-act="skip" data-id="'+id+'">'+L.skip+'</button><button class="btn ghost" type="button" data-act="chg" data-id="'+id+'">'+L.change+'</button></div>';
+if(drafts[it.id]!==undefined)h+='<textarea class="chg" data-id="'+id+'" placeholder="寫下你要改成怎樣">'+esc(drafts[it.id])+'</textarea><div class="choice"><span class="hint">'+esc(changeHint(tab,it))+'</span><button class="btn primary" type="button" data-act="change" data-id="'+id+'">就這樣做</button><button class="btn ghost" type="button" data-act="cancel" data-id="'+id+'">取消</button></div>';
+return h}
+function originalsHtml(it){const os=it.originals||[],ls=it.local||[],n=os.length+ls.length;if(!n)return '';
+let h='<details class="orig"><summary>看原文（'+n+' 筆）</summary>';
+for(const o of os){if(o.missing){h+='<div class="o"><div class="meta">'+chip(o.short)+'<span>找不到這筆</span></div></div>';continue}
+const date=(o.updated||'').slice(0,10);h+='<div class="o"'+fidAttr(o)+'><div class="meta">'+chip(o.short)+'<span>'+esc(o.project)+'・'+esc(TYPE_NAME[o.type]||o.type)+'・'+esc(o.agent)+(date?'・'+esc(date):'')+'</span></div>'+origBody(o)+'</div>'}
+for(const l of ls)h+='<div class="o"><div class="meta">使用者電腦上的檔案：'+esc(l.path)+'</div><pre>'+esc(l.missing?'讀不到這個檔案':l.text)+'</pre></div>';
+return h+'</details>'}
+function repliesHtml(it){const s=sOf(it.id)||{};let h='';
+for(const r of s.replies||[])h+='<div class="reply"><b>'+esc(who(r.from))+' 的回答・'+esc(r.at)+'</b>'+rich(r.text)+'</div>';
+if(s.status==='waiting'&&!s.forwarded&&!(s.replies||[]).length)h+='<div class="note">○ 還在等 '+esc(who(s.waiting_on))+' 回覆；回了會顯示在這裡。</div>';
+return h}
+function cardHtml(tab,g,it){
+if(tab.key==='chatgpt')return '<div class="card compact" id="card-'+esc(it.id)+'"><div class="chead"><div class="meta"><span class="id">'+esc(it.id)+'</span><span class="sp"></span>'+statusTag(it.id)+'</div><div class="t gtext">'+md(it.text)+'</div></div>'+(isDone(it.id)?'':'<div class="result">會寫到：經歷區・'+esc(it.category||g.label||'其他')+'・'+esc(it.sensitivity||(g.sensitive?'敏感':'一般'))+'</div>')+choiceHtml(tab,it)+'</div>';
+let h='<div class="card" id="card-'+esc(it.id)+'"><div class="chead"><div class="meta">';
+if(it.kind)h+='<span class="tag '+(KIND_COLOR[it.kind]||'gray')+'">'+esc(it.kind)+'</span>';
+h+='<span class="id">'+esc(it.id)+'</span><span class="sp"></span>'+(g.readonly?'':statusTag(it.id))+'</div><div class="t">'+rich(it.title)+'</div></div><div class="kv">';
+if(it.suggestion)h+='<div class="line sug"><span class="ar">➜</span><span class="lb">'+(g.readonly?'內容':'建議')+'</span><span class="tx">'+rich(it.suggestion)+'</span></div>';
+if(it.reason)h+='<div class="line"><span class="ar">↳</span><span class="lb">理由</span><span class="tx">'+rich(it.reason)+'</span></div>';
+if(it.lose)h+='<div class="line"><span class="ar">↳</span><span class="lb">會不會少東西</span><span class="tx">'+rich(it.lose)+'</span></div>';
+h+='</div>';
+if(it.needs&&!it.needs_to)h+='<div class="note">⚑ '+rich(it.needs)+'</div>';
+if(it.reply)h+='<div class="reply"><b>Codex 的回答</b>'+rich(it.reply)+'</div>';else if(it.kind==='等回覆')h+='<div class="note">○ 還在等 Codex 回覆，回了會顯示在這裡。</div>';
+if(!g.readonly)h+=repliesHtml(it)+willHtml(tab,it);
+h+=originalsHtml(it);
+if(!g.readonly)h+=choiceHtml(tab,it);
+return h+'</div>'}
+function groupHtml(tab,g,gi,items){const n=items.length,cards=items.map(it=>cardHtml(tab,g,it)).join('');
+const bulk=tab.key==='chatgpt'&&!g.readonly&&impOk?'<div class="bulk"><button class="btn ghost" type="button" data-bulk="do" data-g="'+gi+'">這類全部寫進經歷區</button><button class="btn ghost" type="button" data-bulk="skip" data-g="'+gi+'">全部不要</button></div>':'';
+if(g.sensitive)return '<section class="group"><details class="gwrap"><summary><h3>'+esc(g.label)+'</h3><span class="tag amber">⚠ 敏感</span><span class="sub">'+n+' 條，點開才顯示</span></summary><div class="ghead"><span class="desc">寫進經歷區後所有 AI 都讀得到，而且刪不掉，請想清楚再選。</span>'+bulk+'</div>'+cards+'</details></section>';
+if(g.collapsed)return '<section class="group"><details class="gwrap"><summary><h3>'+esc(g.label)+'</h3><span class="sub">'+n+' 項</span></summary>'+cards+'</details></section>';
+return '<section class="group"><div class="ghead"><h3>'+esc(g.label)+'</h3><span class="desc">'+esc(g.desc||(n+' 條'))+'</span>'+bulk+'</div>'+(g.note?'<div class="note" style="margin:0 0 8px">⚑ '+esc(g.note)+'</div>':'')+cards+'</section>'}
+function doneRowHtml(tab,g,it){const s=sOf(it.id)||{},title=tab.key==='chatgpt'?String(it.text||'').split('\n')[0]:it.title;
+return '<details class="done-row"><summary><span class="did">'+(s.status==='done'?'✓':'—')+' '+esc(it.id)+'</span><span class="dt">'+esc(title)+'</span>'+(s.note?'<span class="dn">'+esc(s.note)+'</span>':'')+'</summary>'+cardHtml(tab,g,it)+'</details>'}
+
+// ---- 畫面 ----
+function renderTabs(){Q('#rvTabs').innerHTML=review.tabs.map(t=>'<button class="tab" role="tab" type="button" data-tab="'+esc(t.key)+'" aria-selected="'+(t.key===curTab)+'">'+esc(t.label)+'<span class="n">'+tabCount(t)+'</span></button>').join('');
+const n=openTotal(),b=Q('#rvN');if(b)b.textContent=n?String(n):''}
+function renderPanel(){const tab=review.tabs.find(t=>t.key===curTab)||review.tabs[0];let h='';
+const intro=Array.isArray(tab.intro)?tab.intro:(tab.intro?[tab.intro]:[]);
+if(intro.length)h+='<div class="intro">'+intro.map(p=>'<p>'+esc(p)+'</p>').join('')+'</div>';
+const waitCards=[],doneRows=[];// 上面只留還沒選的；等別人回覆的在下面；做完的收到最下面
+const body=(tab.groups||[]).map((g,i)=>{if(g.readonly||!decidableTab(tab))return groupHtml(tab,g,i,g.items||[]);
+const rest=[];for(const it of g.items||[]){if(isDone(it.id))doneRows.push(doneRowHtml(tab,g,it));else if(isWaiting(it.id))waitCards.push(cardHtml(tab,g,it));else rest.push(it)}
+return rest.length?groupHtml(tab,g,i,rest):''}).join('');
+h+=body||((waitCards.length||doneRows.length)?'<p class="empty">這一頁的都處理好了。</p>':'<p class="empty">這裡沒有東西。</p>');
+if(waitCards.length)h+='<section class="group" id="rvWait"><details class="gwrap" open><summary><h3>等別人回覆</h3><span class="tag amber">⚑ '+waitCards.length+' 項</span><span class="sub">對方回了會顯示在卡片上</span></summary>'+waitCards.join('')+'</details></section>';
+if(doneRows.length)h+='<section class="group" id="rvDone"><details class="gwrap"><summary><h3>已完成</h3><span class="sub">'+doneRows.length+' 項，點開看結果</span></summary>'+doneRows.join('')+'</details></section>';
+Q('#rvPanel').innerHTML=h}
+function renderHead(){Q('#rvTitle').textContent=review.title||'記憶審核';
+const sel=Q('#rvPick');sel.hidden=list.length<2;sel.innerHTML=list.map(r=>'<option value="'+esc(r.id)+'"'+(r.id===rid?' selected':'')+'>'+esc(r.title)+(r.open?'（'+r.open+' 項沒選）':'')+'</option>').join('');
+let h='';if(dry)h+='<div class="banner test">這是測試清單：按了會照常打勾、沉下去，但不會改記憶，也不會發留言。</div>';
+h+='<div class="banner help">每一張選「照做／不要／改成…」，<b>按了就做</b>，畫面下方會出現「復原」，'+UNDO_SEC+' 秒內按就退回。超過了也不怕：刪掉的在回收桶、改過的在記憶歷史，都能還原。</div>';
+Q('#rvBanner').innerHTML=h}
+function renderAll(){renderHead();renderTabs();renderPanel()}
+function showErr(msg){Q('#rvBanner').insertAdjacentHTML('afterbegin','<div class="banner err" role="alert">⚑ '+esc(msg)+'</div>')}
+
+// ---- 讀資料 ----
+async function getJson(u){const r=await fetch(u,{cache:'no-store',headers:{Accept:'application/json'}});const j=await r.json().catch(()=>({error:'讀不到資料（'+r.status+'）'}));if(!r.ok)throw new Error(j.error||r.status);return j}
+async function loadList(){list=await getJson(API+'list');const n=list.reduce((a,r)=>a+(r.id===(rid||(list[0]||{}).id)?r.open:0),0),b=Q('#rvN');if(b)b.textContent=n?String(n):''}
+async function load(id){await loadList();if(!list.length){Q('#rvTitle').textContent='記憶審核';Q('#rvTabs').innerHTML='';Q('#rvBanner').innerHTML='';Q('#rvPanel').innerHTML='<p class="empty">目前沒有要審核的清單。記憶整理人每週會上傳一份，到時候會出現在這裡。</p>';return}
+const want=id||rid||store.get('memreview:id');rid=list.some(r=>r.id===want)?want:list[0].id;store.set('memreview:id',rid);
+const j=await getJson(API+encodeURIComponent(rid));review=j.data;state=j.state||{};refs=(j.refs&&j.refs.refs)||{};names=j.names||{};dry=!!j.dry_run;feetNow=j.feet||{};impOk=j.import_target==='experience';
+const wantTab=store.get('memreview:tab');curTab=review.tabs.some(t=>t.key===curTab)?curTab:(review.tabs.some(t=>t.key===wantTab)?wantTab:review.tabs[0].key);
+has={};for(const t of review.tabs)for(const g of t.groups||[])for(const it of g.items||[])if(it.exists)has[it.id]=it.exists;
+buildMentions();renderAll();loaded=true}
+async function refresh(){const y=window.scrollY;await load(rid);window.scrollTo(0,y)}
+
+// ---- 按下去 ----
+async function post(verb,body){const r=await fetch(API+encodeURIComponent(rid)+'/'+verb,{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify(body)});
+const j=await r.json().catch(()=>({error:'伺服器沒有回應（'+r.status+'）'}));if(!r.ok)throw new Error(j.error||r.status);return j}
+function setBusy(on){busy=on;document.querySelectorAll('#rvPanel button[data-act],#rvPanel button[data-bulk]').forEach(b=>b.disabled=on)}
+const toExp=choice=>curTab==='chatgpt'&&choice!=='skip';// 寫進經歷區：刪不掉，送出前先給幾秒取消
+function pend(text,go){let left=UNDO_SEC;const t=Q('#rvToast'),b=Q('#rvUndo');clearInterval(toastTimer);Q('#rvToastText').textContent=text;t.hidden=false;b.hidden=false;b.textContent='取消（'+left+'）';
+b.onclick=()=>{clearInterval(toastTimer);t.hidden=true;setBusy(false);toast('取消了，沒有寫進去',null)};
+toastTimer=setInterval(()=>{left--;if(left<=0){clearInterval(toastTimer);t.hidden=true;go()}else b.textContent='取消（'+left+'）'},1000)}
+async function doAct(id,choice,text){try{const j=await post('act',{item:id,choice,text:text||''});delete drafts[id];await refresh();toast(j.note||'已處理',toExp(choice)?null:[{item:id,token:j.undo_token}])}
+catch(e){setBusy(false);showErr('沒做成：'+e.message)}finally{busy=false}}
+async function act(id,choice,text){if(busy)return;setBusy(true);
+if(toExp(choice)){pend((choice==='change'?'5 秒後照你寫的字':'5 秒後')+'寫進經歷區；寫進去就刪不掉，要反悔現在按取消',()=>doAct(id,choice,text));return}
+doAct(id,choice,text)}
+async function bulk(gi,choice){if(busy)return;const tab=review.tabs.find(t=>t.key===curTab),g=tab.groups[gi],todo=(g.items||[]).filter(it=>!sOf(it.id)&&!it.exists);if(!todo.length)return;
+setBusy(true);const exp=toExp(choice),run=async()=>{const tokens=[];let err='';
+for(const it of todo){try{const j=await post('act',{item:it.id,choice,text:''});tokens.push({item:it.id,token:j.undo_token})}catch(e){err=e.message;break}}
+await refresh();if(err)showErr('做到一半停下來了：'+err);busy=false;if(tokens.length)toast((exp?'已寫進經歷區 ':'已標「不要」 ')+tokens.length+' 條',exp?null:tokens)};
+if(exp){pend('5 秒後把這 '+todo.length+' 條寫進經歷區；寫進去就刪不掉，要反悔現在按取消',run);return}
+run()}
+async function undo(tokens){hideToast();if(busy)return;setBusy(true);let err='';
+for(const t of tokens.slice().reverse()){try{await post('undo',t)}catch(e){err=e.message}}
+await refresh();busy=false;if(err)showErr('復原沒有全部成功：'+err);else toast('已復原',null)}
+function hideToast(){clearInterval(toastTimer);Q('#rvToast').hidden=true}
+function toast(text,tokens){const t=Q('#rvToast'),b=Q('#rvUndo');clearInterval(toastTimer);Q('#rvToastText').textContent=text;t.hidden=false;
+if(!tokens){b.hidden=true;toastTimer=setInterval(hideToast,2500);return}
+let left=UNDO_SEC;b.hidden=false;b.textContent='復原（'+left+'）';b.onclick=typeof tokens==='function'?tokens:()=>undo(tokens);
+toastTimer=setInterval(()=>{left--;if(left<=0)hideToast();else b.textContent='復原（'+left+'）'},1000)}
+
+// ---- 說明卡 ----
+function buildMentions(){mentions={};for(const t of review.tabs){if(t.key==='chatgpt')continue;for(const g of t.groups||[])for(const it of g.items||[]){const toks=new Set();
+for(const f of ['title','suggestion','reason','lose','needs','reply'])for(const m of String(it[f]||'').match(TOKEN_RE)||[])toks.add(m);
+for(const o of it.originals||[])if(o.short)toks.add(o.short);for(const o of it.ops||[])if(o.id)toks.add(String(o.id).slice(0,8));
+const s=sOf(it.id);if(s&&s.note)for(const m of String(s.note).match(TOKEN_RE)||[])toks.add(m);
+for(const tok of toks)(mentions[tok]=mentions[tok]||[]).push({id:it.id,title:it.title,tab:t.key,readonly:!!g.readonly})}}}
+function openDrawer(tok){const r=refs[tok];if(!r)return;Q('#rvCode').textContent=tok;let h='';
+if(r.missing)h+='<p class="name">'+esc(r.name||'找不到這筆記憶')+'</p><p class="dmeta">清單產生時沒有這筆，可能已經刪掉、在回收桶，或這不是記憶的代號。</p>';
+else{h+='<p class="name">'+esc(refName(tok))+'</p><p class="dmeta">專案 '+esc(r.project||'—')+'・'+esc(TYPE_NAME[r.type]||r.type||'—')+'・'+esc(r.agent||'—')+' 寫的'+(r.updated?'・最後更新 '+esc(String(r.updated).slice(0,10)):'')+'</p><p class="dmeta">完整代號 <span class="code">'+esc(r.id)+'</span></p>'}
+const ms=mentions[tok]||[];if(ms.length)h+='<h4>這份審核提到它的項目</h4>'+ms.map(m=>'<a class="mention" href="#card-'+esc(m.id)+'" data-goto="'+esc(m.id)+'" data-tab="'+esc(m.tab)+'"><span class="did">'+esc(m.id)+'</span><span>'+esc(m.title)+'</span>'+(m.readonly?'':statusTag(m.id))+'</a>').join('');
+if(!r.missing)h+='<h4>原文</h4><pre>'+esc(r.text)+'</pre>';
+Q('#rvDrBody').innerHTML=h;Q('#rvBack').classList.add('open');Q('#rvDrawer').classList.add('open');Q('#rvDrawer').setAttribute('aria-hidden','false');Q('#rvDrBody').scrollTop=0;Q('#rvDrX').focus()}
+function closeDrawer(){Q('#rvBack').classList.remove('open');Q('#rvDrawer').classList.remove('open');Q('#rvDrawer').setAttribute('aria-hidden','true')}
+function gotoCard(id,tabKey){closeDrawer();if(tabKey&&tabKey!==curTab){curTab=tabKey;store.set('memreview:tab',curTab);renderTabs();renderPanel()}
+const el=document.getElementById('card-'+id);if(!el)return;let p=el.parentElement;while(p){if(p.tagName==='DETAILS')p.open=true;p=p.parentElement}
+el.scrollIntoView({block:'center'});el.classList.remove('flash');void el.offsetWidth;el.classList.add('flash')}
+
+// ---- 事件 ----
+document.addEventListener('click',e=>{const a=e.target.closest('#rv a.ref');if(a){e.preventDefault();openDrawer(a.dataset.ref);return}
+const g=e.target.closest('#rvDrawer a.mention');if(g){e.preventDefault();gotoCard(g.dataset.goto,g.dataset.tab)}});
+Q('#rvDrX').onclick=closeDrawer;Q('#rvBack').onclick=closeDrawer;
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer()});
+Q('#rvPanel').addEventListener('click',e=>{const b=e.target.closest('button');if(!b||b.disabled)return;const id=b.dataset.id;
+if(b.dataset.bulk){bulk(Number(b.dataset.g),b.dataset.bulk);return}
+if(b.dataset.act==='do'||b.dataset.act==='skip')act(id,b.dataset.act,'');
+else if(b.dataset.act==='chg'){if(drafts[id]===undefined)drafts[id]='';renderPanel();const ta=document.querySelector('#rv textarea.chg[data-id="'+CSS.escape(id)+'"]');if(ta)ta.focus()}
+else if(b.dataset.act==='cancel'){delete drafts[id];renderPanel()}
+else if(b.dataset.act==='change'){const tx=String(drafts[id]||'').trim();if(!tx){showErr('「改成…」要先寫內容');return}act(id,'change',tx)}});
+Q('#rvPanel').addEventListener('input',e=>{const t=e.target;if(t.classList.contains('chg'))drafts[t.dataset.id]=t.value});
+Q('#rvTabs').addEventListener('click',e=>{const b=e.target.closest('.tab');if(!b)return;curTab=b.dataset.tab;store.set('memreview:tab',curTab);renderTabs();renderPanel();Q('#rv').scrollIntoView()});
+Q('#rvPick').onchange=e=>{rid=e.target.value;curTab=null;load(rid).catch(err=>showErr(err.message))};
+
+// ---- 全部記憶／審核 切換（網址 #review 直接打開審核）----
+function view(v){const rv=v==='review',ex=v==='experience';Q('#allView').hidden=rv||ex;Q('#rv').hidden=!rv;Q('#ex').hidden=!ex;
+document.body.classList.toggle('rv-mode',rv);document.body.classList.toggle('ex-mode',ex);
+document.querySelectorAll('.views button').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.view===v)));
+const want=rv?'#review':ex?'#experience':'';if(location.hash!==want)history.replaceState(null,'',want||location.pathname);
+if(rv&&!loaded)load().catch(e=>{Q('#rvPanel').innerHTML='<p class="empty">讀不到審核清單：'+esc(e.message)+'</p>'});if(ex)exLoad()}
+const hashView=()=>location.hash==='#review'?'review':location.hash==='#experience'?'experience':'all';
+document.querySelectorAll('.views button').forEach(b=>b.onclick=()=>view(b.dataset.view));
+window.addEventListener('hashchange',()=>view(hashView()));
+// ---- 註腳：在決策／筆記底下加一行「使用者補充」，原文不動、AI 搜尋讀得到；5 秒內可以復原----
+const FOOT_MAX=500,FOOT_PARTS=/^(\d{4})-(\d{2})-(\d{2}) 使用者補充：(.*)$/,FOOT_LINE=/^\d{4}-\d{2}-\d{2} 使用者補充：/;
+function footSplit(text){const ls=String(text||'').replace(/\s+$/,'').split('\n');let i=ls.length;while(i>1&&FOOT_LINE.test(ls[i-1].trim()))i--;
+return [ls.slice(0,i).join('\n').replace(/\s+$/,''),ls.slice(i).map(x=>x.trim())]}
+function footHtml(line,fresh){const p=FOOT_PARTS.exec(line);if(!p)return '';
+return '<div class="foot'+(fresh?' new':'')+'"><span class="fd">'+(+p[2])+'/'+(+p[3])+' 使用者補充</span><span class="ft">'+esc(p[4])+'</span></div>'}
+function feetHtml(lines,fresh){lines=lines||[];return '<div class="feet">'+lines.map((l,i)=>footHtml(l,fresh&&i===lines.length-1)).join('')+'</div>'}
+function canFoot(o){return !dry&&!o.missing&&(o.type==='note'||o.type==='decision')}  // 測試清單的原文是真的記憶，不放加註腳
+function fidAttr(o){return canFoot(o)?' data-fid="'+esc(o.id)+'"':''}
+function origBody(o){const sp=footSplit(o.text),lines=feetNow[o.id]||sp[1];
+return '<pre>'+esc(sp[0])+'</pre>'+(lines.length||canFoot(o)?'<div class="ofeet">'+feetHtml(lines)+(canFoot(o)?'<button class="fadd" type="button">＋ 追加補充</button>':'')+'</div>':'')}
+function openFoot(btn){if(!btn.closest('[data-fid]'))return;btn.hidden=true;const box=document.createElement('div');box.className='fbox';
+box.innerHTML='<textarea maxlength="'+FOOT_MAX+'" aria-label="補充內容" placeholder="想補充的話，例如後來的變化、現在的想法。原文不會改，這段會接在最後面，AI 搜尋讀得到。"></textarea>'+
+'<div class="frow"><span class="fcount">0／'+FOOT_MAX+'</span><button type="button" class="fno">取消</button><button type="button" class="go">加上去</button></div><div class="ferr" role="alert" hidden></div>';
+btn.after(box);box.querySelector('textarea').focus()}
+function closeFoot(box){const btn=box.previousElementSibling;box.remove();if(btn&&btn.classList.contains('fadd')){btn.hidden=false;btn.focus()}}
+const fbase=el=>el&&el.dataset.fkind==='exp'?'/board/api/experience/':'/board/api/memory/';
+async function fpost(base,path,body){const r=await fetch(base+path,{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify(body)});
+const j=await r.json().catch(()=>({error:'伺服器沒有回應（'+r.status+'）'}));if(!r.ok||j.error)throw new Error(j.error||r.status);return j}
+function paintFeet(fid,lines,fresh){feetNow[fid]=lines;
+document.querySelectorAll('[data-fid="'+CSS.escape(fid)+'"]').forEach(h=>{const f=h.querySelector('.feet');if(f)f.outerHTML=feetHtml(lines,fresh);
+const it=exItems.find(x=>x.id===fid);if(it)it.feet=lines;
+if(h.matches('article.mem:not(.ex)')){if(h.dataset.base===undefined)h.dataset.base=h.dataset.text;h.dataset.text=h.dataset.base+' '+lines.join(' ').toLowerCase()}})}
+let footBusy=false;
+async function sendFoot(box){if(footBusy)return;const host=box.closest('[data-fid]'),base=fbase(host),fid=host.dataset.fid,tx=box.querySelector('textarea').value.trim(),err=box.querySelector('.ferr');
+if(!tx){err.textContent='先寫一點內容再加';err.hidden=false;return}
+footBusy=true;box.querySelectorAll('button').forEach(b=>b.disabled=true);
+try{const j=await fpost(base,encodeURIComponent(fid)+'/footnote',{text:tx});closeFoot(box);paintFeet(fid,j.feet,true);exStats();toast('已追加補充',()=>undoFoot(base,fid,j.undo_token))}
+catch(e){err.textContent='沒補上：'+e.message;err.hidden=false;box.querySelectorAll('button').forEach(b=>b.disabled=false)}
+footBusy=false}
+async function undoFoot(base,fid,token){hideToast();try{const j=await fpost(base,'footnote/undo',{token});paintFeet(fid,j.feet,false);exStats();toast('已拿掉剛補的那條',null)}
+catch(e){toast('沒有拿掉：'+e.message,null)}}
+document.addEventListener('click',e=>{const b=e.target.closest('.fadd,.fbox button');if(!b||b.disabled)return;
+if(b.classList.contains('fadd'))openFoot(b);else if(b.classList.contains('go'))sendFoot(b.closest('.fbox'));else closeFoot(b.closest('.fbox'))});
+document.addEventListener('input',e=>{const t=e.target;if(t.matches('.fbox textarea'))t.closest('.fbox').querySelector('.fcount').textContent=t.value.trim().length+'／'+FOOT_MAX});
+document.addEventListener('keydown',e=>{const t=e.target;if(!t.matches||!t.matches('.fbox textarea'))return;
+if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();sendFoot(t.closest('.fbox'))}else if(e.key==='Escape')closeFoot(t.closest('.fbox'))});
+const KIND={event:'事件',state:'狀態',plan:'計畫',preference:'偏好'},SENS={'一般':'s-normal','敏感':'s-sens','高度敏感':'s-high'},EX_PER=50;
+let exItems=[],exCat='',exPg=1,exOpen={},exState='';const PREF='偏好與習慣';
+function profItems(){return [...document.querySelectorAll('#list article[data-id][data-project="user-profile"]')].map(a=>{const f=a.querySelector('.feet'),ts=+a.dataset.ts||0,
+d=ts?new Date(ts*1000+8*3600e3).toISOString().slice(0,10):'';return {id:a.dataset.id,src:'mem',type:a.dataset.type,text:((a.querySelector('.mt .bd')||{}).textContent||'').trim(),
+feet:null,feetH:f?f.outerHTML:'<div class="feet"></div>',nf:f?f.querySelectorAll('.foot').length:0,ft:f?f.textContent:'',category:PREF,sensitivity:'一般',
+when:d?d.replace(/^(\d+)-0?(\d+)-0?(\d+)$/,'$1/$2/$3')+' 更新':'',sort_date:d}})}
+const nFeet=x=>x.feet?x.feet.length:(x.nf||0),feetOf=x=>x.feet?feetHtml(x.feet):(x.feetH||feetHtml([])),feetText=x=>x.feet?x.feet.join(' '):(x.ft||'');
+async function exLoad(){if(exState)return;exState='loading';let ex=[],warn='';
+try{const r=await fetch('/board/api/experience',{cache:'no-store',headers:{Accept:'application/json'}});
+if(r.status===404)warn='經歷區要等伺服器更新後才看得到，現在只列共用記憶裡關於你的筆記。';
+else{const j=await r.json().catch(()=>({error:'讀不到資料（'+r.status+'）'}));if(!r.ok)throw new Error(j.error||r.status);ex=j.items||[]}}
+catch(e){warn='讀不到經歷區（'+e.message+'），現在只列共用記憶裡關於你的筆記。'}
+exItems=ex.concat(profItems());exState='ok';Q('#exWarn').textContent=warn;Q('#exWarn').hidden=!warn;
+Q('#exN').textContent=String(exItems.length);exCats();exStats();exRender()}
+function exCats(){const n={};exItems.forEach(x=>{const c=x.category||'未分類';n[c]=(n[c]||0)+1});
+const cats=Object.keys(n).sort((a,b)=>n[b]-n[a]||a.localeCompare(b,'zh-Hant'));
+Q('#exCats').innerHTML=['<button type="button" class="tchip'+(exCat?'':' on')+'" data-cat="" aria-pressed="'+!exCat+'">全部分類 <b>'+exItems.length+'</b></button>']
+.concat(cats.map(c=>'<button type="button" class="tchip'+(exCat===c?' on':'')+'" data-cat="'+esc(c)+'" aria-pressed="'+(exCat===c)+'">'+esc(c)+' <b>'+n[c]+'</b></button>')).join('')}
+function exStats(){if(exState!=='ok')return;const c=s=>exItems.filter(x=>x.sensitivity===s).length;
+const pref=exItems.filter(x=>x.src==='mem').length;
+Q('#exStat').innerHTML='<span>共 <b>'+exItems.length+'</b> 條</span><span>經歷 <b>'+(exItems.length-pref)+'</b></span><span>偏好筆記 <b>'+pref+'</b></span><span>敏感 <b>'+c('敏感')+'</b></span><span>高度敏感 <b>'+c('高度敏感')+'</b></span><span>你補充過 <b>'+exItems.filter(x=>nFeet(x)).length+'</b> 條</span>'}
+function exCard(x){const hide=x.sensitivity==='高度敏感'&&!exOpen[x.id];
+let h='<article class="mem ex '+(SENS[x.sensitivity]||'s-sens')+'" data-fid="'+esc(x.id)+'"'+(x.src==='mem'?'':' data-fkind="exp"')+'><div class="content"><div class="mh"><span class="who">'+esc(x.category||'未分類')+'</span><span class="tag">'+esc(x.when||'時間不明')+'</span>'
++(x.src==='mem'?'<span class="tag">共用記憶・'+(x.type==='decision'?'決策':'筆記')+'</span>':'')+(KIND[x.kind]?'<span class="tag">'+KIND[x.kind]+'</span>':'')+(x.sensitivity&&x.sensitivity!=='一般'?'<span class="tag sens'+(x.sensitivity==='高度敏感'?' high':'')+'">'+esc(x.sensitivity)+'</span>':'')
++(x.confidence==='摘要待核查'?'<span class="tag">還沒核對原句</span>':'')+'</div>';
+if(hide)h+='<div class="exhid">高度敏感，內容先收起來。<button type="button" class="exshow" data-id="'+esc(x.id)+'">顯示內容</button></div>';
+else h+='<div class="mt"><div class="bd">'+esc(x.text)+'</div>'+feetOf(x)+'</div><button class="fadd" type="button">＋ 追加補充</button>';
+return h+'</div></article>'}
+function exRender(reset){if(exState!=='ok')return;if(reset)exPg=1;const k=Q('#exQ').value.trim().toLowerCase(),sens=Q('#exSens').value,feet=Q('#exFeet').value,asc=Q('#exSo').value==='asc';
+const m=exItems.filter(x=>(!exCat||(x.category||'未分類')===exCat)&&(!sens||x.sensitivity===sens)&&(!feet||nFeet(x))
+&&(!k||[x.text,x.when,x.category,feetText(x)].join(' ').toLowerCase().includes(k)));
+m.sort((a,b)=>{const p=a.sort_date||'',q=b.sort_date||'';if(!p||!q)return (!p)-(!q);return asc?p.localeCompare(q):q.localeCompare(p)});// 不知道時間的永遠排最後
+const pages=Math.max(1,Math.ceil(m.length/EX_PER));exPg=Math.min(exPg,pages);
+Q('#exList').innerHTML=m.length?m.slice((exPg-1)*EX_PER,exPg*EX_PER).map(exCard).join(''):'<p class="empty">沒有符合條件的經歷</p>';
+Q('#exCnt').textContent='符合 '+m.length+' / '+exItems.length+' 條';Q('#exPage').textContent=exPg+' / '+pages+' 頁';Q('#exPrev').disabled=exPg===1;Q('#exNext').disabled=exPg===pages}
+['exQ','exSens','exFeet','exSo'].forEach(id=>Q('#'+id).oninput=()=>exRender(true));
+Q('#exRs').onclick=()=>{Q('#exQ').value='';Q('#exSens').value='';Q('#exFeet').value='';Q('#exSo').value='desc';exCat='';exCats();exRender(true)};
+Q('#exPrev').onclick=()=>{exPg--;exRender();Q('#ex').scrollIntoView()};Q('#exNext').onclick=()=>{exPg++;exRender();Q('#ex').scrollIntoView()};
+Q('#exCats').addEventListener('click',e=>{const b=e.target.closest('button[data-cat]');if(!b)return;exCat=b.dataset.cat;exCats();exRender(true);
+const f=Q('#exCats button[data-cat="'+CSS.escape(exCat)+'"]');if(f)f.focus({preventScroll:true})});
+Q('#exList').addEventListener('click',e=>{const b=e.target.closest('.exshow');if(!b)return;exOpen[b.dataset.id]=true;const x=exItems.find(y=>y.id===b.dataset.id),a=b.closest('article');
+if(x&&a){a.outerHTML=exCard(x);const n=Q('#exList article[data-fid="'+CSS.escape(x.id)+'"] .fadd');if(n)n.focus({preventScroll:true})}});
+if(location.hash==='#review'||location.hash==='#experience')view(hashView());else loadList().catch(()=>{});
+document.querySelectorAll('article.mem[data-id]').forEach(a=>{const mt=a.querySelector('.mt');if(!mt)return;a.dataset.fid=a.dataset.id;  // 全部記憶：每條決策／筆記底下放「加註腳」
+const b=document.createElement('button');b.type='button';b.className='fadd';b.textContent='＋ 追加補充';mt.after(b)});
+
+})();
+</script></body></html>
