@@ -22,7 +22,7 @@ routes.write_text(json.dumps({
     "local_b": {"label": "mem0-deploy", "projects": ["mem0"]},
     "_test": {"label": "inbox-test", "projects": ["inbox-test"]},
 }, ensure_ascii=False), encoding="utf-8")
-BASE_ENV = {"RT_URL": "http://fake/mcp", "RT_TOKEN": "tok-claude", "RT_TOKEN_CODEX_995XD": "tok-codex",
+BASE_ENV = {"RT_URL": "http://fake/mcp", "RT_TOKEN": "tok-claude", "RT_TOKEN_CODEX_LAPTOP": "tok-codex",
             "RELAY_TOKEN": "relay-secret", "POLL_SECONDS": "30", "ROUTES_FILE": str(routes),
             "MAX_PER_HOUR": "3", "LEASE_SECONDS": "0.4"}
 results = []
@@ -51,16 +51,16 @@ def cfg_for(name, **over):
     return R.Config(env)
 
 
-def msg(i, frm="claude-995xd", sess="roundtable", act=False, **kw):
+def msg(i, frm="claude-laptop", sess="roundtable", act=False, **kw):
     return {"id": f"{i:08d}-0000-0000-0000-000000000000", "from": frm, "from_session": sess,
             "subject": f"第 {i} 封", "text": f"本文 {i}", "needs_action": act, "project": "mcp", **kw}
 
 
 # 1. 設定：另外的身分、缺什麼
 c = cfg_for("c1")
-check("RT_TOKEN_CODEX_995XD 變成身分 codex-995xd", c.extra == {"codex-995xd": "tok-codex"})
+check("RT_TOKEN_CODEX_LAPTOP 變成身分 codex-laptop", c.extra == {"codex-laptop": "tok-codex"})
 c2 = R.Config(dict(BASE_ENV, RT_EXTRA_TOKENS="hermes=h1; codex-mini=m1,"))
-check("RT_EXTRA_TOKENS 也能給身分", c2.extra == {"codex-995xd": "tok-codex", "hermes": "h1", "codex-mini": "m1"})
+check("RT_EXTRA_TOKENS 也能給身分", c2.extra == {"codex-laptop": "tok-codex", "hermes": "h1", "codex-mini": "m1"})
 bad = R.Config({"POLL_SECONDS": "1"})
 check("缺設定會列出來", len(bad.problems()) == 4 and any("RELAY_TOKEN" in p for p in bad.problems()))
 check("設定齊全沒問題", c.problems() == [])
@@ -68,11 +68,11 @@ check("設定齊全沒問題", c.problems() == [])
 # 2. 要看哪些收件匣
 ts = R.targets(c)
 labels = [t["label"] for t in ts]
-check("路由表每一串加另外的身分，底線開頭的跳過", labels == ["navigator", "board-ui", "mem0-deploy", "codex-995xd"])
+check("路由表每一串加另外的身分，底線開頭的跳過", labels == ["navigator", "board-ui", "mem0-deploy", "codex-laptop"])
 nav = ts[0]
 check("領航員 * 排除別串訂閱的專案", nav["projects"] == "*,-mem0" and nav["session"] == "local_nav")
 check("Codex 身分：整個收件匣、沒有串編號、標 is_codex", ts[3] == {
-    "label": "codex-995xd", "session": "", "token": "tok-codex", "inbox_session": "", "projects": "", "is_codex": True})
+    "label": "codex-laptop", "session": "", "token": "tok-codex", "inbox_session": "", "projects": "", "is_codex": True})
 
 # 3. 挑信規則
 check("一般 AI 信不排", R.reason_of(msg(1)) == "")
@@ -88,7 +88,7 @@ box.clear()
 box[("tok-claude", "board-ui")] = [msg(1), msg(2, act=True), msg(3, frm="user", sess="")]
 box[("tok-claude", "mem0-deploy")] = [msg(4, you_owe_opinion=True)]
 box[("tok-claude", "navigator")] = [msg(5, closed={"kind": "recall"})]
-box[("tok-codex", "")] = [msg(6, act=True, frm="claude-995xd", sess="pingpong")]
+box[("tok-codex", "")] = [msg(6, act=True, frm="claude-laptop", sess="pingpong")]
 calls.clear()
 n = rl.poll_once(now=1000.0)
 check("一輪排進 5 封（一般信不算）", n == 5 and len(rl.queue) == 5)
@@ -97,10 +97,10 @@ check("每個收件匣都用對的 session 和專案去問",
 by = {it["key"]: it for it in rl.queue}
 it2 = by["board-ui:00000002-0000-0000-0000-000000000000"]
 check("信帶串編號、主旨、寄件人、原因、本文", it2["session"] == "local_a" and it2["subject"] == "第 2 封"
-      and it2["from"] == "claude-995xd:roundtable" and it2["reason"] == "要動手" and it2["text"] == "本文 2"
+      and it2["from"] == "claude-laptop:roundtable" and it2["reason"] == "要動手" and it2["text"] == "本文 2"
       and it2["is_codex"] is False and it2["attempts"] == 0)
 check("使用者的信寄件人寫使用者", by["board-ui:00000003-0000-0000-0000-000000000000"]["from"] == "使用者")
-it6 = by["codex-995xd:00000006-0000-0000-0000-000000000000"]
+it6 = by["codex-laptop:00000006-0000-0000-0000-000000000000"]
 check("Codex 的信標 is_codex、沒串編號", it6["is_codex"] is True and it6["session"] == "")
 check("撤回的信標 recall", by["navigator:00000005-0000-0000-0000-000000000000"]["recall"] is True)
 # 5. 同一封不排兩次
@@ -193,11 +193,11 @@ check("信進來長輪詢馬上回一批", st == 200 and len(items) == 3 and tim
 check("批裡有標籤、串編號、信編號、主旨、是不是 Codex、沒有內部租約欄位",
       all({"key", "label", "session", "id", "subject", "from", "is_codex", "reason", "text"} <= set(it) for it in items)
       and all("lease_until" not in it for it in items)
-      and {it["label"] for it in items} == {"board-ui", "codex-995xd"} and all(it["attempts"] == 1 for it in items))
+      and {it["label"] for it in items} == {"board-ui", "codex-laptop"} and all(it["attempts"] == 1 for it in items))
 st, w = http("GET", "/wait?max_wait=0.1")
 check("租約內同一批不再交", w["items"] == [])
 st, h = http("GET", "/health")
-check("health 看得到佇列和租出去的數量", h["queued"] == 3 and h["leased"] == 3 and h["queued_labels"] == ["board-ui", "codex-995xd"])
+check("health 看得到佇列和租出去的數量", h["queued"] == 3 and h["leased"] == 3 and h["queued_labels"] == ["board-ui", "codex-laptop"])
 time.sleep(0.5)
 st, w = http("GET", "/wait?max_wait=0.1")
 check("租約過了沒 ack 就再交一次", len(w["items"]) == 3 and all(it["attempts"] == 2 for it in w["items"]))

@@ -1,6 +1,6 @@
 """圓桌轉送站（大腦）。
 
-替路由表上的每一串（以及另外給權杖的身分，例如 codex-995xd）定時看圓桌收件匣，
+替路由表上的每一串（以及另外給權杖的身分，例如 codex-laptop）定時看圓桌收件匣，
 把該叫醒的信排進佇列；最後一哩（收信那台電腦的 wake/inbox_wait.py --relay）長輪詢 /wait 拿走一批，
 去叫醒對應的 Claude 串或起一條 Codex。轉送站自己不 ack 圓桌的信、不回信、不做事。
 
@@ -8,9 +8,9 @@
 
 環境變數
   RT_URL           圓桌 MCP 網址，例 http://roundtable:8890/mcp
-  RT_TOKEN         路由表那個身分（例 claude-995xd）的權杖；用它帶 session=串名 逐串收信
-  RT_TOKEN_<名字>  其他身分的權杖，名字寫法同伺服器的 MCP_TOKEN_<名字>（RT_TOKEN_CODEX_995XD → codex-995xd）
-  RT_EXTRA_TOKENS  同上的另一種寫法，給 docker compose 用：codex-995xd=權杖,hermes=權杖（逗號或分號隔開）
+  RT_TOKEN         路由表那個身分（例 claude-laptop）的權杖；用它帶 session=串名 逐串收信
+  RT_TOKEN_<名字>  其他身分的權杖，名字寫法同伺服器的 MCP_TOKEN_<名字>（RT_TOKEN_CODEX_LAPTOP → codex-laptop）
+  RT_EXTRA_TOKENS  同上的另一種寫法，給 docker compose 用：codex-laptop=權杖,hermes=權杖（逗號或分號隔開）
                    這些身分沒分串，整個收件匣一起看，標籤就是身分名；名字 codex 開頭的視為 Codex
   RELAY_TOKEN      最後一哩連 /wait、/ack 要帶的權杖（必填）
   POLL_SECONDS     幾秒看一次圓桌，預設 30
