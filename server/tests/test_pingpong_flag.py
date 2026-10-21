@@ -151,7 +151,7 @@ S.current_agent.set("claude-laptop")
 S.project_set_status("mem0", "名稱：圓桌記憶\n現在：第二步\n- [x] 第一步", "", S.project_status("mem0")["version"])
 md = status_md("mem0")["metadata"]
 check("AI 更新進度後開關還在", md.get("pingpong") == "yes" and md.get("pingpong_by") == "user" and md.get("pingpong_flips") == "1")
-check("AI 更新進度後時間改用新的更新時間", "status_at" not in md and card("mem0")["tw"] == S._tw(status_md("mem0")["updated_at"]))
+check("AI 更新進度後時間改用新的更新時間", not md.get("status_at") and card("mem0")["tw"] == S._tw(status_md("mem0")["updated_at"]))
 check("AI 更新進度算一次更新（切開關不算）", card("mem0")["updates"] == 1)
 check("階段沿用", md.get("stage") == "implementing")
 

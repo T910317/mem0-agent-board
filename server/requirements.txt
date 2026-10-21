@@ -6,3 +6,4 @@ starlette==1.8.0
 sse-starlette==3.5.0
 pydantic==2.14.1
 anyio==4.15.1
+psycopg[binary]==3.3.6

@@ -82,7 +82,7 @@ def _fmt(m: dict) -> dict:
         "type": md.get("type"),
         "stage": md.get("stage"),
         "target": md.get("target"),
-        "updated": md.get("status_at") or m.get("updated_at") or m.get("created_at"),  # status_at：切乒乓開關前的進度時間
+        "updated": _status_when(m),  # 進度卡切乒乓／優先序不算更新
         "created": m.get("created_at"),
         "updated_by": md.get("updated_by"),
         "version": _version(m.get("memory")),  # memory_update／memory_delete 的 base_version
@@ -126,6 +126,33 @@ def _add(content: str, metadata: dict) -> dict:
 def _norm(t: str) -> str:
     """target 比對用：小寫並去掉空白、dash、底線（vm101 與 VM-101 視為同一個）。"""
     return re.sub(r"[\s_\-]", "", (t or "").lower())
+
+
+def _ts(ts):
+    """ISO 時間字串轉成帶時區的 datetime；讀不出回 None。"""
+    try:
+        d = dt.datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+        return d if d.tzinfo else d.replace(tzinfo=dt.timezone.utc)
+    except Exception:
+        return None
+
+
+FLIP_SLACK_S = 120  # 切開關時 updated_at 會比 pingpong_at／priority_at 晚一點點，兩分鐘內都算同一次
+
+
+def _status_when(m: dict):
+    """進度卡真正的最後更新時間（切乒乓、優先序不算）。status_at 是第一次切開關前的時間。
+    線上 Mem0 的更新會合併舊 metadata，10/21 前的 project_set_status 刪不掉 status_at，
+    所以最後寫入比最後一次切開關晚兩分鐘以上，就表示之後又改過內容，用最後寫入時間（舊資料不用改）。"""
+    md = m.get("metadata") or {}
+    last = m.get("updated_at") or m.get("created_at")
+    if not md.get("status_at"):
+        return last
+    flips = [x for x in (_ts(md.get("pingpong_at")), _ts(md.get("priority_at"))) if x]
+    u = _ts(last)
+    if u and flips and (u - max(flips)).total_seconds() > FLIP_SLACK_S:
+        return last
+    return md["status_at"]
 
 
 def _age_hours(m: dict) -> float:
@@ -273,7 +300,8 @@ def project_set_status(project: str, summary: str, stage: str = "", base_version
                 raise ValueError("status 已被更新，或你沒帶 base_version；請先呼叫 project_status 取得最新 version。目前內容："
                                  + cur[:400])
             old_md = existing[0].get("metadata") or {}
-            md = {"project": p, "type": "status", "stage": stage or old_md.get("stage") or "implementing", "updated_by": me}
+            md = {"project": p, "type": "status", "stage": stage or old_md.get("stage") or "implementing", "updated_by": me,
+                  "status_at": ""}  # Mem0 更新會合併舊 metadata，要明寫空字串才清得掉切開關時記的時間
             _check_done(md["stage"], text)
             md.update({k: old_md[k] for k in PINGPONG_KEYS + PRIORITY_KEYS if k in old_md})  # 使用者在白板切的乒乓開關、優先序不因更新進度被洗掉
             STORE.update(existing[0]["id"], text, md)
@@ -2038,7 +2066,7 @@ def _whiteboard(items: list) -> tuple:
         md = m.get("metadata") or {}
         if md.get("type") != "status":
             continue
-        ts = md.get("status_at") or m.get("updated_at") or m.get("created_at")  # 切乒乓開關不算進度更新
+        ts = _status_when(m)  # 切乒乓開關、優先序不算進度更新
         text = TAG_STRIP.sub("", m.get("memory") or "")
         who = md.get("updated_by") or m.get("agent_id") or "?"
         if md.get("project") == "research":
@@ -2878,7 +2906,7 @@ def _as_user(fn, *args):
 def _project_pingpong(project: str, on) -> dict:
     """白板專案卡右鍵切換「乒乓」：只改那個專案 status 記憶的 metadata，內文不動，寫完讀回確認。
     第一次切時把原本的更新時間記進 status_at，白板的「幾分鐘前」和排序就不會因為切開關而變；
-    pingpong_flips 記切過幾次，白板的「更新幾次」會扣掉。下次 project_set_status 會留下開關、清掉 status_at。"""
+    pingpong_flips 記切過幾次，白板的「更新幾次」會扣掉。下次 project_set_status 會留下開關、把 status_at 寫成空字串（Mem0 會合併 metadata，不寫刪不掉）。"""
     p = _proj(project)
     if not isinstance(on, bool):
         raise ValueError("on 要是 true 或 false")
@@ -2889,7 +2917,8 @@ def _project_pingpong(project: str, on) -> dict:
         m = cur[0]
         text = m.get("memory") or ""
         md = dict(m.get("metadata") or {})
-        md.setdefault("status_at", m.get("updated_at") or m.get("created_at") or "")
+        if not md.get("status_at"):
+            md["status_at"] = m.get("updated_at") or m.get("created_at") or ""
         md.update(pingpong="yes" if on else "no", pingpong_by=current_agent.get(), pingpong_at=_now_tw(),
                   pingpong_flips=str(int(md.get("pingpong_flips") or 0) + 1))
         STORE.update(m["id"], text, md)
@@ -2916,7 +2945,8 @@ def _project_priority(project: str, priority) -> dict:
         if _priority(md) == priority:
             return {"project": p, "priority": priority}
         text = m.get("memory") or ""
-        md.setdefault("status_at", m.get("updated_at") or m.get("created_at") or "")
+        if not md.get("status_at"):
+            md["status_at"] = m.get("updated_at") or m.get("created_at") or ""
         md.update(priority=str(priority) if priority else "", priority_by=current_agent.get(), priority_at=_now_tw(),
                   priority_flips=str(int(md.get("priority_flips") or 0) + 1))
         STORE.update(m["id"], text, md)

@@ -1,7 +1,10 @@
-"""一次跑完 tests/ 裡所有測試（都是 stub 版：不接 Mem0、不接 Postgres、不打 embedding）。
+"""一次跑完 tests/ 裡所有測試（不接 Mem0、不打 embedding；Mem0 都是假的 client）。
 
 用法：
     uv run --no-project --with starlette --with httpx python tests/run_all.py [<新版目錄>] [--old <舊版目錄> | --old-from-git <版本>]
+    要連 pg 的兩個測試（test_store_contract、test_server_pg_smoke）一起跑，再加：
+    --python 3.12 --with "psycopg[binary]" --with pgserver（在暫存資料夾起一個拋棄式 Postgres＋pgvector），
+    或設 RT_TEST_PG_DSN 指到現成的測試資料庫（見 _pgtest.py）；兩個都沒有時那兩個測試會略過 pg 的部分並印「注意：」。
 
 - 新版目錄是 server.py 所在的資料夾，預設是 tests/ 的上一層。
 - 有 7 個測試是「新舊版對照」（test_identity_rename、test_memory_edit、test_memory_search、test_message_close、
@@ -68,6 +71,9 @@ def main(argv):
         ok = p.returncode == 0
         results.append((name, ok, time.time() - t0))
         print(f"{'通過' if ok else '失敗'}  {name}  ({time.time() - t0:.1f}s)")
+        for ln in (p.stdout or "").splitlines():  # 測試自己略過了一部分（例如沒有 Postgres）會印「注意：」，通過也要讓人看到
+            if ln.startswith("注意："):
+                print("      " + ln)
         if not ok:
             print("---- 輸出 ----")
             print((p.stdout or "").rstrip())
