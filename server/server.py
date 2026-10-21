@@ -31,9 +31,8 @@ from starlette.responses import HTMLResponse, RedirectResponse, Response
 from mcp.server.fastmcp import FastMCP, Image
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.responses import FileResponse, JSONResponse
+from store import make_store  # 儲存層：RT_STORE=pg 直連 Postgres＋pgvector，RT_STORE=mem0 走 Mem0（Mem0 的設定都在 store.py）
 
-MEM0_URL = os.environ.get("MEM0_URL", "http://mem0:8000").rstrip("/")
-MEM0_KEY = os.environ["MEM0_API_KEY"]
 USER_ID = "roundtable"      # 原則記憶層：決策、筆記、進度卡（memory_search 預設只查這層）
 OPS_UID = "roundtable-ops"  # 交流層：留言、認領
 OPS_TYPES = ("message", "claim")
@@ -43,8 +42,6 @@ TZ_HOURS = float(os.environ.get("TZ_OFFSET_HOURS", "8"))  # 所有顯示的時�
 LOCAL_TZ = dt.timezone(dt.timedelta(hours=TZ_HOURS))  # 留言時間戳、每日排程用的時區
 CLAIM_TTL_HOURS = 24  # claim 超過這麼久沒更新就視為過期，可被接手
 _write_lock = threading.Lock()  # 單一進程內讓「先查後寫」不被打斷
-LIST_CAP = 10000  # Mem0 列表一次最多回這麼多筆（2026-10-16 mem0-api 的 ALL_MEMORIES_LIMIT 由 1000 調成 10000，兩邊要一致）；
-                  # 不帶 top_k 只會拿到預設筆數，資料多了會默默漏看；滿了 _list_uid 會改依作者分批撈
 PROJECT_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 TAG_RE = re.compile(r"^(\s*\[(狀態|進行中|決策|筆記|訊息)\]\s*)+")
 BOARD_USER = os.environ.get("BOARD_USER", "")
@@ -66,9 +63,7 @@ mcp = FastMCP(
 )
 
 
-def _http() -> httpx.Client:
-    return httpx.Client(base_url=MEM0_URL, headers={"X-API-Key": MEM0_KEY},
-                        timeout=httpx.Timeout(20.0, connect=5.0))
+STORE = make_store(embed=lambda texts: _embed_raw(texts), actor=current_agent.get)  # 所有記憶的讀寫都經過它（測試會換掉 STORE.http）
 
 
 def _items(data) -> list:
@@ -95,31 +90,8 @@ def _fmt(m: dict) -> dict:
 
 
 def _list_uid(uid: str) -> list:
-    """列出某一區（user_id）的全部記憶。Mem0 一次最多回 LIST_CAP 筆、沒有分頁：沒滿就是全部；
-    滿了改成依作者（agent_id）分批撈，再用 /entities 的該區總數核對一筆不漏，對不上就報錯（寧可停也不默默漏看）。"""
-    with _http() as c:
-        r = c.get("/memories", params={"user_id": uid, "top_k": LIST_CAP})
-        r.raise_for_status()
-        items = _items(r.json())
-        if len(items) < LIST_CAP:
-            return items
-        r = c.get("/entities")
-        r.raise_for_status()
-        ents = r.json()
-        total = next((e.get("total_memories") for e in ents if e.get("type") == "user" and e.get("id") == uid), None)
-        seen = {}
-        for agent in sorted({e.get("id") for e in ents if e.get("type") == "agent" and e.get("id")}):
-            r = c.get("/memories", params={"user_id": uid, "agent_id": agent, "top_k": LIST_CAP})
-            r.raise_for_status()
-            part = _items(r.json())
-            if len(part) >= LIST_CAP:
-                raise RuntimeError(f"{uid} 區裡 {agent} 一個作者就有 {LIST_CAP} 筆以上，列表會不完整，"
-                                   "claim 與 status 檢查不可靠；請使用者先整理舊記憶")
-            seen.update((m.get("id"), m) for m in part)
-    if total is None or len(seen) != total:
-        raise RuntimeError(f"{uid} 區超過 {LIST_CAP} 筆，分批撈到 {len(seen)} 筆但總數是 {total}，列表可能不完整，"
-                           "claim 與 status 檢查不可靠；請使用者先整理舊記憶")
-    return list(seen.values())
+    """列出某一區（user_id）的全部記憶，一筆不漏；撈不完整時儲存層會直接報錯（寧可停也不默默漏看）。"""
+    return STORE.list(uid)
 
 
 def _uid_for(type_: str) -> str:
@@ -142,18 +114,13 @@ def _match(m: dict, **want) -> bool:
     return all(v is None or md.get(k) == v for k, v in want.items())
 
 
+def _added(row: dict) -> dict:
+    """新增後回給呼叫端的結果：Mem0 後端照原樣回它的回應；其他後端湊成同樣的形狀（results 裡一筆 ADD）。"""
+    return row.get("raw") or {"results": [{"id": row.get("id"), "memory": row.get("memory"), "event": "ADD"}]}
+
+
 def _add(content: str, metadata: dict) -> dict:
-    body = {
-        "messages": [{"role": "user", "content": content}],
-        "user_id": _uid_for(metadata.get("type")),
-        "agent_id": current_agent.get(),
-        "infer": False,
-        "metadata": metadata,
-    }
-    with _http() as c:
-        r = c.post("/memories", json=body)
-        r.raise_for_status()
-        return r.json()
+    return _added(STORE.add(_uid_for(metadata.get("type")), current_agent.get(), content, metadata))
 
 
 def _norm(t: str) -> str:
@@ -309,9 +276,7 @@ def project_set_status(project: str, summary: str, stage: str = "", base_version
             md = {"project": p, "type": "status", "stage": stage or old_md.get("stage") or "implementing", "updated_by": me}
             _check_done(md["stage"], text)
             md.update({k: old_md[k] for k in PINGPONG_KEYS + PRIORITY_KEYS if k in old_md})  # 使用者在白板切的乒乓開關、優先序不因更新進度被洗掉
-            with _http() as c:
-                r = c.put(f"/memories/{existing[0]['id']}", json={"text": text, "metadata": md})
-                r.raise_for_status()
+            STORE.update(existing[0]["id"], text, md)
             return {"updated": existing[0]["id"], "by": me, "version": _version(text)}
         md = {"project": p, "type": "status", "stage": stage or "implementing", "updated_by": me}
         _check_done(md["stage"], text)
@@ -356,8 +321,7 @@ def claim_create(project: str, target: str, summary: str) -> dict:
             else:
                 stale.append(_fmt(m))
         if mine:
-            with _http() as c:
-                c.put(f"/memories/{mine['id']}", json={"text": text, "metadata": md}).raise_for_status()
+            STORE.update(mine["id"], text, md)
             return {"by": me, "renewed": mine["id"], "previous": mine.get("memory"),
                     "warning": "你的身分原本就有這個 claim，已續期並換成新說明。若 previous 不是你這個對話寫的，"
                                "代表你的另一個對話可能正在做，請先問使用者。"}
@@ -376,9 +340,8 @@ def claim_release(project: str, target: str) -> dict:
     t = _clean(target, "target", 80)
     with _write_lock:
         mine = [m for m in _claims(t) if m.get("agent_id") in _names(current_agent.get())]
-        with _http() as c:
-            for m in mine:
-                c.delete(f"/memories/{m['id']}").raise_for_status()
+        for m in mine:
+            STORE.delete(m["id"])
     return {"released": len(mine)}
 
 
@@ -578,8 +541,7 @@ def _close(actor: str, message_id: str, reason: str, undo: bool = False) -> dict
         else:
             md.update(closed_by=actor, closed_reason=_clean(reason, "reason", 200),
                       closed_at=dt.datetime.now(LOCAL_TZ).strftime("%Y-%m-%d %H:%M"))
-        with _http() as c:
-            c.put(f"/memories/{message_id}", json={"text": m.get("memory") or "", "metadata": md}).raise_for_status()
+        STORE.update(message_id, m.get("memory") or "", md)
         readback = _closed(_find_message(message_id))
         if (readback or {}).get("by", "") != md["closed_by"]:
             raise RuntimeError("結案尚未讀回一致，請重新整理確認")
@@ -616,8 +578,7 @@ def _recall(actor: str, message_id: str, reason: str, undo: bool = False) -> dic
                       closed_at=dt.datetime.now(LOCAL_TZ).strftime("%Y-%m-%d %H:%M"),
                       recall_notify=",".join(sorted({_canon(r) for r in _readers(m)})), recall_seen="",
                       recall_replies=str(replies))
-        with _http() as c:
-            c.put(f"/memories/{message_id}", json={"text": m.get("memory") or "", "metadata": md}).raise_for_status()
+        STORE.update(message_id, m.get("memory") or "", md)
         back = _find_message(message_id)
         if _recalled(back) == bool(undo):
             raise RuntimeError("撤回尚未讀回一致，請重新整理確認")
@@ -747,8 +708,7 @@ def _vote(actor: str, message_id: str, vote: int) -> dict:
         else:
             votes.pop(actor, None)
         md["votes"] = json.dumps(votes, sort_keys=True)
-        with _http() as c:
-            c.put(f"/memories/{message_id}", json={"text": m.get("memory") or "", "metadata": md}).raise_for_status()
+        STORE.update(message_id, m.get("memory") or "", md)
         readback = _find_message(message_id)
         if json.loads((readback.get("metadata") or {}).get("votes") or "{}") != votes:
             raise RuntimeError("表決尚未讀回一致，請重新整理確認")
@@ -840,12 +800,7 @@ def _send(frm: str, to: str, subject: str, body: str, needs_action: bool, projec
     if ask_opinion:
         md["ask_opinion"] = "yes"
         text += "｜徵求意見：每位收件者都要用 reply_to 回覆這則"
-    body_json = {"messages": [{"role": "user", "content": text}], "user_id": OPS_UID,
-                 "agent_id": frm, "infer": False, "metadata": md}
-    with _http() as c:
-        r = c.post("/memories", json=body_json)
-        r.raise_for_status()
-        return r.json()
+    return _added(STORE.add(OPS_UID, frm, text, md))
 
 
 @mcp.tool()
@@ -915,8 +870,7 @@ def message_ask_opinion(message_id: str) -> dict:
             raise ValueError("只有原發問者能把留言改成徵求意見")
         if md.get("ask_opinion") != "yes":
             md["ask_opinion"] = "yes"
-            with _http() as c:
-                c.put(f"/memories/{message_id}", json={"text": m.get("memory") or "", "metadata": md}).raise_for_status()
+            STORE.update(message_id, m.get("memory") or "", md)
             items = _list_all()
             m = _find_message(message_id, items)
     return {"id": message_id, **(_opinions(m, items) or {})}
@@ -1035,8 +989,7 @@ def message_ack(message_id: str, session: str = "") -> dict:
                     md["recall_seen"] = ",".join(seen + [who])
                     changed = True
             if changed:
-                with _http() as c:
-                    c.put(f"/memories/{message_id}", json={"text": m.get("memory") or "", "metadata": md}).raise_for_status()
+                STORE.update(message_id, m.get("memory") or "", md)
             return {"acked": message_id, "by": who}
     raise ValueError("找不到這則留言")
 
@@ -1071,13 +1024,19 @@ def _manifest() -> list:
         return json.load(f)["skills"]
 
 
+def _embed_raw(texts: list) -> list:
+    """打 embedding 服務算向量，不快取（儲存層的新增、更新、搜尋用這個，內容量大、不該留在記憶體）。"""
+    r = httpx.post(EMB_URL + "/v1/embeddings", json={"model": EMB_MODEL, "input": texts}, timeout=60)
+    r.raise_for_status()
+    return [d["embedding"] for d in r.json()["data"]]
+
+
 def _embed(texts: list) -> list:
-    todo = [t for t in texts if t not in _emb_cache]
+    """技能搜尋用：同一段文字只算一次。"""
+    todo = list(dict.fromkeys(t for t in texts if t not in _emb_cache))
     if todo:
-        r = httpx.post(EMB_URL + "/v1/embeddings", json={"model": EMB_MODEL, "input": todo}, timeout=60)
-        r.raise_for_status()
-        for t, d in zip(todo, r.json()["data"]):
-            _emb_cache[t] = d["embedding"]
+        for t, v in zip(todo, _embed_raw(todo)):
+            _emb_cache[t] = v
     return [_emb_cache[t] for t in texts]
 
 
@@ -1203,29 +1162,26 @@ def persona_put(name: str, kind: str, text: str, source: str = "") -> dict:
     sha = hashlib.sha256(canon.encode("utf-8")).hexdigest()
     src = (source or "").strip()[:200]
     with _write_lock:
-        with _http() as c:
-            def listing():
-                return _list_uid(PERSONA_UID)
-            old = _persona_parts(listing(), n, k)
-            if old and "\n\n".join(m.get("memory") or "" for m in old) == canon:
-                return {"persona": n, "kind": k, "changed": False, "parts": len(old), "sha256": sha}
-            src_final = src or ((old[0].get("metadata") or {}).get("source") or "") if old else src
-            for i, ch in enumerate(chunks, 1):
-                r = c.post("/memories", json={
-                    "messages": [{"role": "user", "content": ch}], "user_id": PERSONA_UID,
-                    "agent_id": f"hermes-{n}", "infer": False,
-                    "metadata": {"type": "persona", "persona": n, "kind": k, "part": i, "parts": len(chunks),
-                                 "source": src_final,
-                                 "sha256": sha, "written_by": me}})
-                r.raise_for_status()
-            now = listing()
-            fresh = [m for m in _persona_parts(now, n, k) if (m.get("metadata") or {}).get("sha256") == sha]
-            if "\n\n".join(m.get("memory") or "" for m in fresh) != canon or len(fresh) != len(chunks):
-                for m in fresh:  # 讀回不一致：撤掉剛寫的，保留舊的
-                    c.delete(f"/memories/{m['id']}")
-                raise RuntimeError("寫後讀回比對不一致，已撤回這次寫入，舊內容保持不變")
-            for m in old:
-                c.delete(f"/memories/{m['id']}")
+        def listing():
+            return _list_uid(PERSONA_UID)
+        old = _persona_parts(listing(), n, k)
+        if old and "\n\n".join(m.get("memory") or "" for m in old) == canon:
+            return {"persona": n, "kind": k, "changed": False, "parts": len(old), "sha256": sha}
+        src_final = src or ((old[0].get("metadata") or {}).get("source") or "") if old else src
+        for i, ch in enumerate(chunks, 1):
+            STORE.add(PERSONA_UID, f"hermes-{n}", ch,
+                      {"type": "persona", "persona": n, "kind": k, "part": i, "parts": len(chunks),
+                       "source": src_final, "sha256": sha, "written_by": me})
+        now = listing()
+        fresh = [m for m in _persona_parts(now, n, k) if (m.get("metadata") or {}).get("sha256") == sha]
+        if "\n\n".join(m.get("memory") or "" for m in fresh) != canon or len(fresh) != len(chunks):
+            for m in fresh:  # 讀回不一致：撤掉剛寫的，保留舊的（撤不掉也照樣報下面那個錯）
+                with contextlib.suppress(Exception):
+                    STORE.delete(m["id"])
+            raise RuntimeError("寫後讀回比對不一致，已撤回這次寫入，舊內容保持不變")
+        for m in old:
+            with contextlib.suppress(Exception):
+                STORE.delete(m["id"])
     return {"persona": n, "kind": k, "changed": True, "parts": len(chunks), "sha256": sha, "by": me}
 
 
@@ -1346,11 +1302,8 @@ def memory_search(query: str, project: str = "", type: str = "", agent: str = ""
     else:  # 預設只搜原則記憶層，答案不會被大量留言擠掉
         uids = [USER_ID, OPS_UID] if messages else [USER_ID]
     pool = []
-    with _http() as c:
-        for uid in uids:
-            r = c.post("/search", json={"query": q, "filters": {"user_id": uid, **filters}, "top_k": SEARCH_POOL})
-            r.raise_for_status()
-            pool += _items(r.json())
+    for uid in uids:
+        pool += STORE.search(uid, q, filters, SEARCH_POOL)
     cand = {m.get("id"): (m.get("score") or 0.0, m) for m in pool}
     floor = min((s for s, _ in cand.values()), default=0.0)  # 這次撈到最不相關那則的相似度
     kw = {}
@@ -1484,9 +1437,7 @@ def _archive(m: dict, kind: str, reason: str, me: str) -> str:
     md = {"type": kind, "memory_id": m["id"], "project": md0.get("project") or "", "orig_type": md0.get("type") or "",
           "author": m.get("agent_id") or "", "by": me, "at": _now_tw(), "reason": reason,
           "base_version": _version(m.get("memory")), "sha256": sha}
-    with _http() as c:
-        c.post("/memories", json={"messages": [{"role": "user", "content": text}], "user_id": ARCHIVE_UID,
-                                  "agent_id": me, "infer": False, "metadata": md}).raise_for_status()
+    STORE.add(ARCHIVE_UID, me, text, md)
     for a in _archive_list():
         am = a.get("metadata") or {}
         if (am.get("memory_id") == m["id"] and am.get("type") == kind and am.get("at") == md["at"]
@@ -1524,8 +1475,7 @@ def memory_update(memory_id: str, content: str, base_version: str, reason: str =
             return {"changed": False, "id": memory_id, "version": _version(text)}
         archive_id = _archive(m, "memory_revision", why, me)
         md.update({"updated_by": me, "revision": int(md.get("revision") or 1) + 1})
-        with _http() as c:
-            c.put(f"/memories/{memory_id}", json={"text": text, "metadata": md}).raise_for_status()
+        STORE.update(memory_id, text, md)
         if (_find_memory(memory_id).get("memory") or "") != text:
             raise RuntimeError(f"改完讀回內容不一致；舊版在封存區 {archive_id}，請用 memory_history 核對")
     return {"changed": True, "id": memory_id, "by": me, "version": _version(text), "archive_id": archive_id}
@@ -1546,8 +1496,7 @@ def memory_delete(memory_id: str, reason: str, base_version: str) -> dict:
             raise ValueError(f"memory_delete 只能刪 {DELETE_TYPES}，這筆是 {t}（claim 用 claim_release，留言不刪）")
         _check_base(m, base_version)
         trash_id = _archive(m, "memory_trash", why, me)
-        with _http() as c:
-            c.delete(f"/memories/{memory_id}").raise_for_status()
+        STORE.delete(memory_id)
         if any(x.get("id") == memory_id for x in _list_all()):
             raise RuntimeError(f"已存進封存區（{trash_id}），但原記憶還在；請重試或告訴使用者")
     return {"deleted": memory_id, "trash_id": trash_id, "by": me, "reason": why,
@@ -1594,17 +1543,13 @@ def memory_restore(trash_id: str, reason: str = "") -> dict:
             raise ValueError("這個專案已經有新的 status，不能直接還原舊的；請把需要的內容用 project_set_status 併進去")
         md.update({"restored_from": trash_id, "orig_id": snap.get("id") or "", "orig_created": snap.get("created_at") or "",
                    "restored_by": me})
-        with _http() as c:
-            c.post("/memories", json={"messages": [{"role": "user", "content": snap.get("memory") or ""}],
-                                      "user_id": _uid_for(md.get("type")), "agent_id": snap.get("agent_id") or me, "infer": False,
-                                      "metadata": md}).raise_for_status()
+        STORE.add(_uid_for(md.get("type")), snap.get("agent_id") or me, snap.get("memory") or "", md)
         back = [m for m in _list_all() if (m.get("metadata") or {}).get("restored_from") == trash_id]
         if len(back) != 1 or (back[0].get("memory") or "") != (snap.get("memory") or ""):
             raise RuntimeError("還原後讀回不一致，請用 memory_list 核對並告訴使用者")
         am.update({"restored_id": back[0]["id"], "restored_by": me, "restored_at": _now_tw(),
                    "restore_reason": (reason or "").strip()[:300]})
-        with _http() as c:
-            c.put(f"/memories/{trash_id}", json={"text": a.get("memory") or "", "metadata": am}).raise_for_status()
+        STORE.update(trash_id, a.get("memory") or "", am)
     return {"restored": back[0]["id"], "orig_id": snap.get("id"), "from_trash": trash_id, "by": me,
             "text": (snap.get("memory") or "")[:200]}
 
@@ -1656,11 +1601,8 @@ def _unarchived(a: dict) -> dict:
 
 def _archived_copies(orig_id: str) -> list:
     """封存區裡原編號是 orig_id 的副本（正常只有一份）。用 Mem0 搜尋的欄位篩選找，不用列整區。"""
-    with _http() as c:
-        r = c.post("/search", json={"query": orig_id, "filters": {"user_id": MSG_ARCHIVE_UID, "orig_id": orig_id},
-                                    "top_k": 10, "threshold": 0})
-        r.raise_for_status()
-        return [a for a in _items(r.json()) if (a.get("metadata") or {}).get("orig_id") == orig_id]
+    hits = STORE.search(MSG_ARCHIVE_UID, orig_id, {"orig_id": orig_id}, 10, threshold=0)
+    return [a for a in hits if (a.get("metadata") or {}).get("orig_id") == orig_id]
 
 
 def _archived_copy(oid: str) -> dict | None:
@@ -1728,21 +1670,13 @@ def _archive_msg(m: dict) -> str:
 
     ok = next((a for a in _archived_copies(oid) if same(a)), None)  # 上次搬到一半（副本存了、原留言沒刪）就不再存一份
     if ok is None:
-        body = {"messages": [{"role": "user", "content": m.get("memory") or ""}], "user_id": MSG_ARCHIVE_UID,
-                "infer": False, "metadata": md}
-        if m.get("agent_id"):
-            body["agent_id"] = m["agent_id"]
-        with _http() as c:
-            c.post("/memories", json=body).raise_for_status()
+        STORE.add(MSG_ARCHIVE_UID, m.get("agent_id") or None, m.get("memory") or "", md)  # 舊留言沒作者就不帶
         ok = next((a for a in _archived_copies(oid) if same(a)), None)
         if ok is None:
             raise RuntimeError("副本讀回跟原留言對不上，原留言沒刪")
-    with _http() as c:
-        c.delete(f"/memories/{oid}").raise_for_status()
-        r = c.get(f"/memories/{oid}")
-        r.raise_for_status()
-        if r.json():
-            raise RuntimeError("刪了原留言但還讀得到")
+    STORE.delete(oid)
+    if STORE.get(oid):
+        raise RuntimeError("刪了原留言但還讀得到")
     return ok["id"]
 
 
@@ -2088,10 +2022,7 @@ def _status_updates(m: dict):
     if hit and hit[0] == ts:
         return hit[1]
     try:
-        with _http() as c:
-            r = c.get(f"/memories/{mid}/history")
-            r.raise_for_status()
-            n = sum(1 for e in _items(r.json()) if str(e.get("event")).upper() == "UPDATE")
+        n = sum(1 for e in STORE.history(mid) if str(e.get("event")).upper() == "UPDATE")
         md = m.get("metadata") or {}
         n = max(0, n - int(md.get("pingpong_flips") or 0) - int(md.get("priority_flips") or 0))  # 白板切乒乓開關、改優先序也是一次 UPDATE，不算進度更新
     except Exception:
@@ -2961,8 +2892,7 @@ def _project_pingpong(project: str, on) -> dict:
         md.setdefault("status_at", m.get("updated_at") or m.get("created_at") or "")
         md.update(pingpong="yes" if on else "no", pingpong_by=current_agent.get(), pingpong_at=_now_tw(),
                   pingpong_flips=str(int(md.get("pingpong_flips") or 0) + 1))
-        with _http() as c:
-            c.put(f"/memories/{m['id']}", json={"text": text, "metadata": md}).raise_for_status()
+        STORE.update(m["id"], text, md)
         back = _find_memory(m["id"])
         if _pingpong(back.get("metadata") or {}) is not on or (back.get("memory") or "") != text:
             raise RuntimeError("寫完讀回對不上，請重新整理再試")
@@ -2989,8 +2919,7 @@ def _project_priority(project: str, priority) -> dict:
         md.setdefault("status_at", m.get("updated_at") or m.get("created_at") or "")
         md.update(priority=str(priority) if priority else "", priority_by=current_agent.get(), priority_at=_now_tw(),
                   priority_flips=str(int(md.get("priority_flips") or 0) + 1))
-        with _http() as c:
-            c.put(f"/memories/{m['id']}", json={"text": text, "metadata": md}).raise_for_status()
+        STORE.update(m["id"], text, md)
         back = _find_memory(m["id"])
         if _priority(back.get("metadata") or {}) != priority or (back.get("memory") or "") != text:
             raise RuntimeError("寫完讀回對不上，請重新整理再試")
@@ -3079,9 +3008,7 @@ def _memory_footnote(mid: str, text: str) -> dict:
                 raise ValueError(f"這筆的註腳加起來超過 {FOOT_TOTAL_MAX} 字了，沒辦法再加")
             new = old.rstrip() + "\n" + line
             archive_id = _archive(m, "memory_revision", "使用者追加補充（公告欄）", "user")
-            with _http() as c:
-                c.put(f"/memories/{mid}", json={"text": new, "metadata": dict(
-                    md, updated_by="user", revision=int(md.get("revision") or 1) + 1)}).raise_for_status()
+            STORE.update(mid, new, dict(md, updated_by="user", revision=int(md.get("revision") or 1) + 1))
             if (_find_memory(mid).get("memory") or "") != new:
                 raise RuntimeError(f"加完讀回內容不一致；舊版在封存區 {archive_id}")
     except Exception as e:
@@ -3109,8 +3036,7 @@ def _memory_footnote_undo(token: str) -> dict:
             m = _find_memory(u["id"])
             if _version(m.get("memory")) != u["version"]:
                 raise ValueError("這筆之後又被改過，沒有拿掉註腳")
-            with _http() as c:
-                c.put(f"/memories/{u['id']}", json={"text": u["old"]["text"], "metadata": u["old"]["metadata"]}).raise_for_status()
+            STORE.update(u["id"], u["old"]["text"], u["old"]["metadata"])
     except Exception as e:
         _review_log("footnotes", {"act": "undo", "id": u["id"], "ok": False, "err": str(e)[:120]})
         raise
@@ -3255,8 +3181,7 @@ def _review_revert(steps: list) -> list:
                     m = _find_memory(s["id"])
                     if _version(m.get("memory")) != s["version"]:
                         raise ValueError(f"{s['id'][:8]} 之後又被改過，沒有改回")
-                    with _http() as c:
-                        c.put(f"/memories/{s['id']}", json={"text": s["old"]["text"], "metadata": s["old"]["metadata"]}).raise_for_status()
+                    STORE.update(s["id"], s["old"]["text"], s["old"]["metadata"])
             elif s["op"] == "delete":
                 memory_restore(s["trash_id"], "記憶審核：使用者按了復原")
             elif s["op"] == "add" and s.get("id"):
@@ -3882,7 +3807,8 @@ class AuthMiddleware:
         if scope["path"] == "/board" or scope["path"].startswith("/board/"):
             return await board_app(scope, receive, send)
         if scope["path"] == "/health":
-            return await JSONResponse({"ok": True, "agents": sorted(set(TOKENS.values()))})(scope, receive, send)
+            return await JSONResponse({"ok": True, "agents": sorted(set(TOKENS.values())),
+                                       "store": STORE.name, "store_ok": STORE.ping()})(scope, receive, send)
         auth = dict(scope["headers"]).get(b"authorization", b"").decode()
         agent = TOKENS.get(auth[7:]) if auth.startswith("Bearer ") else None
         if not agent:
@@ -3907,7 +3833,7 @@ class AuthMiddleware:
 
 
 from experience_store import register as register_experience_tools, validate as validate_experience
-EXPERIENCE = register_experience_tools(mcp, _http, current_agent.get, _write_lock)  # 記憶頁的經歷區分頁也用這一份
+EXPERIENCE = register_experience_tools(mcp, STORE, current_agent.get, _write_lock)  # 記憶頁的經歷區分頁也用這一份
 
 
 app = AuthMiddleware(mcp.streamable_http_app())
@@ -3915,6 +3841,7 @@ app = AuthMiddleware(mcp.streamable_http_app())
 if __name__ == "__main__":
     import uvicorn
 
+    STORE.start()  # pg：等資料庫、建表；mem0：不用做事
     if MSG_ARCHIVE_ON:
         threading.Thread(target=_archive_loop, name="msg-archive", daemon=True).start()
     uvicorn.run(app, host="0.0.0.0", port=8890)

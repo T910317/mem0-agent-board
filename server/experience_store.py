@@ -1,6 +1,6 @@
 """Experience tools for the existing single-process roundtable MCP.
 
-HTTP client, authenticated actor and writer lock are injected by server.py.
+Storage backend (store.py), authenticated actor and writer lock are injected by server.py.
 There is no token loading, database reset, UI change or LLM extraction here.
 """
 import calendar
@@ -96,19 +96,15 @@ def validate(record):
     return json.loads(canonical(record))
 
 class ExperienceStore:
-    def __init__(self,http,actor,lock,cap=CAP):
-        self.http,self.actor,self.lock,self.cap = http,actor,lock,cap
+    def __init__(self,store,actor,lock,cap=CAP):
+        self.store,self.actor,self.lock,self.cap = store,actor,lock,cap
     def _actor(self):
         actor = self.actor()
         if not actor:
             raise PermissionError("Authenticated actor required")
         return actor
     def _list(self,uid):
-        with self.http() as c:
-            response = c.get("/memories",params={"user_id":uid,"top_k":self.cap})
-            response.raise_for_status()
-            body = response.json()
-        rows = body.get("results",[]) if isinstance(body,dict) else body
+        rows = self.store.list(uid)
         if not isinstance(rows,list) or len(rows) >= self.cap:
             raise RuntimeError("Namespace may be truncated at API cap; stop")
         if any(row.get("user_id") not in (None,uid) for row in rows):
@@ -129,9 +125,7 @@ class ExperienceStore:
         record = self._record(row)
         return {**record,"memory_id":row["id"],"version":fingerprint(record),"record_revision":(row.get("metadata") or {}).get("record_revision",1),"updated_by":(row.get("metadata") or {}).get("updated_by"),"created_by":(row.get("metadata") or {}).get("created_by")}
     def _post(self,uid,text,metadata):
-        with self.http() as c:
-            response = c.post("/memories",json={"user_id":uid,"agent_id":self._actor(),"infer":False,"messages":[{"role":"user","content":text}],"metadata":metadata})
-            response.raise_for_status()
+        self.store.add(uid,self._actor(),text,metadata)
     def add(self,record):
         actor = self._actor()
         record = validate(record)
@@ -184,13 +178,9 @@ class ExperienceStore:
             raise ValueError("Query and limit required")
         check_text(query)
         current = {r["id"]:r for r in self._current()}
-        filters = {"user_id":PROFILE_UID,"type":"experience"}
+        filters = {"type":"experience"}
         if category: filters["category"] = category
-        with self.http() as c:
-            response = c.post("/search",json={"query":query,"filters":filters,"top_k":limit})
-            response.raise_for_status()
-            body = response.json()
-        hits = body.get("results",[]) if isinstance(body,dict) else body
+        hits = self.store.search(PROFILE_UID,query,filters,limit)
         matched = []
         for hit in hits:
             r = current.get(hit["id"])
@@ -221,9 +211,7 @@ class ExperienceStore:
             if not check or any(a["memory"] != archive_text for a in check): raise RuntimeError("History read-back failed; current record unchanged")
             metadata = {k:v for k,v in new.items() if k != "content"}
             metadata.update(type="experience",project="user-profile",record_revision=row["metadata"].get("record_revision",1)+1,created_by=row["metadata"].get("created_by",row.get("agent_id")),updated_by=actor)
-            with self.http() as c:
-                response = c.put("/memories/"+row["id"],json={"text":new["content"],"metadata":metadata})
-                response.raise_for_status()
+            self.store.update(row["id"],new["content"],metadata)
             found = next((r for r in self._current() if r["id"] == row["id"]),None)
             if not found or self._record(found) != new: raise RuntimeError("Update read-back mismatch; reconcile using preserved revision")
             return {"changed":True,**self._format(found)}
@@ -231,8 +219,8 @@ class ExperienceStore:
         self._actor()
         return [{"archive_id":r["id"],"base_version":r["metadata"]["base_version"],"snapshot":json.loads(r["memory"])} for r in self._list(HISTORY_UID) if (r.get("metadata") or {}).get("type") == "experience_revision" and r["metadata"].get("record_id") == record_id]
 
-def register(mcp,http,actor,lock):
-    store = ExperienceStore(http,actor,lock)
+def register(mcp,backend,actor,lock):
+    store = ExperienceStore(backend,actor,lock)
     @mcp.tool()
     def experience_add(record: dict) -> dict:
         """新增個人經歷。record 包含時間、排序日期、類別、敏感度、來源與可信度。原文明存，重跑同 record_id 不重複，身分由權杖決定。"""
