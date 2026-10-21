@@ -1,5 +1,6 @@
 """轉送站離線測試：假的圓桌回應、暫存狀態資料夾，不連真的圓桌。
 跑法：python -X utf8 tests/test_relay.py（有裝 httpx 就走 httpx，沒裝走 urllib，兩種都會測到連線那段）"""
+import datetime as dt
 import json
 import sys
 import tempfile
@@ -24,7 +25,7 @@ routes.write_text(json.dumps({
 }, ensure_ascii=False), encoding="utf-8")
 BASE_ENV = {"RT_URL": "http://fake/mcp", "RT_TOKEN": "tok-claude", "RT_TOKEN_CODEX_LAPTOP": "tok-codex",
             "RELAY_TOKEN": "relay-secret", "POLL_SECONDS": "30", "ROUTES_FILE": str(routes),
-            "MAX_PER_HOUR": "3", "LEASE_SECONDS": "0.4"}
+            "MAX_PER_HOUR": "3", "LEASE_SECONDS": "0.4", "GRACE_SECONDS": "0"}  # 舊案例不等寬限期；寬限期在第 13 節測
 results = []
 box = {}  # (權杖, session) -> 假收件匣的信，或一個例外
 calls = []
@@ -64,6 +65,12 @@ check("RT_EXTRA_TOKENS 也能給身分", c2.extra == {"codex-laptop": "tok-codex
 bad = R.Config({"POLL_SECONDS": "1"})
 check("缺設定會列出來", len(bad.problems()) == 4 and any("RELAY_TOKEN" in p for p in bad.problems()))
 check("設定齊全沒問題", c.problems() == [])
+check("GRACE_SECONDS 沒設就是 600 秒、設 0 就是 0", R.Config({k: v for k, v in BASE_ENV.items() if k != "GRACE_SECONDS"}).grace == 600
+      and R.Config(dict(BASE_ENV, GRACE_SECONDS="")).grace == 600 and c.grace == 0)
+check("GRACE_SECONDS 負的會列出來", any("GRACE" in p for p in R.Config(dict(BASE_ENV, GRACE_SECONDS="-1")).problems()))
+check("TEST_SESSIONS 沒設就是 relay-test、設了照設的、設空就沒有", c.test_sessions == {"relay-test"}
+      and R.Config(dict(BASE_ENV, TEST_SESSIONS="qa, x,")).test_sessions == {"qa", "x"}
+      and R.Config(dict(BASE_ENV, TEST_SESSIONS="")).test_sessions == set())
 
 # 2. 要看哪些收件匣
 ts = R.targets(c)
@@ -167,7 +174,8 @@ def http(method, path, tok="relay-secret", body=None, timeout=10):
 
 
 st, h = http("GET", "/health", tok="")
-check("health 不用權杖", st == 200 and h["ok"] and h["queued"] == 0 and h["pid"] > 0)
+check("health 不用權杖、有寬限期欄位", st == 200 and h["ok"] and h["queued"] == 0 and h["pid"] > 0
+      and h["pending"] == 0 and h["grace_seconds"] == 0)
 st, _ = http("GET", "/wait?max_wait=0.1", tok="")
 check("wait 沒權杖 401", st == 401)
 st, _ = http("GET", "/wait?max_wait=0.1", tok="wrong")
@@ -274,6 +282,85 @@ except Exception:
     check("HTTP 401 會丟例外", True)
 fake.shutdown()
 check("連線用的是 " + ("httpx" if R.httpx else "urllib"), True)
+
+# 13. 寬限期：Claude 串的信先等 GRACE_SECONDS，寬限期內被收件串處理掉就不排；Codex 的信一到就排
+def iso(ts):
+    return dt.datetime.fromtimestamp(ts, dt.timezone(dt.timedelta(hours=8))).isoformat(timespec="seconds")
+
+
+def key_of(i, label="board-ui"):
+    return f"{label}:{i:08d}-0000-0000-0000-000000000000"
+
+
+T = 1_800_000_000.0
+check("寄出時間：ISO 帶時區解得出、沒有／看不懂／沒帶時區回 None", R.created_ts({"created": iso(T)}) == T
+      and R.created_ts({}) is None and R.created_ts({"created": "昨天"}) is None and R.created_ts({"created": "2020-01-01T00:00:00"}) is None
+      and R.created_ts({"created": "2026-10-21T12:00:00Z"}) == dt.datetime(2026, 10, 21, 12, tzinfo=dt.timezone.utc).timestamp())
+rg = R.Relay(cfg_for("c13", GRACE_SECONDS="600", MAX_PER_HOUR="10"))
+logged = []
+R.log = logged.append
+box.clear()
+box[("tok-claude", "board-ui")] = [msg(31, act=True, created=iso(T - 100)), msg(32, act=True, created=iso(T - 700)),
+                                   msg(33, frm="user", sess="", created=iso(T - 10))]
+box[("tok-codex", "")] = [msg(34, act=True, created=iso(T - 5))]
+n = rg.poll_once(now=T)
+keys = {it["key"] for it in rg.queue}
+check("剛寄出的先等、寄出超過 600 秒還沒處理的排、Codex 的一到就排", n == 2 and keys == {key_of(32), key_of(34, "codex-laptop")})
+check("等著的兩封記在 pending、health 看得到、沒記成排過", sorted(rg.pending) == [key_of(31), key_of(33)]
+      and rg.health()["pending"] == 2 and rg.health()["grace_seconds"] == 600 and key_of(31) not in rg.seen)
+check("進寬限期各記一行", sum("進寬限期" in ln for ln in logged) == 2 and any("00000031 進寬限期，600 秒" in ln for ln in logged))
+check("使用者寄的也等寬限期（有等信器的串會自己醒）", key_of(33) not in keys)
+check("寬限期內再看：不排、不重複記", rg.poll_once(now=T + 300) == 0 and rg.health()["pending"] == 2
+      and sum("進寬限期" in ln for ln in logged) == 2)
+box[("tok-claude", "board-ui")] = [m for m in box[("tok-claude", "board-ui")] if not m["id"].startswith("00000033")]
+check("寬限期內被收件串處理掉（不在收件匣了）：不排、忘掉、記一行", rg.poll_once(now=T + 400) == 0
+      and rg.health()["pending"] == 1 and any("00000033 寬限期內已被處理" in ln for ln in logged))
+check("寄出滿 600 秒還沒處理就排", rg.poll_once(now=T + 501) == 1 and key_of(31) in {it["key"] for it in rg.queue}
+      and rg.health()["pending"] == 0)
+box[("tok-claude", "board-ui")].append(msg(35, act=True, created=""))
+check("沒有寄出時間的信從第一次看到起算", rg.poll_once(now=T + 600) == 0 and rg.pending.get(key_of(35)) == T + 600)
+rg_b = R.Relay(cfg_for("c13", GRACE_SECONDS="600", MAX_PER_HOUR="10"))
+check("重啟後寬限期裡等著的紀錄還在（pending.json）", rg_b.pending == rg.pending and len(rg_b.queue) == 3)
+check("重啟後還沒滿寬限期不排", rg_b.poll_once(now=T + 600 + 599) == 0)
+check("滿了就排", rg_b.poll_once(now=T + 600 + 601) == 1 and key_of(35) in {it["key"] for it in rg_b.queue})
+box[("tok-claude", "board-ui")] += [msg(36, act=True, created="2020-01-01T00:00:00"), msg(37, act=True, created=iso(T + 99999))]
+check("寄出時間沒帶時區或在未來：不信它，從第一次看到起算", rg_b.poll_once(now=T + 2000) == 0 and rg_b.health()["pending"] == 2)
+check("……滿寬限期才排", rg_b.poll_once(now=T + 2000 + 601) == 2 and rg_b.health()["pending"] == 0)
+box[("tok-claude", "board-ui")].append(msg(38, act=True, created=iso(T + 3000 - 50), closed={"kind": "recall"}))
+check("撤回的信一樣等寬限期", rg_b.poll_once(now=T + 3000) == 0 and key_of(38) in rg_b.pending)
+# 寬限期過了但這小時名額滿：留著（不算在寬限期裡），下一小時再排
+rk = R.Relay(cfg_for("c13b", GRACE_SECONDS="600", MAX_PER_HOUR="1"))
+box.clear()
+box[("tok-claude", "board-ui")] = [msg(41, act=True, created=iso(T - 700)), msg(42, act=True, created=iso(T - 700))]
+check("寬限期過了但名額滿：排 1 封、另 1 封留到下一小時", rk.poll_once(now=T) == 1 and rk.health()["pending"] == 0
+      and any("還有 1 封留到下次" in ln for ln in logged))
+check("下一小時排進來", rk.poll_once(now=T + 3601) == 1 and {it["key"] for it in rk.queue} == {key_of(41), key_of(42)})
+# 路由表上沒有的標籤，寬限期紀錄丟掉
+rr = R.Relay(cfg_for("c13c", GRACE_SECONDS="600"))
+box.clear()
+box[("tok-claude", "board-ui")] = [msg(43, act=True, created=iso(T))]
+rr.poll_once(now=T)
+rr.pending["old-label:00000099-0000-0000-0000-000000000000"] = T
+rr.poll_once(now=T + 30)
+check("路由表上沒有的標籤，寬限期紀錄丟掉；還在的留著", sorted(rr.pending) == [key_of(43)])
+check("GRACE_SECONDS=0 就不等（前面各節）", True)
+R.log = lambda msg: None
+
+# 14. 測試信（寄件串名在 TEST_SESSIONS，預設 relay-test）不佔每小時名額、也不被名額擋
+rt = R.Relay(cfg_for("c14"))
+box.clear()
+box[("tok-claude", "board-ui")] = [msg(i, act=True) for i in range(51, 54)] + [msg(54, act=True, sess="relay-test"), msg(55, act=True)]
+n = rt.poll_once(now=T)
+keys = {it["key"] for it in rt.queue}
+check("3 封 AI 的信排滿名額，測試信照排、第 4 封一般信留著", n == 4 and key_of(54) in keys and key_of(55) not in keys
+      and len(rt.wakes["board-ui"]) == 3)
+box[("tok-claude", "board-ui")].append(msg(56, act=True, sess="relay-test"))
+check("名額滿了之後測試信還是照排", rt.poll_once(now=T + 60) == 1 and key_of(56) in {it["key"] for it in rt.queue})
+rt2 = R.Relay(cfg_for("c14b", TEST_SESSIONS="qa"))
+box.clear()
+box[("tok-claude", "board-ui")] = [msg(i, act=True) for i in range(61, 64)] + [msg(64, act=True, sess="relay-test"), msg(65, act=True, sess="qa")]
+check("TEST_SESSIONS 改成別的：relay-test 照一般信算、qa 不佔名額", rt2.poll_once(now=T) == 4
+      and key_of(64) not in {it["key"] for it in rt2.queue} and key_of(65) in {it["key"] for it in rt2.queue})
 
 fail = [n for n, ok in results if not ok]
 for n, ok in results:

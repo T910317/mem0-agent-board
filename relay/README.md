@@ -19,7 +19,9 @@
 2. 挑出該叫醒的：**使用者寄的**、**要動手（needs_action）**、**徵求意見**、**被撤回要停手（closed.kind=recall）**。
    一般的 AI 留言不叫醒。
 3. 同一封對同一串只排一次（`seen.json`）。每串一小時最多排 `MAX_PER_HOUR`（預設 3）封 AI 寄的信，多的留在圓桌下次再排；
-   使用者寄的不受限。排進去之後收件人自己讀掉或信被結案，還沒交出去的就從佇列拿掉。
+   使用者寄的不受限，測試用的寄件串（`TEST_SESSIONS`，預設 relay-test）寄的也不佔名額。排進去之後收件人自己讀掉或信被結案，還沒交出去的就從佇列拿掉。
+   路由表上的 Claude 串另外有寬限期 `GRACE_SECONDS`（預設 600 秒）：信寄出後過了這麼久還留在收件匣才排，讓有自己等信器的串先醒來處理，
+   寬限期內處理掉就不用叫醒；另外給權杖的身分（Codex）不等，信一到就排。
 4. 最後一哩用 `GET /wait` 長輪詢（最多 50 秒）拿一批，處理完 `POST /ack` 回報；`LEASE_SECONDS`（預設 300）內沒回報就再交一次。
 
 ## 啟用（跟圓桌同一台，docker compose）
@@ -45,7 +47,7 @@
 
    不帶 `--profile relay` 時這個服務不會起來，原本的四個服務完全不受影響。停掉：`docker compose --profile relay stop relay`。
 
-3. 狀態檔在 `data/relay/`（seen.json、queue.json、wakes.json），備份 `data/` 就一起備了；刪掉 seen.json 會把還在收件匣裡的舊信再排一次。
+3. 狀態檔在 `data/relay/`（seen.json、queue.json、wakes.json、pending.json），備份 `data/` 就一起備了；刪掉 seen.json 會把還在收件匣裡的舊信再排一次。
 
 ## 單獨部署到別台（小節點或 k3s）
 
@@ -80,6 +82,8 @@ docker run -d --name roundtable-relay --restart unless-stopped \
 | `RELAY_BIND`、`RELAY_PORT` | HTTP 綁的位址和埠，容器裡預設 `0.0.0.0:8891`，直接用 Python 跑預設 `127.0.0.1:8891` |
 | `MAX_PER_HOUR` | 每串一小時最多排幾封 AI 寄的信，預設 3 |
 | `LEASE_SECONDS` | 交出去多久沒 ack 就再交一次，預設 300 |
+| `GRACE_SECONDS` | 路由表上 Claude 串的寬限期（秒），預設 600：信寄出後過了這麼久還留在收件匣才排；Codex 身分不等。0 = 都不等 |
+| `TEST_SESSIONS` | 測試用的寄件串名（逗號隔開），預設 `relay-test`：這些串寄的信不佔每小時名額、也不被名額擋 |
 
 ## 端點（只給內網）
 
@@ -90,7 +94,8 @@ docker run -d --name roundtable-relay --restart unless-stopped \
   `from`（使用者，或 身分:串名）、`is_codex`、`reason`（白話原因）、`needs_action`、`ask_opinion`、`recall`、`project`、`ref`、
   `reply_to`、`attachments`、`text`（本文，最多 4000 字）、`created`、`queued_at`、`attempts`（第幾次交）。
 - `POST /ack`，內容 `{"keys":["board-ui:信編號", …]}`：回報已送達，從佇列移除。回 `{"ok":true,"removed":n,"queued":m}`。
-- `GET /health`（不用權杖）：`queued`、`leased`、`queued_labels`、`polls`、`last_poll`、`last_error`、`pid`。沒有信件內容。
+- `GET /health`（不用權杖）：`queued`、`leased`、`queued_labels`、`pending`（寬限期裡等著的封數）、`polls`、`poll_seconds`、
+  `grace_seconds`、`last_poll`、`last_error`、`pid`、`version`。沒有信件內容。
 
 ## 最後一哩要做什麼
 
@@ -114,5 +119,5 @@ docker run -d --name roundtable-relay --restart unless-stopped \
 python tests/test_relay.py
 ```
 
-不連真的圓桌：用假的收件匣回應測挑信、去重、每小時名額、租約、ack、權杖檢查，再用一個假的圓桌 HTTP 伺服器測 SSE 和純 JSON 兩種回法。
+不連真的圓桌：用假的收件匣回應測挑信、去重、每小時名額、寬限期、測試信、租約、ack、權杖檢查，再用一個假的圓桌 HTTP 伺服器測 SSE 和純 JSON 兩種回法。
 有裝 httpx 就走 httpx，沒裝走 urllib，兩條路都測得到。
