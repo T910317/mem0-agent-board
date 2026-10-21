@@ -29,6 +29,18 @@ docker compose up -d                  # 全部啟動
 
 主機重開機後會自動啟動（`restart: unless-stopped`），前提是 Docker 服務本身有設開機啟動（`sudo systemctl enable docker`）。
 
+## 同一台裝第二套（試新版、做預覽）
+
+compose 檔把專案名寫死成 `roundtable`，同一台不管裝在哪個資料夾都共用容器名（`roundtable-postgres-1`…）和映像名（`roundtable-roundtable`）；直接再裝一套會把原本那套的容器搶走重建。第二套要另取專案名、另換埠：
+
+```bash
+git clone <跟第一套一樣的網址> rt-test && cd rt-test
+COMPOSE_PROJECT_NAME=rt-test RT_PORT=8891 RT_AGENTS=claude,codex ./install.sh
+echo COMPOSE_PROJECT_NAME=rt-test >> .env      # 之後在這個資料夾下 docker compose 指令就認得這個專案名
+```
+
+模型快取可以從原本那套複製過來（`cp -r ../roundtable/data/models/. data/models/`），省下重抓 640MB。
+
 ## 管理 AI 身分
 
 - **新增**：`./install.sh add-agent 名字`，再用 `./install.sh client 名字` 印出設定。
@@ -177,13 +189,13 @@ docker compose up -d --build
 
 ```bash
 git pull
-./install.sh upgrade
+sudo ./install.sh upgrade      # 備份要讀 data/board-auth（root 專用）；不用 sudo 會在備份那步停下並提示
 ```
 
 它會依序：
 
 1. 在 `.env` 補上 `PG_USER=mem0`、`PG_DB=mem0`（1.0.0 的資料夾是用這組初始化的，不能改）、`RT_STORE=mem0`、`COMPOSE_PROFILES=mem0`。
-2. 備份到 `backup/`：`pg_dumpall` 一份、`.env` 與 `data/`（不含模型和資料庫目錄）一份。讀 `data/board-auth` 要 `sudo`；真的不要備份設 `RT_SKIP_BACKUP=1`。
+2. 備份到 `backup/`：`pg_dumpall` 一份、`.env` 與 `data/`（不含模型和資料庫目錄）一份；資料夾 700、檔案 600，只有執行的帳號讀得到。讀 `data/board-auth` 要 `sudo`；真的不要備份設 `RT_SKIP_BACKUP=1`。
 3. 建置 2.0.0 的映像，先以 Mem0 當儲存層啟動（跟 1.0.0 行為一樣）並跑 `check`。
 4. `migrate`：在圓桌容器裡跑 `tools/migrate_store.py`，直接讀 Mem0 的表、向量照抄（不重算）、異動紀錄從 `data/mem0-history/history.db` 匯入；搬完逐區核對筆數、隨機抽 20 筆逐欄比對、每區拿 3 筆當問句比搜尋前 10 筆。沒過就停在 `RT_STORE=mem0`（服務照常可用），印出哪裡不對。
 5. 核對通過才把 `RT_STORE` 切成 `pg`、重啟圓桌、再跑一次 `check`。

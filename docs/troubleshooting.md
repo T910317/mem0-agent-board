@@ -20,6 +20,8 @@
 | 公告欄顯示「登入失敗次數太多」 | 一分鐘內錯太多次 | 等一分鐘 |
 | 搜尋找不到剛寫的東西 | embedding 服務壞了，寫入會失敗而不是默默漏掉 | 看 `docker compose logs embed roundtable`（用 Mem0 後端的再加 `mem0`） |
 | 每天凌晨 CPU 跳一下 | 每天自動把 14 天前、已結案的留言搬到封存區 | 正常；設 `MSG_ARCHIVE=0` 可關掉 |
+| 同一台再裝一套（例如試新版）之後，原本那套的容器被搶走重建、映像 `roundtable-roundtable` 被蓋掉，原本那套一直重啟 | compose 檔把專案名寫死成 `roundtable`，同一台的每一套都共用容器名、映像名和網路 | 第二套要另取專案名、另換埠，做法見 docs/operations.md「同一台裝第二套」；已經撞到的回原本那套的資料夾 `docker compose up -d --build` 重建回來，資料在 `data/` 沒動 |
+| `./install.sh upgrade` 停在「打包 data/ 失敗」 | 備份要讀 `data/board-auth`，那個資料夾只有 root 讀得到 | `sudo ./install.sh upgrade`；不想備份就自己先備份再加 `RT_SKIP_BACKUP=1` |
 
 ## 看紀錄
 
