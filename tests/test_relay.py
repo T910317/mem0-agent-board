@@ -362,6 +362,131 @@ box[("tok-claude", "board-ui")] = [msg(i, act=True) for i in range(61, 64)] + [m
 check("TEST_SESSIONS 改成別的：relay-test 照一般信算、qa 不佔名額", rt2.poll_once(now=T) == 4
       and key_of(64) not in {it["key"] for it in rt2.queue} and key_of(65) in {it["key"] for it in rt2.queue})
 
+# 15. 叫過沒人處理：從回報送達起隔 REPING_SECONDS 再叫、最多 MAX_PINGS 次（Codex 只叫一次），叫滿歸「暫時還沒解決」
+logged = []
+R.log = logged.append
+rp = R.Relay(cfg_for("c15", MAX_PER_HOUR="10"))
+box.clear()
+box[("tok-claude", "board-ui")] = [msg(71, act=True)]
+box[("tok-codex", "")] = [msg(72, act=True)]
+k71, k72 = key_of(71), key_of(72, "codex-laptop")
+check("第一次叫：兩封各排一次，第幾次叫是 1；最多叫幾次 Claude 串 3、Codex 1",
+      rp.poll_once(now=T) == 2 and {(it["key"], it["ping"], it["pings_max"]) for it in rp.queue} == {(k71, 1, 3), (k72, 1, 1)}
+      and rp.pings == {k71: 1, k72: 1})
+check("還沒回報送達（還在佇列）：過了再叫的間隔也不重複排", rp.poll_once(now=T + 700) == 0 and len(rp.queue) == 2)
+taken = rp.take(now=T + 700)
+check("回報送達：從佇列拿掉", rp.ack([it["key"] for it in taken], now=T + 700) == 2 and rp.queue == [])
+check("送達後不到 600 秒：不再叫", rp.poll_once(now=T + 700 + 599) == 0 and rp.queue == [])
+n = rp.poll_once(now=T + 1300)
+by = {it["key"]: it for it in rp.queue}
+check("送達滿 600 秒信還在：Claude 串的再叫一次（key 加 #2、第幾次叫是 2、同一個信編號）；Codex 的不再叫、歸到暫時還沒解決",
+      n == 1 and list(by) == [k71 + "#2"] and by[k71 + "#2"]["ping"] == 2 and by[k71 + "#2"]["pings_max"] == 3
+      and by[k71 + "#2"]["id"] == msg(71)["id"] and rp.pings[k71] == 2 and rp.pings[k72] == 1
+      and k72 in rp.stalled and rp.stalled[k72]["pings"] == 1 and rp.stalled[k72]["stalled_at"] == T + 1300)
+check("日誌：再叫 1 封、Codex 那封歸到暫時還沒解決", any("board-ui：再叫 1 封（叫過 600 秒還沒人處理）" in ln for ln in logged)
+      and any("00000072 叫了 1 次都沒人處理，歸到「暫時還沒解決」，不再叫" in ln for ln in logged))
+h = rp.health()
+check("health 看得到暫時還沒解決的封數、標籤和設定", h["stalled"] == 1 and h["stalled_labels"] == ["codex-laptop"]
+      and h["max_pings"] == 3 and h["reping_seconds"] == 600 and h["queued"] == 1)
+rp.take(now=T + 1305)
+rp.ack([k71 + "#2"], now=T + 1310)
+check("第 2 次送達後不到 600 秒：不叫", rp.poll_once(now=T + 1310 + 599) == 0)
+check("第 3 次叫：key 加 #3", rp.poll_once(now=T + 1910) == 1 and [it["key"] for it in rp.queue] == [k71 + "#3"]
+      and rp.queue[0]["ping"] == 3 and rp.pings[k71] == 3)
+rp.take(now=T + 1915)
+rp.ack([k71 + "#3"], now=T + 1920)
+check("叫滿 3 次還沒人處理：歸到暫時還沒解決、不再排、記一行", rp.poll_once(now=T + 2520) == 0 and rp.queue == [] and k71 in rp.stalled
+      and rp.stalled[k71]["pings"] == 3 and rp.stalled[k71]["subject"] == "第 71 封" and rp.stalled[k71]["from"] == "claude-laptop:roundtable"
+      and rp.stalled[k71]["stalled_at"] == T + 2520 and rp.stalled[k71]["last_queued"] == T + 1920
+      and any("00000071 叫了 3 次都沒人處理，歸到「暫時還沒解決」，不再叫" in ln for ln in logged))
+check("歸到暫時還沒解決之後再看：不叫、不重複記", rp.poll_once(now=T + 9999) == 0 and rp.queue == [] and rp.health()["stalled"] == 2
+      and sum("00000071 叫了 3 次" in ln for ln in logged) == 1)
+sl = rp.stalled_list()
+check("stalled_list：舊的在前、時間換成好讀的字串", [x["id"][:8] for x in sl] == ["00000072", "00000071"]
+      and sl[1]["stalled_at"] == R.now_str(T + 2520) and sl[1]["last_queued"] == R.now_str(T + 1920) and sl[0]["label"] == "codex-laptop")
+rp2 = R.Relay(cfg_for("c15", MAX_PER_HOUR="10"))
+check("重啟後叫醒次數和暫時還沒解決都還在（pings.json、stalled.json）", rp2.pings == rp.pings and rp2.stalled == rp.stalled)
+box[("tok-claude", "board-ui")] = []
+check("收件人處理掉（不在收件匣了）：從暫時還沒解決拿掉、叫醒次數忘掉、記一行", rp.poll_once(now=T + 12000) == 0
+      and k71 not in rp.stalled and k71 not in rp.pings and k72 in rp.stalled and rp.health()["stalled"] == 1
+      and any("00000071 有人處理了，從「暫時還沒解決」拿掉" in ln for ln in logged))
+# 再叫也算每小時名額（AI 寄的）；使用者寄的照舊不受限
+rq = R.Relay(cfg_for("c15b", MAX_PER_HOUR="1"))
+box.clear()
+box[("tok-claude", "board-ui")] = [msg(73, act=True), msg(74, act=True), msg(77, frm="user", sess="")]
+check("名額 1：AI 的排 1 封、第 2 封留著，使用者的照排", rq.poll_once(now=T) == 2 and [it["key"] for it in rq.queue] == [key_of(73), key_of(77)])
+rq.take(now=T + 1)
+rq.ack([key_of(73), key_of(77)], now=T + 1)
+check("送達 600 秒後名額還沒恢復：AI 的再叫和留著的那封都等下一小時，使用者的再叫不受限", rq.poll_once(now=T + 601) == 1
+      and [it["key"] for it in rq.queue] == [key_of(77) + "#2"])
+check("下一小時：AI 的再叫（#2）也佔名額，留著的那封繼續留", rq.poll_once(now=T + 3601) == 1
+      and [it["key"] for it in rq.queue] == [key_of(77) + "#2", key_of(73) + "#2"] and key_of(74) not in rq.seen)
+# MAX_PINGS、REPING_SECONDS 可調；舊版（0.1.2）排過的信沒有叫醒次數紀錄，當作叫過 1 次
+r2 = R.Relay(cfg_for("c15c", MAX_PINGS="2", REPING_SECONDS="60"))
+box.clear()
+box[("tok-claude", "board-ui")] = [msg(75, act=True), msg(76, act=True)]
+r2.seen[key_of(76)] = T - 30
+check("MAX_PINGS=2、REPING_SECONDS=60：新信排 1 封；舊版排過的信（沒叫醒次數紀錄）還沒到間隔不叫", r2.poll_once(now=T) == 1
+      and [it["key"] for it in r2.queue] == [key_of(75)])
+r2.take(now=T + 1)
+r2.ack([key_of(75)], now=T + 1)
+check("到了間隔：新信第 2 次、舊版那封當作叫過 1 次也第 2 次", r2.poll_once(now=T + 61) == 2
+      and sorted(it["key"] for it in r2.queue) == [key_of(75) + "#2", key_of(76) + "#2"] and r2.pings[key_of(76)] == 2)
+r2.take(now=T + 62)
+r2.ack([key_of(75) + "#2", key_of(76) + "#2"], now=T + 62)
+check("MAX_PINGS=2：第 2 次送達 60 秒後叫滿，兩封都歸到暫時還沒解決", r2.poll_once(now=T + 122) == 0 and r2.queue == []
+      and sorted(r2.stalled) == [key_of(75), key_of(76)] and r2.health()["stalled"] == 2)
+r1 = R.Relay(cfg_for("c15d", MAX_PINGS="1", REPING_SECONDS="60"))
+box.clear()
+box[("tok-claude", "board-ui")] = [msg(78, act=True)]
+r1.poll_once(now=T)
+r1.take(now=T + 1)
+r1.ack([key_of(78)], now=T + 1)
+check("MAX_PINGS=1（同 0.1.2 只叫一次）：送達 60 秒後不再叫、直接歸到暫時還沒解決", r1.poll_once(now=T + 61) == 0 and r1.queue == []
+      and key_of(78) in r1.stalled and r1.stalled[key_of(78)]["pings"] == 1)
+# 寬限期只套在第 1 次
+rg2 = R.Relay(cfg_for("c15e", GRACE_SECONDS="600", MAX_PER_HOUR="10"))
+box.clear()
+box[("tok-claude", "board-ui")] = [msg(79, act=True, created="")]
+check("寬限期：沒寄出時間的信先等 600 秒", rg2.poll_once(now=T) == 0 and key_of(79) in rg2.pending)
+check("……滿了才排", rg2.poll_once(now=T + 600) == 1 and key_of(79) not in rg2.pending)
+rg2.take(now=T + 601)
+rg2.ack([key_of(79)], now=T + 601)
+check("寬限期只套第 1 次：送達 600 秒後直接再叫，不再進寬限期", rg2.poll_once(now=T + 1201) == 1
+      and [it["key"] for it in rg2.queue] == [key_of(79) + "#2"] and rg2.health()["pending"] == 0)
+rg2.stalled["old-label:00000098-0000-0000-0000-000000000000"] = {"label": "old-label", "id": "00000098-0000-0000-0000-000000000000", "pings": 3}
+rg2.pings["old-label:00000098-0000-0000-0000-000000000000"] = 3
+rg2.poll_once(now=T + 1230)
+check("路由表上沒有的標籤：叫醒次數和暫時還沒解決的紀錄丟掉", not any(k.startswith("old-label:") for k in list(rg2.pings) + list(rg2.stalled))
+      and key_of(79) in rg2.pings)
+R.log = lambda msg: None
+
+# 16. HTTP：/stalled 要權杖、列清單；/health 多欄位；設定檢查
+rs = R.Relay(cfg_for("c16"))
+rs.stalled[key_of(81)] = {"label": "board-ui", "id": msg(81)["id"], "subject": "卡住的", "from": "使用者", "pings": 3,
+                          "last_queued": T, "stalled_at": T + 1, "created": ""}
+srv = R.serve(rs, "127.0.0.1", 0)
+base = f"http://127.0.0.1:{srv.server_address[1]}"
+check("stalled 沒權杖 401、權杖錯 401", http("GET", "/stalled", tok="")[0] == 401 and http("GET", "/stalled", tok="wrong")[0] == 401)
+st, w = http("GET", "/stalled")
+check("stalled 列出暫時還沒解決的信、時間是好讀字串", st == 200 and w["ok"] and len(w["items"]) == 1 and w["items"][0]["subject"] == "卡住的"
+      and w["items"][0]["pings"] == 3 and w["items"][0]["stalled_at"] == R.now_str(T + 1) and w["items"][0]["last_queued"] == R.now_str(T)
+      and "server_time" in w)
+st, h = http("GET", "/health", tok="")
+check("health 多 stalled、stalled_labels、max_pings、reping_seconds", st == 200 and h["stalled"] == 1 and h["stalled_labels"] == ["board-ui"]
+      and h["max_pings"] == 3 and h["reping_seconds"] == 600)
+st, w = http("GET", "/relay/stalled?token=relay-secret", tok="")
+check("stalled 路徑前面有代理前綴、權杖放網址也行", st == 200 and len(w["items"]) == 1)
+check("POST 到 stalled 是 404", http("POST", "/stalled", body={})[0] == 404)
+rs.shutdown()
+srv.shutdown()
+check("MAX_PINGS 沒設就是 3、REPING_SECONDS 沒設就是 600、設了照設的", cfg_for("c16b").max_pings == 3 and cfg_for("c16b").reping == 600
+      and cfg_for("c16b", MAX_PINGS="5", REPING_SECONDS="120").max_pings == 5
+      and cfg_for("c16b", MAX_PINGS="5", REPING_SECONDS="120").reping == 120)
+check("MAX_PINGS 0 或 REPING_SECONDS 太短會列出來；1 和 60 可以", any("MAX_PINGS" in p for p in cfg_for("c16b", MAX_PINGS="0").problems())
+      and any("REPING_SECONDS" in p for p in cfg_for("c16b", REPING_SECONDS="30").problems())
+      and cfg_for("c16b", MAX_PINGS="1", REPING_SECONDS="60").problems() == [])
+
 fail = [n for n, ok in results if not ok]
 for n, ok in results:
     print(("通過 " if ok else "失敗 ") + n)

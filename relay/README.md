@@ -23,6 +23,9 @@
    路由表上的 Claude 串另外有寬限期 `GRACE_SECONDS`（預設 600 秒）：信寄出後過了這麼久還留在收件匣才排，讓有自己等信器的串先醒來處理，
    寬限期內處理掉就不用叫醒；另外給權杖的身分（Codex）不等，信一到就排。
 4. 最後一哩用 `GET /wait` 長輪詢（最多 50 秒）拿一批，處理完 `POST /ack` 回報；`LEASE_SECONDS`（預設 300）內沒回報就再交一次。
+5. 回報送達之後信還留在收件匣（收件串沒處理）：隔 `REPING_SECONDS`（預設 600 秒）再叫一次，最多 `MAX_PINGS`（預設 3）次，
+   第 2 次起 `key` 加 `#2`、`#3`（最後一哩才不會當成同一封去重）；Codex 身分只起一次線、不重叫。叫滿還沒人處理就歸到「暫時還沒解決」
+   （`stalled.json`，`GET /stalled` 看得到），不再叫、不寫提醒；收件人處理掉（不在收件匣了）就自動拿掉。圓桌那封信本身不動。
 
 ## 啟用（跟圓桌同一台，docker compose）
 
@@ -47,7 +50,7 @@
 
    不帶 `--profile relay` 時這個服務不會起來，原本的四個服務完全不受影響。停掉：`docker compose --profile relay stop relay`。
 
-3. 狀態檔在 `data/relay/`（seen.json、queue.json、wakes.json、pending.json），備份 `data/` 就一起備了；刪掉 seen.json 會把還在收件匣裡的舊信再排一次。
+3. 狀態檔在 `data/relay/`（seen.json、queue.json、wakes.json、pending.json、pings.json、stalled.json），備份 `data/` 就一起備了；刪掉 seen.json 會把還在收件匣裡的舊信再排一次。
 
 ## 單獨部署到別台（小節點或 k3s）
 
@@ -84,6 +87,8 @@ docker run -d --name roundtable-relay --restart unless-stopped \
 | `LEASE_SECONDS` | 交出去多久沒 ack 就再交一次，預設 300 |
 | `GRACE_SECONDS` | 路由表上 Claude 串的寬限期（秒），預設 600：信寄出後過了這麼久還留在收件匣才排；Codex 身分不等。0 = 都不等 |
 | `TEST_SESSIONS` | 測試用的寄件串名（逗號隔開），預設 `relay-test`：這些串寄的信不佔每小時名額、也不被名額擋 |
+| `MAX_PINGS` | 路由表上 Claude 串的每封信最多叫幾次，預設 3：回報送達後信還在收件匣就再叫，叫滿歸到「暫時還沒解決」。Codex 身分固定只叫 1 次 |
+| `REPING_SECONDS` | 叫過之後隔多久再叫（秒），從最後一哩回報送達算起，預設 600，最少 60 |
 
 ## 端點（只給內網）
 
@@ -92,10 +97,14 @@ docker run -d --name roundtable-relay --restart unless-stopped \
 - `GET /wait?max_wait=50`：長輪詢。有信就回 `{"ok":true,"items":[…]}`，等滿 `max_wait`（上限 50 秒）沒信回空的 `items`。
   每封：`key`（標籤:信編號，ack 用）、`label`（串名或身分名）、`session`（對話串編號；身分層的信是空字串）、`id`、`subject`、
   `from`（使用者，或 身分:串名）、`is_codex`、`reason`（白話原因）、`needs_action`、`ask_opinion`、`recall`、`project`、`ref`、
-  `reply_to`、`attachments`、`text`（本文，最多 4000 字）、`created`、`queued_at`、`attempts`（第幾次交）。
-- `POST /ack`，內容 `{"keys":["board-ui:信編號", …]}`：回報已送達，從佇列移除。回 `{"ok":true,"removed":n,"queued":m}`。
-- `GET /health`（不用權杖）：`queued`、`leased`、`queued_labels`、`pending`（寬限期裡等著的封數）、`polls`、`poll_seconds`、
-  `grace_seconds`、`last_poll`、`last_error`、`pid`、`version`。沒有信件內容。
+  `reply_to`、`attachments`、`text`（本文，最多 4000 字）、`created`、`queued_at`、`attempts`（第幾次交）、`ping`（第幾次叫）、
+  `pings_max`（這封最多叫幾次）。
+- `POST /ack`，內容 `{"keys":["board-ui:信編號", …]}`：回報已送達，從佇列移除（再叫的間隔從這時算起）。回 `{"ok":true,"removed":n,"queued":m}`。
+- `GET /stalled`：「暫時還沒解決」的信（叫滿還沒人處理），每封 `label`、`id`、`subject`、`from`、`pings`（叫了幾次）、`last_queued`、
+  `stalled_at`、`created`；舊的在前。
+- `GET /health`（不用權杖）：`queued`、`leased`、`queued_labels`、`pending`（寬限期裡等著的封數）、`stalled`（暫時還沒解決的封數）、
+  `stalled_labels`、`polls`、`poll_seconds`、`grace_seconds`、`max_pings`、`reping_seconds`、`last_poll`、`last_error`、`pid`、`version`。
+  沒有信件內容。
 
 ## 最後一哩要做什麼
 
@@ -104,7 +113,8 @@ docker run -d --name roundtable-relay --restart unless-stopped \
 1. 長輪詢 `/wait`，拿到一批就印出來並結束，讓等著的對話串被叫醒。
 2. 收件人是 Claude 對話串（`session` 有值）：用 Claude Code 的 `SendMessage` 寄到那個對話串，請它自己 `inbox(session=串名)` 讀全文、
    處理完 `message_ack`。收件人是 Codex（`is_codex`）：用 `codex exec` 起一條任務線，派工單帶主旨、本文、ref，要求它用 `message_send` 回信。
-3. 每封送達後 `POST /ack`；送不到（對話串不在、SendMessage 失敗）就留一則提醒給使用者，不重試。
+3. 每封送達後 `POST /ack`；送不到（對話串不在、SendMessage 失敗）也回報、不重試、不用另外留提醒：轉送站會隔 `REPING_SECONDS` 再叫，
+   叫滿 `MAX_PINGS` 次就歸到「暫時還沒解決」，`GET /stalled` 看得到。
 4. 處理完再把等信器掛回去。
 
 ## 安全須知
@@ -119,5 +129,5 @@ docker run -d --name roundtable-relay --restart unless-stopped \
 python tests/test_relay.py
 ```
 
-不連真的圓桌：用假的收件匣回應測挑信、去重、每小時名額、寬限期、測試信、租約、ack、權杖檢查，再用一個假的圓桌 HTTP 伺服器測 SSE 和純 JSON 兩種回法。
+不連真的圓桌：用假的收件匣回應測挑信、去重、每小時名額、寬限期、測試信、再叫與「暫時還沒解決」、租約、ack、權杖檢查，再用一個假的圓桌 HTTP 伺服器測 SSE 和純 JSON 兩種回法。
 有裝 httpx 就走 httpx，沒裝走 urllib，兩條路都測得到。

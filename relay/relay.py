@@ -15,23 +15,31 @@
   RELAY_TOKEN      最後一哩連 /wait、/ack 要帶的權杖（必填）
   POLL_SECONDS     幾秒看一次圓桌，預設 30
   ROUTES_FILE      路由表 session-routes.json（容器裡掛在 /data/ui/session-routes.json）
-  RELAY_DATA       狀態資料夾：seen.json（排過的信）、queue.json（佇列）、wakes.json（每串每小時計數），預設 ./data/relay
+  RELAY_DATA       狀態資料夾：seen.json（排過的信）、queue.json（佇列）、wakes.json（每串每小時計數）、pending.json（寬限期）、
+                   pings.json（叫了幾次）、stalled.json（暫時還沒解決），預設 ./data/relay
   RELAY_BIND、RELAY_PORT  HTTP 綁的位址和埠，預設 127.0.0.1:8891（容器裡 0.0.0.0）
   MAX_PER_HOUR     每個標籤一小時最多排幾封 AI 寄的信，預設 3；多的留在圓桌下次再排。使用者寄的不受限
   LEASE_SECONDS    交給最後一哩後多久沒 ack 就再交一次，預設 300
   GRACE_SECONDS    路由表上 Claude 串的寬限期（秒），預設 600：信寄出後過了這麼久還留在收件匣（收件串沒處理）才排進佇列，
                    讓有自己等信器的串先醒來處理；另外給權杖的身分（Codex）不等，信一到就排。設 0 就都不等
   TEST_SESSIONS    測試用的寄件串名（逗號隔開），預設 relay-test：這些串寄的信不佔每小時名額、也不被名額擋
+  MAX_PINGS        路由表上 Claude 串的每封信最多叫幾次，預設 3：叫過之後信還留在收件匣（收件串沒處理）就再叫一次；
+                   叫滿還沒人處理就歸到「暫時還沒解決」（stalled.json，看 /stalled），不再叫、不寫提醒。Codex 身分只起一次線，不重叫
+  REPING_SECONDS   叫過之後隔多久再叫（秒），從最後一哩回報送達算起，預設 600，至少 60
 
 挑信規則（同 wake/inbox_wait.py 的 action 模式）：使用者寄的、要動手（needs_action）、徵求意見
-（you_owe_opinion／ask_opinion）、被撤回要停手（closed.kind=recall）。同一封對同一標籤只排一次
-（seen.json 記「標籤:信編號」）。排進佇列後收件人自己已讀或信被結案，還沒交出去的就從佇列拿掉。
+（you_owe_opinion／ask_opinion）、被撤回要停手（closed.kind=recall）。排進佇列後收件人自己已讀或信被結案，
+還沒交出去的就從佇列拿掉。
+叫過的信（seen.json 記「標籤:信編號」和上次排進或送達的時間）還留在收件匣，就從最後一哩回報送達起隔 REPING_SECONDS 再叫一次，
+最多 MAX_PINGS 次（pings.json 記叫了幾次，第 2 次起 key 後面加 #2、#3；Codex 身分只起一次線）；叫滿還沒人處理就歸到
+「暫時還沒解決」（stalled.json），不再叫、不寫提醒；收件人處理掉（不在收件匣了）就從那裡拿掉。
 Claude 串的信先等 GRACE_SECONDS（pending.json 記第一次看到的時間），寬限期內被收件串處理掉（不在收件匣了）就不排。
 
 HTTP（只給內網，不要對外開；路徑前面可以多一層反向代理的前綴，只看最後一段）
   GET  /wait?max_wait=50    長輪詢：有信就回一批，最多等 max_wait 秒（上限 50）回空批
   POST /ack  {"keys":[...]} 最後一哩回報已送達，從佇列移除
-  GET  /health              不用權杖：佇列長度、看哪些標籤、寬限期裡等著的封數、上次輪詢時間；不含信件內容
+  GET  /stalled             「暫時還沒解決」的信：標籤、信編號、主旨、寄件人、叫了幾次、歸進來的時間（要權杖）
+  GET  /health              不用權杖：佇列長度、看哪些標籤、寬限期裡等著的封數、暫時還沒解決的封數、上次輪詢時間；不含信件內容
   權杖放 Authorization: Bearer … 或 ?token=…
 """
 from __future__ import annotations
@@ -55,7 +63,7 @@ try:
 except ImportError:  # 本機沒裝也能跑
     httpx = None
 
-VERSION = "0.1.2"
+VERSION = "0.2.0"
 MAX_WAIT = 50.0  # 長輪詢最多等幾秒
 TEXT_LIMIT = 4000  # 交出去的本文最多幾字
 SEEN_KEEP = 30 * 86400  # 排過的紀錄留幾秒
@@ -91,6 +99,8 @@ class Config:
         self.grace = float(env.get("GRACE_SECONDS") or 600)  # Claude 串的寬限期；0 = 不等
         raw = env.get("TEST_SESSIONS")
         self.test_sessions = {x.strip() for x in ("relay-test" if raw is None else raw).split(",") if x.strip()}
+        self.max_pings = int(env.get("MAX_PINGS") or 3)  # 路由表上 Claude 串的每封信最多叫幾次；Codex 身分固定 1
+        self.reping = float(env.get("REPING_SECONDS") or 600)  # 叫過之後隔多久再叫（從回報送達算起）
         self.extra: dict[str, str] = {}  # 身分名 -> 權杖（不印、不寫檔）
         for k, v in env.items():
             if k.startswith("RT_TOKEN_") and (v or "").strip():
@@ -112,6 +122,10 @@ class Config:
             out.append("POLL_SECONDS 太小（至少 5 秒），不要把圓桌打爆")
         if self.grace < 0:
             out.append("GRACE_SECONDS 不能是負的（0 = 不等）")
+        if self.max_pings < 1:
+            out.append("MAX_PINGS 至少 1（每封信至少叫一次）")
+        if self.reping < 60:
+            out.append("REPING_SECONDS 至少 60 秒（叫過之後隔多久再叫），不要連環叫")
         return out
 
 
@@ -229,9 +243,10 @@ def created_ts(m: dict) -> float | None:
     return d.timestamp() if d.tzinfo is not None else None
 
 
-def make_item(t: dict, m: dict, reason: str, now: float) -> dict:
+def make_item(t: dict, m: dict, reason: str, now: float, ping: int = 1, pings_max: int = 1) -> dict:
     closed = m.get("closed") or {}
-    return {"key": f'{t["label"]}:{m["id"]}', "label": t["label"], "session": t["session"], "id": m["id"],
+    base = f'{t["label"]}:{m["id"]}'
+    return {"key": base if ping <= 1 else f"{base}#{ping}", "label": t["label"], "session": t["session"], "id": m["id"],
             "subject": (m.get("subject") or "")[:200], "from": who(m), "from_raw": m.get("from") or "",
             "from_session": m.get("from_session") or "", "is_codex": bool(t["is_codex"]), "reason": reason,
             "needs_action": bool(m.get("needs_action")),
@@ -240,6 +255,7 @@ def make_item(t: dict, m: dict, reason: str, now: float) -> dict:
             "project": m.get("project") or "", "ref": m.get("ref") or "", "reply_to": m.get("reply_to") or "",
             "attachments": [a.get("id") if isinstance(a, dict) else a for a in (m.get("attachments") or [])],
             "text": (m.get("text") or "")[:TEXT_LIMIT], "created": str(m.get("created") or ""),
+            "ping": ping, "pings_max": pings_max,  # 第幾次叫、這封最多叫幾次
             "queued_at": now, "attempts": 0, "lease_until": 0.0}
 
 
@@ -254,6 +270,8 @@ class Relay:
         self.queue: list[dict] = []
         self.wakes: dict[str, list[float]] = {}
         self.pending: dict[str, float] = {}  # 寬限期裡等著的信：標籤:信編號 -> 第一次看到的時間
+        self.pings: dict[str, int] = {}  # 叫了幾次：標籤:信編號 -> 次數
+        self.stalled: dict[str, dict] = {}  # 暫時還沒解決：標籤:信編號 -> 標籤、信編號、主旨、寄件人、叫了幾次、時間
         self.last_poll = 0.0
         self.last_error = ""
         self.polls = 0
@@ -275,6 +293,11 @@ class Relay:
         self.wakes = {k: [float(x) for x in v] for k, v in w.items()} if isinstance(w, dict) else {}
         pd = self._read("pending.json", {})
         self.pending = {k: float(v) for k, v in pd.items()} if isinstance(pd, dict) else {}
+        pg = self._read("pings.json", {})
+        self.pings = {k: int(v) for k, v in pg.items()} if isinstance(pg, dict) else {}
+        sd = self._read("stalled.json", {})
+        self.stalled = ({k: v for k, v in sd.items() if isinstance(v, dict) and v.get("label") and v.get("id")}
+                        if isinstance(sd, dict) else {})
 
     def _write(self, name: str, obj) -> None:
         self.cfg.data.mkdir(parents=True, exist_ok=True)
@@ -287,6 +310,8 @@ class Relay:
         self._write("queue.json", self.queue)
         self._write("wakes.json", self.wakes)
         self._write("pending.json", self.pending)
+        self._write("pings.json", self.pings)
+        self._write("stalled.json", self.stalled)
 
     def save(self) -> None:
         with self.lock:
@@ -317,6 +342,8 @@ class Relay:
             self.last_error = "；".join(errors)
             labels = {t["label"] for t in ts}
             self.pending = {k: v for k, v in self.pending.items() if k.split(":", 1)[0] in labels}
+            self.pings = {k: v for k, v in self.pings.items() if k.split(":", 1)[0] in labels}
+            self.stalled = {k: v for k, v in self.stalled.items() if k.split(":", 1)[0] in labels}
             self._prune_locked(now)
             self._save_locked()
             if queued:
@@ -328,6 +355,7 @@ class Relay:
     def _absorb(self, t: dict, msgs: list, now: float) -> int:
         label = t["label"]
         grace = 0.0 if t["is_codex"] else self.cfg.grace  # Codex 身分不等；Claude 串先等寬限期，讓它自己的等信器先醒
+        pings_max = 1 if t["is_codex"] else self.cfg.max_pings  # Codex 的信只起一次線（再叫就是再花一次錢）；Claude 串最多叫 MAX_PINGS 次
         with self.lock:
             # 收件人自己已經讀掉或信被結案（不在收件匣了）：還沒交出去的不用叫醒
             current = {m["id"] for m in msgs}
@@ -338,16 +366,34 @@ class Relay:
             handled = [k for k in self.pending if k.startswith(label + ":") and k[len(label) + 1:] not in current]
             for k in handled:
                 del self.pending[k]
+            # 叫過的信處理掉了：叫醒次數忘掉；歸在「暫時還沒解決」的也拿掉（有人接了）
+            for k in [k for k in self.pings if k.startswith(label + ":") and k[len(label) + 1:] not in current]:
+                del self.pings[k]
+            resolved = [k for k in self.stalled if k.startswith(label + ":") and k[len(label) + 1:] not in current]
+            for k in resolved:
+                del self.stalled[k]
+            outstanding = {it["id"] for it in self.queue if it["label"] == label}  # 上一次叫醒還在交（最後一哩沒回報送達）
             budget = self.cfg.max_per_hour - sum(1 for x in self.wakes.get(label, []) if now - x < 3600)
-            n, held, entered = 0, 0, []
+            n, again, held, entered, gave_up = 0, 0, 0, [], []
             for m in msgs:
                 key = f'{label}:{m["id"]}'
-                if key in self.seen:
-                    continue
                 reason = reason_of(m)
                 if not reason:
                     continue  # 不記 seen：之後變成要動手（例如被撤回）還排得到
-                if grace > 0:
+                ping = 1
+                if key in self.seen:
+                    # 叫過了、信還在收件匣（收件人沒處理）：從回報送達起隔 REPING_SECONDS 再叫，最多 pings_max 次；叫滿就歸到「暫時還沒解決」
+                    if key in self.stalled or m["id"] in outstanding or now - self.seen[key] < self.cfg.reping:
+                        continue
+                    done = self.pings.get(key, 1)
+                    if done >= pings_max:
+                        self.stalled[key] = {"label": label, "id": m["id"], "subject": (m.get("subject") or "")[:200],
+                                             "from": who(m), "pings": done, "last_queued": self.seen[key],
+                                             "stalled_at": now, "created": str(m.get("created") or "")}
+                        gave_up.append((m["id"], done))
+                        continue
+                    ping = done + 1
+                elif grace > 0:
                     sent, first = created_ts(m), self.pending.get(key)
                     # 從信上的寄出時間算；看不懂或在未來就從第一次看到算
                     since = sent if sent is not None and sent <= now else (now if first is None else first)
@@ -363,26 +409,38 @@ class Relay:
                     budget -= 1
                     self.wakes.setdefault(label, []).append(now)
                 self.seen[key] = now
+                self.pings[key] = ping
                 self.pending.pop(key, None)
-                self.queue.append(make_item(t, m, reason, now))
-                n += 1
+                self.queue.append(make_item(t, m, reason, now, ping, pings_max))
+                if ping > 1:
+                    again += 1
+                else:
+                    n += 1
         for it in gone:
             log(f'{label}：信 {it["id"][:8]} 已被讀掉或結案，從佇列拿掉')
         for k in handled:
             log(f'{label}：信 {k[len(label) + 1:][:8]} 寬限期內已被處理，不用叫醒')
+        for k in resolved:
+            log(f'{label}：信 {k[len(label) + 1:][:8]} 有人處理了，從「暫時還沒解決」拿掉')
         for mid in entered:
             log(f'{label}：信 {mid[:8]} 進寬限期，{grace:g} 秒內沒人處理才排')
+        for mid, done in gave_up:
+            log(f'{label}：信 {mid[:8]} 叫了 {done} 次都沒人處理，歸到「暫時還沒解決」，不再叫')
         if n:
             log(f"{label}：排進 {n} 封")
+        if again:
+            log(f"{label}：再叫 {again} 封（叫過 {self.cfg.reping:g} 秒還沒人處理）")
         if held:
             log(f"{label}：這一小時已排滿 {self.cfg.max_per_hour} 封 AI 的信，還有 {held} 封留到下次")
-        return n
+        return n + again
 
     def _prune_locked(self, now: float) -> None:
         self.seen = {k: v for k, v in self.seen.items() if now - v < SEEN_KEEP}
         self.wakes = {k: [x for x in v if now - x < 86400] for k, v in self.wakes.items()}
         self.wakes = {k: v for k, v in self.wakes.items() if v}
         self.pending = {k: v for k, v in self.pending.items() if now - v < SEEN_KEEP}
+        self.pings = {k: v for k, v in self.pings.items() if k in self.seen}
+        self.stalled = {k: v for k, v in self.stalled.items() if now - float(v.get("stalled_at") or now) < SEEN_KEEP}
 
     # 交給最後一哩
     def _deliverable_locked(self, now: float) -> list[dict]:
@@ -420,12 +478,19 @@ class Relay:
                 self.cond.wait(timeout)
         return self.take()
 
-    def ack(self, keys) -> int:
+    def ack(self, keys, now: float | None = None) -> int:
+        """最後一哩回報送達：從佇列移除；這封的「上次叫」時間改成現在，再叫的間隔從送達算起。"""
+        now = time.time() if now is None else now
         keys = {str(k) for k in (keys or [])}
         with self.lock:
             before = len(self.queue)
+            done = [it for it in self.queue if it["key"] in keys]
             self.queue = [it for it in self.queue if it["key"] not in keys]
             removed = before - len(self.queue)
+            for it in done:
+                base = f'{it["label"]}:{it["id"]}'
+                if base in self.seen:
+                    self.seen[base] = now
             if removed:
                 self._save_locked()
         if removed:
@@ -438,8 +503,17 @@ class Relay:
             leased = sum(1 for it in self.queue if it.get("lease_until", 0) > time.time())
             return {"ok": True, "version": VERSION, "pid": os.getpid(), "queued": len(self.queue), "leased": leased,
                     "queued_labels": labels, "pending": len(self.pending), "polls": self.polls,
+                    "stalled": len(self.stalled), "stalled_labels": sorted({v["label"] for v in self.stalled.values()}),
                     "poll_seconds": self.cfg.poll, "grace_seconds": self.cfg.grace,
+                    "max_pings": self.cfg.max_pings, "reping_seconds": self.cfg.reping,
                     "last_poll": now_str(self.last_poll) if self.last_poll else "", "last_error": self.last_error}
+
+    def stalled_list(self) -> list[dict]:
+        """「暫時還沒解決」的信（叫滿還沒人處理），舊的在前；時間換成好讀的字串。"""
+        with self.lock:
+            items = sorted(self.stalled.values(), key=lambda v: float(v.get("stalled_at") or 0))
+            return [{**v, "last_queued": now_str(float(v.get("last_queued") or 0)) if v.get("last_queued") else "",
+                     "stalled_at": now_str(float(v.get("stalled_at") or 0)) if v.get("stalled_at") else ""} for v in items]
 
     def shutdown(self) -> None:
         self.stop.set()
@@ -481,10 +555,12 @@ class Handler(BaseHTTPRequestHandler):
         name, q = self._route()
         if name == "health":
             return self._send(200, self.server.relay.health())
-        if name != "wait":
+        if name not in ("wait", "stalled"):
             return self._send(404, {"ok": False, "error": "沒有這個路徑"})
         if not self._authed(q):
             return self._send(401, {"ok": False, "error": "權杖不對"})
+        if name == "stalled":
+            return self._send(200, {"ok": True, "items": self.server.relay.stalled_list(), "server_time": now_str()})
         try:
             max_wait = float((q.get("max_wait") or [MAX_WAIT])[0])
         except ValueError:
@@ -536,8 +612,9 @@ def main() -> int:
     except (OSError, ValueError):
         names = []
     log(f"轉送站 {VERSION} 啟動：圓桌 {cfg.url}，每 {cfg.poll:g} 秒看一次，Claude 串的信先等 {cfg.grace:g} 秒，"
+        f"每封最多叫 {cfg.max_pings} 次、送達後 {cfg.reping:g} 秒沒人處理再叫，叫滿歸「暫時還沒解決」，"
         f"HTTP {cfg.bind}:{cfg.port}，"
-        f"狀態放 {cfg.data}，佇列裡有 {len(relay.queue)} 封")
+        f"狀態放 {cfg.data}，佇列裡有 {len(relay.queue)} 封、暫時還沒解決 {len(relay.stalled)} 封")
     log("看這些收件匣：" + ("、".join(names) if names else "（路由表讀不到，先等它出現）"))
     for sig in (signal.SIGTERM, signal.SIGINT):
         try:
