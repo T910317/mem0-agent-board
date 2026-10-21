@@ -15,7 +15,7 @@ cd "$(dirname "$0")"
 say() { printf '%s\n' "$*"; }
 die() { printf '錯誤：%s\n' "$*" >&2; exit 1; }
 rnd() { openssl rand -hex "$1" 2>/dev/null || head -c "$1" /dev/urandom | od -An -tx1 | tr -d ' \n'; }
-envget() { grep -E "^$1=" .env 2>/dev/null | tail -1 | cut -d= -f2-; }
+envget() { grep -E "^$1=" .env 2>/dev/null | tail -1 | cut -d= -f2- || true; }   # 沒這個鍵就印空字串；不加 || true 的話 pipefail 會讓 p=$(envget …) 這種賦值把整個腳本停掉（1.0.0 的 .env 沒有 COMPOSE_PROFILES，upgrade 就在這裡默默結束）
 envset() { sed -i "/^$1=/d" .env; printf '%s=%s\n' "$1" "$2" >> .env; }        # 改一個值（沒有就加在最後）
 envdefault() { grep -qE "^$1=.+" .env || envset "$1" "$2"; }                    # 沒設（或是空的）才補預設值
 valid_name() { [[ "$1" =~ ^[a-z][a-z0-9]*(-[a-z0-9]+)*$ ]] && [ "${#1}" -le 40 ] && [[ ! "$1" =~ ^(user|all)$ ]]; }
