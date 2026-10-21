@@ -273,13 +273,15 @@ upgrade() {
   local stamp; stamp=$(date +%Y%m%d-%H%M%S)
   if [ "${RT_SKIP_BACKUP:-0}" != 1 ]; then
     say "備份到 backup/（資料庫用 pg_dumpall，其他檔案打包）…"
-    mkdir -p backup
+    mkdir -p backup && chmod 700 backup          # 備份裡有密碼和權杖：資料夾 700、檔案 600，只有執行的帳號讀得到
     docker compose up -d postgres
     wait_healthy postgres 5
     docker compose exec -T postgres pg_dumpall -U "$(pg_user)" | gzip > "backup/pg-$stamp.sql.gz"
+    chmod 600 "backup/pg-$stamp.sql.gz"
     [ -s "backup/pg-$stamp.sql.gz" ] || die "pg_dumpall 沒有輸出，先停下來查 docker compose logs postgres"
     tar --exclude=data/models --exclude=data/postgres -czf "backup/files-$stamp.tgz" .env data \
-      || die "打包 data/ 失敗（有些資料夾只有 root 讀得到）：用 sudo 跑 ./install.sh upgrade，或先照 docs/operations.md 自己備份再加 RT_SKIP_BACKUP=1 重跑。"
+      || { rm -f "backup/files-$stamp.tgz"; die "打包 data/ 失敗（有些資料夾只有 root 讀得到）：用 sudo 跑 ./install.sh upgrade，或先照 docs/operations.md 自己備份再加 RT_SKIP_BACKUP=1 重跑。"; }   # 失敗的半成品不留，免得被當成備份
+    chmod 600 "backup/files-$stamp.tgz"
     say "已備份：backup/pg-$stamp.sql.gz、backup/files-$stamp.tgz（裡面有密碼和權杖，放好）。"
   fi
   prepare_dirs
