@@ -117,6 +117,15 @@ box[("tok-claude", "navigator")] = RuntimeError("圓桌回錯誤：權杖不對"
 box[("tok-claude", "board-ui")] = [msg(7, act=True)]
 n = rl.poll_once(now=1090.0)
 check("一個收件匣出錯，別的照排、錯誤記在 last_error", n == 1 and "navigator：RuntimeError" in rl.last_error)
+# 8b. 讀不到時日誌連錯誤文字一起記；/health 的 last_error 還是只有類別
+logged = []
+R.log = logged.append
+rl.poll_once(now=1095.0)
+R.log = lambda msg: None
+check("日誌記錯誤文字、last_error 只記類別",
+      any("navigator：RuntimeError：圓桌回錯誤：權杖不對" in ln for ln in logged) and rl.last_error == "navigator：RuntimeError")
+check("錯誤文字壓成一行、最多 120 字", R.err_text(ValueError("a\n  b" + "x" * 300)) == "ValueError：" + ("a b" + "x" * 300)[:120]
+      and R.err_text(OSError()) == "OSError")
 box[("tok-claude", "navigator")] = []
 # 9. 路由表讀不到：不當機、記錯誤
 rb = R.Relay(cfg_for("c9", ROUTES_FILE=str(tmp / "沒有.json")))

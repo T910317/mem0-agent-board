@@ -51,7 +51,7 @@ try:
 except ImportError:  # 本機沒裝也能跑
     httpx = None
 
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 MAX_WAIT = 50.0  # 長輪詢最多等幾秒
 TEXT_LIMIT = 4000  # 交出去的本文最多幾字
 SEEN_KEEP = 30 * 86400  # 排過的紀錄留幾秒
@@ -63,6 +63,12 @@ def now_str(ts: float | None = None) -> str:
 
 def log(msg: str) -> None:
     print(f"[{now_str()}] {msg}", flush=True)
+
+
+def err_text(e: BaseException, limit: int = 120) -> str:
+    """例外的一行說明，給日誌用：類別名加前幾個字的錯誤文字（換行壓掉），沒文字就只有類別名。"""
+    text = " ".join(str(e).split())[:limit]
+    return f"{type(e).__name__}：{text}" if text else type(e).__name__
 
 
 class Config:
@@ -275,12 +281,13 @@ class Relay:
                 self.last_error = f"讀不到路由表：{type(e).__name__}"
                 self.last_poll, self.polls = now, self.polls + 1
             return 0
-        queued, errors = 0, []
+        queued, errors, details = 0, [], []
         for t in ts:
             try:
                 msgs = call_inbox(self.cfg.url, t["token"], t["inbox_session"], t["projects"])
             except Exception as e:  # 連不上、權杖錯、回錯誤：這一串跳過
-                errors.append(f'{t["label"]}：{type(e).__name__}')
+                errors.append(f'{t["label"]}：{type(e).__name__}')  # /health 只記類別
+                details.append(f'{t["label"]}：{err_text(e)}')  # 日誌連錯誤文字一起記
                 continue
             queued += self._absorb(t, msgs, now)
         with self.lock:
@@ -291,7 +298,7 @@ class Relay:
             if queued:
                 self.cond.notify_all()
         if errors:
-            log("這輪有收件匣看不到：" + self.last_error)
+            log("這輪有收件匣看不到：" + "；".join(details))
         return queued
 
     def _absorb(self, t: dict, msgs: list, now: float) -> int:
