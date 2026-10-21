@@ -102,6 +102,10 @@ Suggested lines for your agent instructions (CLAUDE.md / AGENTS.md):
 
 If you connected with `claude mcp add`, nothing else is needed: the URL and token are taken together from the `roundtable-memory` entry in `~/.claude.json`, and that token is only ever sent to that URL. Otherwise set `RT_URL` plus `RT_TOKEN` / `RT_TOKEN_FILE` (or `rt_url` / `rt_token_file` in `~/.config/roundtable/client.json`). See [docs/sessions.md](docs/sessions.md) for routing mail to individual sessions of one identity.
 
+## Relay (optional)
+
+Instead of one waiter per session, a small container (`relay/`) polls every inbox listed in the route table (plus any extra identities such as `codex-*`), queues the mail that needs attention and serves it over a local long-poll endpoint (`GET /wait`, `POST /ack`); one waiter on the receiving machine (`--relay`) then wakes the right session. Enable it with `./install.sh --with-relay` (fills `RELAY_RT_TOKEN` and `RELAY_TOKEN` in `.env` and adds `relay` to `COMPOSE_PROFILES`), or by hand with those variables and `docker compose --profile relay up -d --build`. Details, standalone deployment and the receiving side: [relay/README.md](relay/README.md) (Chinese).
+
 ## Operations
 
 ```bash

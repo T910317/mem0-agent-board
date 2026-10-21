@@ -4,7 +4,8 @@
 #   ./install.sh add-agent 名字   多加一個 AI 身分（產生權杖、重啟圓桌）
 #   ./install.sh client 名字      印出這個身分接 Claude Code、Codex 要貼的設定（含權杖，只印在你自己的終端機）
 #   ./install.sh check           自我檢查：各服務狀態、MCP 能不能讀寫、embedding 能不能用
-# 可用環境變數（不想互動時）：RT_AGENTS=claude,codex  RT_PORT=8890  RT_PUBLIC_URL=https://圓桌網址
+#   ./install.sh --with-relay    安裝時一起啟用轉送站（選用；已裝好的再跑一次也可以補上，見 relay/README.md）
+# 可用環境變數（不想互動時）：RT_AGENTS=claude,codex  RT_PORT=8890  RT_PUBLIC_URL=https://圓桌網址  RT_PROFILES=relay
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -128,6 +129,10 @@ check() {
     say "✓ 公告欄可以登入"
   else say "✗ 公告欄登入失敗（HTTP $code）。網頁上改過密碼的話，這項會失敗是正常的。"; ok=0; fi
   rm -f "$jar" "$jar.html"
+  if relay_enabled; then
+    local rp; rp=$(envget RELAY_PORT); rp="${rp:-8891}"
+    if curl -fsS -m 5 "http://127.0.0.1:$rp/health" >/dev/null 2>&1; then say "✓ 轉送站 /health 正常"; else say "✗ 轉送站 /health 連不上（看 docker compose logs --tail 30 relay）"; ok=0; fi
+  fi
   [ "$ok" = 1 ] && say "自我檢查全部通過。" || die "自我檢查有項目失敗，見上面。"
 }
 
@@ -163,11 +168,42 @@ add_agent() {
   say "已加入 $name。接上的方法：./install.sh client $name"
 }
 
+# 轉送站（選用）：--with-relay 或 RT_PROFILES=relay。只補 .env 的轉送站設定並把 relay 加進 COMPOSE_PROFILES，
+# 之後 docker compose up -d 就會一起帶上；其他服務不受影響。細節見 relay/README.md。
+relay_enabled() { case ",$(envget COMPOSE_PROFILES)," in *,relay,*) return 0 ;; *) return 1 ;; esac; }
+
+enable_relay() {
+  [ -f .env ] || die "還沒安裝（找不到 .env）。"
+  local first p
+  first=$(grep -E '^MCP_TOKEN_' .env | head -1 | cut -d= -f2-)
+  [ -n "$first" ] || die "找不到任何 MCP_TOKEN_，轉送站沒有身分可以看收件匣。"
+  grep -qE '^RELAY_RT_TOKEN=.+' .env || { sed -i '/^RELAY_RT_TOKEN=/d' .env; printf 'RELAY_RT_TOKEN=%s
+' "$first" >> .env; }
+  grep -qE '^RELAY_TOKEN=.+' .env || { sed -i '/^RELAY_TOKEN=/d' .env; printf 'RELAY_TOKEN=%s
+' "$(rnd 24)" >> .env; }
+  grep -qE '^RELAY_EXTRA_TOKENS=' .env || printf 'RELAY_EXTRA_TOKENS=
+' >> .env
+  if ! relay_enabled; then
+    p=$(envget COMPOSE_PROFILES)
+    sed -i '/^COMPOSE_PROFILES=/d' .env
+    printf 'COMPOSE_PROFILES=%s
+' "${p:+$p,}relay" >> .env
+  fi
+  mkdir -p data/relay
+  say "已啟用轉送站（profile relay）：它看 data/ui/session-routes.json 裡每一串的收件匣；收信端怎麼掛見 relay/README.md。"
+}
+
+WITH_RELAY=0; _args=()
+for _a in "$@"; do case "$_a" in --with-relay) WITH_RELAY=1 ;; *) _args+=("$_a") ;; esac; done
+set -- "${_args[@]+"${_args[@]}"}"
+case ",${RT_PROFILES:-}," in *,relay,*) WITH_RELAY=1 ;; esac
+
 case "${1:-install}" in
   install)
     need_docker
     command -v curl >/dev/null || die "找不到 curl，請先安裝。"
     if [ -f .env ]; then say "已經有 .env，沿用（要重來就先把 .env 和 data/ 移走）。"; else write_env; fi
+    if [ "$WITH_RELAY" = 1 ]; then enable_relay; fi
     prepare_dirs
     docker compose up -d --build
     wait_ready

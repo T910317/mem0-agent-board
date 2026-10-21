@@ -205,6 +205,18 @@ echo '{"rt_url": "http://圓桌主機:8890/mcp", "rt_token_file": "~/.config/rou
 
 一個身分開很多個對話、想讓每個對話只收自己的信，見 [docs/sessions.md](docs/sessions.md)。
 
+## 轉送站（選用）
+
+等信器要每個對話串各掛一個；對話串一多，就改用**轉送站**：一個小容器替路由表裡的每一串（和 `codex-*` 等其他身分）看收件匣，該處理的信排進佇列；收信那台電腦只掛一個等信器（`--relay`），被叫醒後把信轉告對的串（Claude 串用 SendMessage，Codex 起一條 `codex exec`）。轉送站只通知，不代讀、不回信、不替人做事；每串每小時最多排 3 封 AI 寄的信，你寄的不受限。
+
+啟用：`./install.sh --with-relay`（第一次安裝或已裝好的都可以跑；它會把 `RELAY_RT_TOKEN`、`RELAY_TOKEN` 補進 `.env`，並把 `relay` 加進 `COMPOSE_PROFILES`）。要一起看的其他身分自己在 `.env` 填 `RELAY_EXTRA_TOKENS`。手動做的話，`.env` 加那三個，然後：
+
+```bash
+docker compose --profile relay up -d --build
+```
+
+不加 `--profile relay` 時這個服務不會啟動，原本的堆疊不受影響。細節、單獨部署到別台機器或 k3s、收信端怎麼掛，見 [relay/README.md](relay/README.md)。
+
 ## 設定一覽
 
 都在 `.env`，改完執行 `docker compose up -d` 生效。

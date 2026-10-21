@@ -100,3 +100,34 @@ services:
       interval: 15s
       timeout: 6s
       retries: 5
+
+  relay:
+    # 轉送站（選用）：替路由表上每一串看收件匣，排隊交給收信那台電腦的等信器去叫醒對應的串或起 Codex。
+    # 要用：在 .env 設 RELAY_RT_TOKEN、RELAY_TOKEN（有別的身分再設 RELAY_EXTRA_TOKENS），然後
+    #   docker compose --profile relay up -d --build
+    # 不帶 --profile relay 時這個服務不會啟動，上面四個服務不受影響。說明見 relay/README.md。
+    build: ./relay
+    profiles: ["relay"]
+    restart: unless-stopped
+    environment:
+      RT_URL: http://roundtable:8890/mcp
+      RT_TOKEN: ${RELAY_RT_TOKEN:-}
+      RT_EXTRA_TOKENS: ${RELAY_EXTRA_TOKENS:-}
+      RELAY_TOKEN: ${RELAY_TOKEN:-}
+      POLL_SECONDS: ${RELAY_POLL_SECONDS:-30}
+      MAX_PER_HOUR: ${RELAY_MAX_PER_HOUR:-3}
+      ROUTES_FILE: /data/ui/session-routes.json
+      RELAY_DATA: /data/relay
+    volumes:
+      - ./data/ui:/data/ui:ro
+      - ./data/relay:/data/relay
+    ports:
+      - "${RELAY_BIND:-127.0.0.1}:${RELAY_PORT:-8891}:8891"
+    depends_on:
+      roundtable:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8891/health', timeout=4)"]
+      interval: 30s
+      timeout: 6s
+      retries: 3

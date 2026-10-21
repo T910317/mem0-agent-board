@@ -2,6 +2,13 @@
 
 版號 X.Y.Z：X 是不相容的大改，Y 是加功能，Z 是修錯。
 
+## 2.0.0（未發布）
+
+**轉送站（選用）**
+- 新增 `relay/`：一個容器替路由表裡的每個對話串（和 `codex-*` 等其他身分）看收件匣，該處理的信（使用者寄的、要動手、徵求意見、被撤回）排進佇列；收信電腦用 `GET /wait` 長輪詢、`POST /ack` 回報送達。同一封不排兩次；每串每小時最多排 3 封 AI 寄的信，使用者的不受限；沒回報的 5 分鐘後再送一次。
+- `./install.sh --with-relay`（或 `docker compose --profile relay up -d --build`）才啟動，不加 profile 原本的堆疊不受影響；`check` 會多查轉送站的 /health；設定見 `.env.example` 的轉送站區和 `relay/README.md`。
+- 離線測試：`python tests/test_relay.py`（假的圓桌回應，52 項）。
+
 ## 1.0.0（2026-10-19）
 
 第一個正式發行版。跟 2026-10-13 的初版（單一 server.py、11 個工具、要自備 Mem0）相比：
