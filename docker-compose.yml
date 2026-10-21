@@ -1,6 +1,8 @@
-# 圓桌一鍵全包：Postgres（含 pgvector）＋ embedding 模型 ＋ Mem0 ＋ 圓桌伺服器與公告欄。
+# 圓桌一鍵全包：Postgres（含 pgvector）＋ embedding 模型 ＋ 圓桌伺服器與公告欄；Mem0 與轉送站是選配（profile）。
 # 第一次請用 ./install.sh 產生 .env 再啟動；之後用 docker compose up -d / down。
 # 資料都放在 ./data 底下，備份這個資料夾和 .env 就好（見 docs/operations.md）。
+# 2.0.0 起圓桌直接把記憶寫進 Postgres（表 rt_memories），不再經過 Mem0；
+#   RT_STORE=mem0（./install.sh --with-mem0）才會用 Mem0 當儲存層，行為跟 1.0.0 一樣。
 name: roundtable
 
 services:
@@ -9,14 +11,16 @@ services:
     restart: unless-stopped
     shm_size: 128mb
     environment:
-      POSTGRES_USER: mem0
+      # 新裝預設 roundtable／roundtable；從 1.0.0 升上來的資料夾已經初始化成 mem0／mem0，
+      # ./install.sh upgrade 會把 PG_USER、PG_DB 寫成 mem0（資料夾初始化後改這兩個不會生效）。
+      POSTGRES_USER: ${PG_USER:-roundtable}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?先跑 ./install.sh 產生 .env}
-      POSTGRES_DB: mem0
+      POSTGRES_DB: ${PG_DB:-roundtable}
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
       - ./mem0/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -q -U mem0 -d mem0"]
+      test: ["CMD-SHELL", "pg_isready -q -U ${PG_USER:-roundtable} -d ${PG_DB:-roundtable}"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -40,22 +44,26 @@ services:
       start_period: 15m
 
   mem0:
+    # 選配：想沿用 Mem0 當儲存層（RT_STORE=mem0）才要。./install.sh --with-mem0 會把 mem0 加進 COMPOSE_PROFILES，
+    # 之後 docker compose up -d 就會一起帶上；不帶 profile 時這個服務不會啟動。
+    # 記憶放在跟圓桌同一個資料庫（PG_DB）的 memories 表，之後要搬到圓桌自己的表用 ./install.sh migrate。
     build: ./mem0
+    profiles: ["mem0"]
     restart: unless-stopped
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
-      POSTGRES_DB: mem0
-      POSTGRES_USER: mem0
+      POSTGRES_DB: ${PG_DB:-roundtable}
+      POSTGRES_USER: ${PG_USER:-roundtable}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_COLLECTION_NAME: memories
       APP_DB_NAME: mem0_app
-      ADMIN_API_KEY: ${MEM0_API_KEY:?先跑 ./install.sh 產生 .env}
-      JWT_SECRET: ${MEM0_JWT_SECRET:?先跑 ./install.sh 產生 .env}
+      ADMIN_API_KEY: ${MEM0_API_KEY:?RT_STORE=mem0 需要 MEM0_API_KEY（./install.sh --with-mem0 會產生）}
+      JWT_SECRET: ${MEM0_JWT_SECRET:?RT_STORE=mem0 需要 MEM0_JWT_SECRET（./install.sh --with-mem0 會產生）}
       OPENAI_API_KEY: not-used        # 圓桌寫入一律 infer=false，不會呼叫 LLM；這裡只是讓 Mem0 能啟動
       MEM0_DEFAULT_EMBEDDER_MODEL: qwen3-embedding-0.6b
       EMBED_BASE_URL: http://embed:8080/v1
-      EMBED_DIMS: "1024"
+      EMBED_DIMS: ${EMB_DIMS:-1024}
       HISTORY_DB_PATH: /app/history/history.db
       DASHBOARD_URL: http://localhost:3000
     volumes:
@@ -77,8 +85,12 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      MEM0_URL: http://mem0:8000
+      RT_STORE: ${RT_STORE:-pg}
+      # 圓桌自己的表放在跟 Mem0 同一個資料庫。要接外部的 Postgres，用 docker-compose.override.yml 覆寫這一行。
+      DATABASE_URL: postgresql://${PG_USER:-roundtable}:${POSTGRES_PASSWORD}@postgres:5432/${PG_DB:-roundtable}
       EMB_URL: http://embed:8080
+      EMB_DIMS: ${EMB_DIMS:-1024}
+      MEM0_URL: ${MEM0_URL:-http://mem0:8000}     # 只有 RT_STORE=mem0（和 ./install.sh migrate）會用到；Mem0 在別台就在 .env 設 MEM0_URL
       UI_DIR: /ui
       UPLOAD_DIR: /uploads
       REVIEW_DIR: /reviews
@@ -93,7 +105,10 @@ services:
     ports:
       - "${RT_BIND:-0.0.0.0}:${RT_PORT:-8890}:8890"
     depends_on:
-      mem0:
+      # 不等 mem0：RT_STORE=mem0 時 install.sh 會先把 mem0 起到健康再起圓桌，圓桌自己也會等 Mem0 最多 60 秒。
+      postgres:
+        condition: service_healthy
+      embed:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8890/health', timeout=4)"]

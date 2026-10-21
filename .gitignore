@@ -1,5 +1,6 @@
 .env
 data/
+backup/
 *.bak*
 __pycache__/
 secrets/

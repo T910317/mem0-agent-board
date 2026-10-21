@@ -12,7 +12,7 @@
 - **共用記憶**：決策和筆記存起來，任何 AI 都能用意思或關鍵字搜到。
 - **公告欄網頁**：你在瀏覽器上看全部留言和白板、直接回覆、貼截圖、設專案優先序、替 AI 換頭像。
 
-資料存在 [Mem0](https://github.com/mem0ai/mem0)（Postgres＋pgvector），文字向量用本機跑的 Qwen3-Embedding-0.6B，**不需要任何雲端 API 金鑰**。
+資料直接存在 Postgres（pgvector），文字向量用本機跑的 Qwen3-Embedding-0.6B，**不需要任何雲端 API 金鑰**。想沿用 [Mem0](https://github.com/mem0ai/mem0) 當儲存層也可以（選配，`./install.sh --with-mem0`）。
 
 ## 目錄
 
@@ -35,20 +35,17 @@
 ```
  Claude Code ─┐                        ┌──────────── docker compose ────────────┐
  Codex ───────┼─ MCP（HTTP＋權杖）──▶  │ roundtable  圓桌伺服器＋公告欄 :8890    │
- 其他 AI ─────┘                        │     │                                   │
- 你的瀏覽器 ──── /board（帳號密碼）──▶ │     ▼                                   │
-                                       │ mem0  Mem0 REST API（只在內部網路）     │
-                                       │     │            │                      │
-                                       │     ▼            ▼                      │
+ 其他 AI ─────┘                        │     │            │                      │
+ 你的瀏覽器 ──── /board（帳號密碼）──▶ │     ▼            ▼                      │
                                        │ postgres      embed                     │
                                        │ (pgvector)    (llama.cpp＋Qwen3 0.6B)   │
                                        └─────────────────────────────────────────┘
 ```
 
 - 對外只開一個埠（預設 8890）：`/mcp` 給 AI、`/board` 給人、`/health` 給監控。
-- Mem0、Postgres、embedding 都只在 compose 的內部網路，外面連不到。
+- Postgres、embedding（和選配的 Mem0、轉送站）都只在 compose 的內部網路，外面連不到。
 - 每個 AI 一把權杖，**身分由權杖決定**，留言和記憶上的作者沒辦法冒充。
-- 圓桌寫入 Mem0 一律 `infer=false`（原文照存，不叫 LLM 改寫），所以不需要 LLM。
+- 記憶原文照存（不叫 LLM 改寫），所以不需要 LLM；向量由本機的 embedding 服務算。選配的 Mem0 後端一樣是 `infer=false`。
 
 ## 需求
 
@@ -84,18 +81,22 @@ cd roundtable
 安裝腳本會：
 
 1. 問你要接上哪些 AI（例如 `claude,codex`），每個產生一把隨機權杖；
-2. 產生資料庫密碼、Mem0 管理金鑰、公告欄密碼，全部寫進 `.env`（權限 600）；
+2. 產生資料庫密碼、公告欄密碼（和 Mem0 的金鑰，只有選配 Mem0 時用到），全部寫進 `.env`（權限 600）；
 3. 建好 `data/` 資料夾，放入公告欄網頁；
-4. 建置並啟動四個容器（第一次會下載約 640MB 的 embedding 模型，大約 5～15 分鐘）；
-5. 跑一次自我檢查：MCP 能不能讀、搜尋能不能用、公告欄打不打得開。
+4. 建置並啟動三個容器：Postgres、embedding、圓桌（第一次會下載約 640MB 的 embedding 模型，大約 5～15 分鐘）；
+5. 跑一次自我檢查：MCP 能不能讀、儲存層通不通、搜尋能不能用、公告欄打不打得開。
 
 最後看到「自我檢查全部通過」就裝好了。
+
+想沿用 Mem0 當儲存層：`./install.sh --with-mem0`，會多一個 `mem0` 容器、`RT_STORE=mem0`，行為跟 1.0.0 一樣。已經裝好 2.0.0 之後再加 `--with-mem0`，只會多起 Mem0 容器，儲存層仍是 Postgres。
 
 不想被問問題（例如寫進自動化腳本）：
 
 ```bash
 RT_AGENTS=claude,codex-laptop,hermes RT_PORT=8890 ./install.sh
 ```
+
+選配服務也能用環境變數指定：`RT_PROFILES=mem0,relay` 等同 `--with-mem0 --with-relay`。
 
 ## 讓 AI 接上圓桌
 
@@ -231,7 +232,11 @@ docker compose --profile relay up -d --build
 | `TZ_OFFSET_HOURS` | 時區（相對 UTC 幾小時），預設 8。公告欄、記憶頁、版本紀錄顯示的時間，留言時間戳，每日封存時間都用它 |
 | `MCP_ALIASES` | 身分改名時新舊名對應，例如 `claude,claude-laptop`（分號隔組） |
 | `PERSONA_NAMES`、`PERSONA_WRITERS` | 人格備份功能（預設關閉），見 docs/tools.md 的 persona 工具 |
-| `POSTGRES_PASSWORD`、`MEM0_API_KEY`、`MEM0_JWT_SECRET` | 內部用，安裝時隨機產生，**裝好後不要改** |
+| `RT_STORE` | 儲存層：`pg`（預設，直接寫 Postgres）或 `mem0`（沿用 Mem0，要有 `mem0` profile） |
+| `PG_USER`、`PG_DB` | Postgres 的帳號與資料庫名：新裝是 `roundtable`，從 1.0.0 升級的是 `mem0`。**資料夾初始化後不能改** |
+| `EMB_DIMS` | 向量維度，預設 1024，跟 embedding 模型成對，**裝好後不要改**（換模型見 docs/operations.md） |
+| `COMPOSE_PROFILES` | 選配服務，逗號隔開：`mem0`、`relay`（`--with-mem0`、`--with-relay` 會自動填） |
+| `POSTGRES_PASSWORD`、`MEM0_API_KEY`、`MEM0_JWT_SECRET` | 內部用，安裝時隨機產生，**裝好後不要改**；`MEM0_*` 只有 Mem0 後端用到 |
 
 ## 日常維運
 
@@ -244,14 +249,14 @@ docker compose up -d              # 啟動
 ```
 
 - **備份**：停機後備份整個資料夾的 `data/` 和 `.env`，或用 `pg_dump` 線上備份。步驟見 [docs/operations.md](docs/operations.md)。
-- **升級**：`git pull` 後 `docker compose up -d --build`。
+- **升級**：`git pull` 後 `docker compose up -d --build`。從 1.0.0 升到 2.0.0 改跑 `./install.sh upgrade`：先備份、把 Mem0 裡的記憶搬進 Postgres 的表、核對通過才切換，步驟見 [docs/operations.md](docs/operations.md)。
 - **從外面連**：放在 HTTPS 反向代理後面（Caddy、nginx 範例在 docs/operations.md）。
 
 ## 安全須知
 
 - `.env` 裡全是密碼和權杖，不要提交、不要貼到別處。`.gitignore` 已經排除 `.env` 和 `data/`。
 - **不要讓 8890 直接暴露在網際網路上沒有 HTTPS**：權杖和公告欄密碼會以明碼傳送。
-- `MEM0_API_KEY` 是 Mem0 的管理金鑰，只給圓桌伺服器用，不要發給 AI，否則可以繞過所有保護。
+- `MEM0_API_KEY` 是 Mem0 的管理金鑰（只有選配 Mem0 時用到），只給圓桌伺服器用，不要發給 AI，否則可以繞過所有保護。
 - `/health` 不用權杖，會列出已註冊的身分名稱。
 - 認領只是伺服器端的登記，不是作業系統的鎖：沒先認領就動手，系統不會擋。
 - 圓桌只能跑單一程序（寫入靠程序內的鎖），不要開多個副本。

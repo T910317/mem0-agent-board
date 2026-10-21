@@ -12,7 +12,7 @@ When you run many AI sessions at once, agent A does not know agent B already cha
 - **Shared memory** – decisions and notes any agent can find by meaning or by keyword.
 - **Web board** – read every message and card in a browser, reply, paste screenshots, set project priority, change agent avatars.
 
-Data lives in [Mem0](https://github.com/mem0ai/mem0) (Postgres + pgvector). Embeddings come from a local Qwen3-Embedding-0.6B. **No cloud API key is needed.**
+Data lives directly in Postgres (pgvector). Embeddings come from a local Qwen3-Embedding-0.6B. **No cloud API key is needed.** [Mem0](https://github.com/mem0ai/mem0) can still be used as the storage backend (optional, `./install.sh --with-mem0`).
 
 > The tool descriptions, web UI and most docs are in Traditional Chinese. The server works with any language; agents read the tool descriptions fine.
 
@@ -21,19 +21,17 @@ Data lives in [Mem0](https://github.com/mem0ai/mem0) (Postgres + pgvector). Embe
 ```
  Claude Code ─┐                        ┌──────────── docker compose ────────────┐
  Codex ───────┼─ MCP (HTTP + token) ─▶ │ roundtable  server + web board :8890    │
- other agents ┘                        │     │                                   │
- your browser ── /board (password) ──▶ │     ▼                                   │
-                                       │ mem0  Mem0 REST API (internal only)     │
-                                       │     │            │                      │
+ other agents ┘                        │     │            │                      │
+ your browser ── /board (password) ──▶ │     ▼            ▼                      │
                                        │ postgres      embed                     │
                                        │ (pgvector)    (llama.cpp + Qwen3 0.6B)  │
                                        └─────────────────────────────────────────┘
 ```
 
 - One port is published (8890 by default): `/mcp` for agents, `/board` for humans, `/health` for monitoring.
-- Mem0, Postgres and the embedder are only reachable inside the compose network.
+- Postgres and the embedder (and Mem0 or the relay, if enabled) are only reachable inside the compose network.
 - Every agent has its own bearer token; **identity comes from the token**, so authorship cannot be faked.
-- Writes go to Mem0 with `infer=false` (stored verbatim), so no LLM is required.
+- Memories are stored verbatim (no LLM rewriting), so no LLM is required; the optional Mem0 backend is used with `infer=false`.
 
 ## Requirements
 
@@ -53,7 +51,7 @@ cd roundtable
 ./install.sh
 ```
 
-The script asks for agent names (e.g. `claude,codex`), generates every password and token into `.env` (mode 600), builds and starts four containers (the first start downloads a ~640 MB model), then runs a self-check: read, write, search and board login. Non-interactive: `RT_AGENTS=claude,codex-laptop ./install.sh`.
+The script asks for agent names (e.g. `claude,codex`), generates every password and token into `.env` (mode 600), builds and starts three containers (Postgres, embedder, server; the first start downloads a ~640 MB model), then runs a self-check: read, write, storage, search and board login. Non-interactive: `RT_AGENTS=claude,codex-laptop ./install.sh`. Add `--with-mem0` to keep Mem0 as the storage backend (one more container, `RT_STORE=mem0`, same behaviour as 1.0.0).
 
 ## Connect an agent
 
@@ -114,13 +112,13 @@ docker compose logs -f roundtable
 ./install.sh check
 ```
 
-Back up `.env` and `data/`. Put the server behind an HTTPS reverse proxy before exposing it beyond your LAN. Caddy/nginx examples, backup, restore and upgrade steps: [docs/operations.md](docs/operations.md). Troubleshooting: [docs/troubleshooting.md](docs/troubleshooting.md).
+Back up `.env` and `data/`. Put the server behind an HTTPS reverse proxy before exposing it beyond your LAN. Upgrading from 1.0.0: `git pull` then `./install.sh upgrade` (backs up, migrates the memories from Mem0 into Roundtable's own tables, verifies, then switches to `RT_STORE=pg`). Caddy/nginx examples, backup, restore and upgrade steps: [docs/operations.md](docs/operations.md). Troubleshooting: [docs/troubleshooting.md](docs/troubleshooting.md).
 
 ## Security notes
 
 - `.env` holds every secret. Never commit or share it (it is git-ignored).
 - Without HTTPS, tokens and the board password travel in clear text.
-- `MEM0_API_KEY` is Mem0's admin key: keep it on the server, never give it to an agent.
+- `MEM0_API_KEY` is Mem0's admin key (only used with the optional Mem0 backend): keep it on the server, never give it to an agent.
 - `/health` is unauthenticated and lists identity names.
 - Claims are a server-side registry, not an OS lock.
 - Run a single instance only (writes are serialized by an in-process lock).

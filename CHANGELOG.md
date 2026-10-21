@@ -4,6 +4,14 @@
 
 ## 2.0.0（未發布）
 
+**儲存層：不再一定要 Mem0**
+- 圓桌直接把記憶寫進 Postgres（pgvector）自己的表 `rt_memories`／`rt_history`，向量由 embedding 服務算。新裝預設 `RT_STORE=pg`，少一個容器（Mem0）、少一層 REST；搜尋、篩選、異動紀錄的行為跟 1.0.0 一樣（同一套合約測試對兩個後端跑：`server/tests/test_store_contract.py` 86 項、`test_server_pg_smoke.py` 36 項）。
+- Mem0 變成選配：`./install.sh --with-mem0` 加 `mem0` profile；`RT_STORE=mem0` 時行為跟 1.0.0 相同。已經裝好 2.0.0 再加 `--with-mem0` 只會多起 Mem0 容器，儲存層仍是 Postgres。
+- `./install.sh migrate`（`tools/migrate_store.py`）把 Mem0 裡的記憶搬進圓桌的表：同一個 Postgres 直接讀 Mem0 的表、向量照抄、異動紀錄從 `history.db` 匯入；Mem0 在別台就走 REST 撈、重算向量。搬完逐區核對筆數、抽樣逐欄比對、搜尋前 10 筆比對，沒過就以結束碼 2 停下、不切換；可以重跑（已搬的跳過）。離線測試 `tests/test_migrate_store.py`（31 項，要 Postgres，見檔頭）。
+- 從 1.0.0 升級：`git pull` 後 `./install.sh upgrade`：先備份到 `backup/`、以 Mem0 後端起 2.0.0、搬資料、核對通過才切成 `RT_STORE=pg`。步驟與退回方式見 docs/operations.md「升級」。
+- `.env` 新增 `RT_STORE`、`PG_USER`、`PG_DB`、`EMB_DIMS`、`COMPOSE_PROFILES`（新裝的 Postgres 帳號與資料庫改叫 `roundtable`；升級的沿用 `mem0`）；`/health` 多回 `store`、`store_ok`；`./install.sh check` 會核對儲存層；`server/requirements.txt` 加 `psycopg[binary]`。
+- 一併修正白板卡的「最後更新」：切乒乓、改優先序不算更新。
+
 **轉送站（選用）**
 - 新增 `relay/`：一個容器替路由表裡的每個對話串（和 `codex-*` 等其他身分）看收件匣，該處理的信（使用者寄的、要動手、徵求意見、被撤回）排進佇列；收信電腦用 `GET /wait` 長輪詢、`POST /ack` 回報送達。同一封不排兩次；每串每小時最多排 3 封 AI 寄的信，使用者的不受限；沒回報的 5 分鐘後再送一次。
 - `./install.sh --with-relay`（或 `docker compose --profile relay up -d --build`）才啟動，不加 profile 原本的堆疊不受影響；`check` 會多查轉送站的 /health；設定見 `.env.example` 的轉送站區和 `relay/README.md`。

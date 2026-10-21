@@ -9,18 +9,18 @@
 | 服務 | 記憶體 | 說明 |
 |---|---|---|
 | embed | 約 1GB | llama.cpp 載入 Qwen3-Embedding-0.6B（Q8_0） |
-| mem0 | 約 190MB | Mem0 REST API |
 | roundtable | 約 65MB | 圓桌伺服器與公告欄 |
 | postgres | 約 40MB | 資料變多會慢慢長 |
+| mem0（選配） | 約 190MB | Mem0 REST API，只有 `./install.sh --with-mem0` 才有 |
 
-硬碟：映像約 3.4GB、建置快取約 0.9GB、模型 610MB，資料本身很小（幾千則記憶也只有幾十 MB）。閒置時 CPU 幾乎是 0。
+硬碟：映像約 3.4GB（1.0.0 含 Mem0 時量的）、建置快取約 0.9GB、模型 610MB，資料本身很小（幾千則記憶也只有幾十 MB）。閒置時 CPU 幾乎是 0。
 
 ## 啟動、停止、看狀態
 
 ```bash
-docker compose ps                     # 各服務狀態，四個都要是 healthy
+docker compose ps                     # 各服務狀態，都要是 healthy（預設三個；有 Mem0、轉送站的各多一個）
 docker compose logs -f roundtable     # 圓桌伺服器的紀錄（Ctrl+C 離開）
-docker compose logs --tail 100 mem0   # Mem0 最近 100 行
+docker compose logs --tail 100 postgres   # 資料庫最近 100 行（用 Mem0 後端的看 mem0）
 docker compose restart roundtable     # 只重啟圓桌
 docker compose down                   # 全部停止（資料保留在 data/）
 docker compose up -d                  # 全部啟動
@@ -100,14 +100,14 @@ docker compose start
 
 （要用 `sudo`：Postgres 的資料夾屬於容器裡的 postgres 帳號。）
 
-**不停機**：資料庫用 `pg_dumpall`，其他檔案直接複製：
+**不停機**：資料庫用 `pg_dumpall`，其他檔案直接複製。`-U` 後面是 `.env` 的 `PG_USER`：新裝是 `roundtable`，從 1.0.0 升上來的是 `mem0`：
 
 ```bash
-docker compose exec -T postgres pg_dumpall -U mem0 | gzip > pg-$(date +%Y%m%d).sql.gz
+docker compose exec -T postgres pg_dumpall -U roundtable | gzip > pg-$(date +%Y%m%d).sql.gz
 sudo tar -czf files-$(date +%Y%m%d).tgz .env data/ui data/uploads data/board-auth data/mem0-history data/skills data/reviews
 ```
 
-（`data/board-auth` 只有 root 讀得到，所以要 `sudo`。）可以把上面兩行放進 root 的 crontab 每天跑。備份檔裡有密碼和權杖，請放在安全的地方。
+（`data/board-auth` 只有 root 讀得到，所以要 `sudo`；清單裡沒有的資料夾拿掉就好。）可以把上面兩行放進 root 的 crontab 每天跑。備份檔裡有密碼和權杖，請放在安全的地方。
 
 ## 還原
 
@@ -126,17 +126,17 @@ docker compose up -d --build
 git clone https://github.com/T910317/mem0-agent-board.git roundtable && cd roundtable
 sudo tar -xzf /路徑/files-YYYYMMDD.tgz     # 放回 .env、data/ui、data/uploads…（保留原本的擁有者與權限）
 docker compose up -d postgres
-until docker compose exec -T postgres pg_isready -q -U mem0; do sleep 2; done
-gunzip -c /路徑/pg-YYYYMMDD.sql.gz | docker compose exec -T postgres psql -q -U mem0 -d postgres
+until docker compose exec -T postgres pg_isready -q -U roundtable; do sleep 2; done
+gunzip -c /路徑/pg-YYYYMMDD.sql.gz | docker compose exec -T postgres psql -q -U roundtable -d postgres
 docker compose up -d --build
 ./install.sh check
 ```
 
-灌回去時**只有這三行錯誤是預期的**（資料庫剛初始化時就已經建好）：
+（`-U` 一樣照 `.env` 的 `PG_USER`。）灌回去時**只有這三行錯誤是預期的**（資料庫剛初始化時就已經建好；從 1.0.0 升上來的前兩行是 `mem0`）：
 
 ```
-ERROR:  role "mem0" already exists
-ERROR:  database "mem0" already exists
+ERROR:  role "roundtable" already exists
+ERROR:  database "roundtable" already exists
 ERROR:  database "mem0_app" already exists
 ```
 
@@ -145,8 +145,10 @@ ERROR:  database "mem0_app" already exists
 **怎麼確認還原完整**：`./install.sh check` 只確認服務能用、能讀寫搜尋、能登入，**不會比對資料有沒有少**。請在備份時和還原後各數一次記憶筆數，兩邊要一樣：
 
 ```bash
-docker compose exec -T postgres psql -U mem0 -d mem0 -Atc "select count(*) from memories"
+docker compose exec -T postgres psql -U roundtable -d roundtable -Atc "select count(*) from rt_memories"
 ```
+
+（`-U`、`-d` 照 `.env` 的 `PG_USER`、`PG_DB`；還在用 Mem0 後端的數 Mem0 的表：`select count(*) from memories`。）
 
 附件（`data/uploads`）、公告欄網頁（`data/ui`）可以用 `ls | wc -l` 比對檔案數。
 
@@ -169,9 +171,44 @@ docker compose up -d --build
 
 - 看 [CHANGELOG.md](../CHANGELOG.md) 有沒有需要手動處理的步驟。
 
+### 從 1.0.0 升到 2.0.0（記憶從 Mem0 搬進圓桌自己的表）
+
+2.0.0 預設不再經過 Mem0：記憶直接放在同一個 Postgres 的 `rt_memories`／`rt_history` 表。1.0.0 的資料在 Mem0 的 `memories` 表，要搬一次。`./install.sh upgrade` 一條龍：
+
+```bash
+git pull
+./install.sh upgrade
+```
+
+它會依序：
+
+1. 在 `.env` 補上 `PG_USER=mem0`、`PG_DB=mem0`（1.0.0 的資料夾是用這組初始化的，不能改）、`RT_STORE=mem0`、`COMPOSE_PROFILES=mem0`。
+2. 備份到 `backup/`：`pg_dumpall` 一份、`.env` 與 `data/`（不含模型和資料庫目錄）一份。讀 `data/board-auth` 要 `sudo`；真的不要備份設 `RT_SKIP_BACKUP=1`。
+3. 建置 2.0.0 的映像，先以 Mem0 當儲存層啟動（跟 1.0.0 行為一樣）並跑 `check`。
+4. `migrate`：在圓桌容器裡跑 `tools/migrate_store.py`，直接讀 Mem0 的表、向量照抄（不重算）、異動紀錄從 `data/mem0-history/history.db` 匯入；搬完逐區核對筆數、隨機抽 20 筆逐欄比對、每區拿 3 筆當問句比搜尋前 10 筆。沒過就停在 `RT_STORE=mem0`（服務照常可用），印出哪裡不對。
+5. 核對通過才把 `RT_STORE` 切成 `pg`、重啟圓桌、再跑一次 `check`。
+
+搬的時候 AI 新寫進 Mem0 的東西不會自動跟過去：**升級前先讓 AI 都收工**，或切換前再跑一次 `./install.sh migrate`（已搬的會跳過，只補新的）。
+
+升級後：
+
+- Mem0 容器會留著跑，建議觀察一週。要退回：把 `.env` 的 `RT_STORE` 改回 `mem0`，`docker compose up -d roundtable`（切換後寫進 `rt_memories` 的新資料不會回到 Mem0）。
+- 確定不再需要 Mem0：從 `.env` 的 `COMPOSE_PROFILES` 拿掉 `mem0`，`docker compose --profile mem0 rm -sf mem0`。Mem0 的 `memories` 表和 `mem0_app` 資料庫留著不礙事，要清再自己 `DROP`。
+- `backup/` 裡有密碼和權杖（`.env`），確認沒問題後搬到安全的地方或刪掉。
+
+Mem0 在別台機器（不是一鍵全包的）：在 `.env` 設 `MEM0_URL`、`MEM0_API_KEY`，`./install.sh migrate --mode rest` 會走 Mem0 REST 撈、用本機 embedding 重算向量；因為向量是重算的，搜尋前 10 筆允許差一筆。
+
+### 記憶很多時（十萬筆以上）
+
+`rt_memories` 沒有建向量索引（幾萬筆內全掃描也只要幾十毫秒，而且結果精確）。超過十萬筆搜尋變慢再建：
+
+```bash
+docker compose exec -T postgres psql -U roundtable -d roundtable -c "create index concurrently rt_memories_embedding_hnsw on rt_memories using hnsw (embedding vector_cosine_ops)"
+```
+
 ## 換 embedding 模型（不建議）
 
-向量維度在第一次啟動時就固定在資料表裡（預設 1024 維）。換成不同維度的模型，舊資料全部要重新算向量，目前沒有附自動工具。要換的話：先備份，再自己用 Mem0 API 匯出全部記憶、清空、改 `docker-compose.yml` 的 `embed` 指令和 `EMBED_DIMS`、重新匯入。同維度、同模型的不同量化版本可以直接換。
+向量維度在第一次啟動時就固定在 `rt_memories`（`EMB_DIMS`，預設 1024），圓桌啟動時會比對，不一樣就停。換成不同維度的模型，舊資料全部要重新算向量，目前沒有附自動工具。要換的話：先備份；改 `docker-compose.yml` 的 `embed` 指令和 `.env` 的 `EMB_DIMS`；把 `rt_memories.embedding` 欄位改成新維度（`alter table rt_memories alter column embedding type vector(新維度) using null`，舊向量清空、內文和紀錄都在）；再自己寫個小腳本逐筆呼叫 embedding 服務（`POST /v1/embeddings`）把向量填回去。沒填回去的列搜尋找不到。同維度、同模型的不同量化版本可以直接換。
 
 ## 解除安裝
 
