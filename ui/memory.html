@@ -248,7 +248,7 @@ let impOk=true,has={},list=[],rid='',review=null,state={},refs={},names={},dry=f
 
 // ---- 代號膠囊與說明卡 ----
 function refName(tok){const r=refs[tok];if(!r)return '';if(r.name)return r.name;const t=String(r.text||'').replace(/^\[[^\]]*\]\s*/,'').replace(/\s+/g,' ').trim();return t.length>28?t.slice(0,28)+'…':t}
-function refHtml(tok){return '<a class="ref" href="#ref-'+tok+'" data-ref="'+tok+'" role="button"><code>'+tok+'</code>'+esc(refName(tok))+'</a>'}
+function refHtml(tok){const t=esc(tok);return '<a class="ref" href="#ref-'+t+'" data-ref="'+t+'" role="button"><code>'+t+'</code>'+esc(refName(tok))+'</a>'}// 代號可能來自上傳的清單（originals[].short、ops[].id），一定要跳脫
 function chip(tok){return refs[tok]?refHtml(tok):'<span class="code">'+esc(tok)+'</span>'}
 function rich(s){return esc(s).replace(TOKEN_RE,tok=>refs[tok]?refHtml(tok):tok)}
 function who(addr){return names[addr]||addr||'對方'}
