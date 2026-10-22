@@ -50,11 +50,45 @@ TAG_RE = re.compile(r"^(\s*\[(狀態|進行中|決策|筆記|訊息)\]\s*)+")
 BOARD_USER = os.environ.get("BOARD_USER", "")
 BOARD_PASSWORD = os.environ.get("BOARD_PASSWORD", "")
 
-TOKENS = {
-    v: k[len("MCP_TOKEN_"):].lower().replace("_", "-")
-    for k, v in os.environ.items()
-    if k.startswith("MCP_TOKEN_") and v
-}
+RESERVED_AGENTS = ("user", "all")  # user＝公告欄上的使用者本人、all＝全體；給 AI 用會變成冒充使用者（結案、撤回任何人的留言）
+AGENT_NAME_RE = re.compile(r"[a-z][a-z0-9-]{0,63}")
+
+
+def _load_tokens(env) -> dict:
+    """MCP_TOKEN_<名字>=權杖 → {權杖: 名字}。保留名、格式不對、還是範例值（change-me）的跳過；
+    兩個名字用同一把權杖時兩個都不收（不然誰拿到都分不清是誰）。"""
+    out, dup = {}, set()
+    for k, v in sorted(env.items()):
+        if not k.startswith("MCP_TOKEN_") or not v.strip():
+            continue
+        name = k[len("MCP_TOKEN_"):].lower().replace("_", "-")
+        if name in RESERVED_AGENTS or not AGENT_NAME_RE.fullmatch(name):
+            print(f"[auth] 略過 {k}：名字是保留字或格式不對", flush=True)
+            continue
+        if "change-me" in v.lower():
+            print(f"[auth] 略過 {k}：還是範例值，請用 ./install.sh 產生的隨機權杖", flush=True)
+            continue
+        if v in out:
+            dup.add(v)
+            print(f"[auth] {k} 跟 MCP_TOKEN_{out[v].upper().replace('-', '_')} 用同一把權杖，兩個都不收", flush=True)
+            continue
+        out[v] = name
+    return {t: n for t, n in out.items() if t not in dup}
+
+
+TOKENS = _load_tokens(os.environ)
+
+
+def _agent_for(authorization: str):
+    """Authorization 標頭 → agent 名字；逐把用 compare_digest 比，不用 dict 查表（比較不受時間差影響）。"""
+    if not authorization.startswith("Bearer "):
+        return None
+    given = authorization[7:].encode()
+    found = None
+    for t, n in TOKENS.items():
+        if hmac.compare_digest(given, t.encode()):
+            found = n
+    return found
 current_agent: contextvars.ContextVar[str] = contextvars.ContextVar("agent", default="")
 
 mcp = FastMCP(
@@ -3868,7 +3902,7 @@ class AuthMiddleware:
             return await send({"type": "websocket.close", "code": 1008})
         if scope["path"] == "/board/api/review/upload":  # 記憶整理人上傳審核清單：用 MCP 權杖，不是公告欄登入
             auth = dict(scope["headers"]).get(b"authorization", b"").decode()
-            agent = TOKENS.get(auth[7:]) if auth.startswith("Bearer ") else None
+            agent = _agent_for(auth)
             if not agent or not agent.startswith("claude") or scope.get("method") != "POST":
                 return await JSONResponse({"error": "只有 Claude 的權杖可以上傳審核清單"}, status_code=401)(scope, receive, send)
             body = await Request(scope, receive).body()
@@ -3884,7 +3918,7 @@ class AuthMiddleware:
         if scope["path"] == "/health":
             return await JSONResponse({"ok": True, "agents": sorted(set(TOKENS.values()))})(scope, receive, send)
         auth = dict(scope["headers"]).get(b"authorization", b"").decode()
-        agent = TOKENS.get(auth[7:]) if auth.startswith("Bearer ") else None
+        agent = _agent_for(auth)
         if not agent:
             return await JSONResponse({"error": "unauthorized"}, status_code=401)(scope, receive, send)
         if scope["path"] in ("/skills/manifest.json", "/skills/sync.py"):
