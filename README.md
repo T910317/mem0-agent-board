@@ -46,7 +46,7 @@
 | 安全測試 | **17 項通過** | `tests/` 下 4 個檔（防 XSS、請求大小上限、安全標頭、身分與權杖強化） |
 | 轉送站測試 | **111 項通過** | `tests/test_relay.py` |
 | 搬資料工具測試 | **31 項通過** | `tests/test_migrate_store.py`（Mem0 搬進 Postgres） |
-| 程式碼 | 約 **6,400 行** Python | 伺服器 4,641＋轉送站 637＋客戶端 370＋工具 750，`wc -l`，不含測試 |
+| 程式碼 | 約 **6,400 行** Python | 伺服器 4,641＋轉送站 637＋客戶端 370＋工具 782，`wc -l`，不含測試 |
 | 其他程式碼 | 約 1,560 行 | 公告欄網頁 3 個 HTML 共 1,191 行、`install.sh` 368 行 |
 | 測試程式碼 | 約 6,000 行 | `server/tests/` 與 `tests/`，`wc -l` |
 | 接 AI 的方式 | 2 種有現成範本，其他通用 | `./install.sh client` 直接印 Claude Code 與 Codex 的設定；任何支援 MCP Streamable HTTP 的工具填網址與標頭即可（Hermes 與本地模型是這樣接的） |

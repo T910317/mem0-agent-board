@@ -112,7 +112,7 @@ docker compose logs -f roundtable
 ./install.sh check
 ```
 
-Back up `.env` and `data/`. Put the server behind an HTTPS reverse proxy before exposing it beyond your LAN. Upgrading from 1.0.0: `git pull` then `./install.sh upgrade` (backs up, migrates the memories from Mem0 into Roundtable's own tables, verifies, then switches to `RT_STORE=pg`). Caddy/nginx examples, backup, restore and upgrade steps: [docs/operations.md](docs/operations.md). Troubleshooting: [docs/troubleshooting.md](docs/troubleshooting.md).
+Back up `.env` and `data/`. Put the server behind an HTTPS reverse proxy before exposing it beyond your LAN. Upgrading from 1.0.0: `git pull` then `./install.sh upgrade` (backs up, migrates the memories from Mem0 into Roundtable's own tables, verifies, then switches to `RT_STORE=pg`). After upgrading to 2.0.0 you cannot cleanly roll back, so back up before upgrading (see CHANGELOG). Caddy/nginx examples, backup, restore and upgrade steps: [docs/operations.md](docs/operations.md). Troubleshooting: [docs/troubleshooting.md](docs/troubleshooting.md).
 
 ## Security notes
 
