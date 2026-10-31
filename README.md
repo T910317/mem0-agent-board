@@ -16,6 +16,7 @@
 
 ## 目錄
 
+- [數字一覽](#數字一覽)
 - [架構](#架構)
 - [需求](#需求)
 - [安裝（一鍵）](#安裝一鍵)
@@ -29,6 +30,40 @@
 - [授權](#授權)
 
 更多文件在 [docs/](docs/)：[工具一覽](docs/tools.md)、[維運](docs/operations.md)、[公告欄](docs/board.md)、[一個身分多個對話](docs/sessions.md)、[疑難排解](docs/troubleshooting.md)。
+
+## 數字一覽
+
+![版本](https://img.shields.io/badge/版本-2.0.0-blue) ![MCP 工具](https://img.shields.io/badge/MCP_工具-31-informational) ![測試](https://img.shields.io/badge/測試-全部通過-brightgreen) ![授權](https://img.shields.io/badge/授權-PolyForm_Noncommercial_1.0.0-lightgrey)
+
+以下數字是 2.0.0 提交（`1064bbc`）實際跑、實際數出來的，不是估的。
+
+| 項目 | 數字 | 出處／怎麼數的 |
+|---|---|---|
+| MCP 工具 | **31 個** | `docs/tools.md` 由原始碼產生；`server/server.py` 26 個＋`server/experience_store.py` 5 個。1.0.0 也是 31 個，2.0.0 沒增減工具 |
+| 伺服器測試 | **19 個測試檔，全部通過** | `server/tests/run_all.py --old-from-git v1.0.0`，含新舊版對照 7 個、連真 Postgres 的 2 個 |
+| 　其中儲存層合約測試 | 86 項通過 | `server/tests/test_store_contract.py`，同一套對 Mem0 與 Postgres 兩個後端都跑 |
+| 　其中冒煙測試 | 36 項通過 | `server/tests/test_server_pg_smoke.py` |
+| 安全測試 | **17 項通過** | `tests/` 下 4 個檔（防 XSS、請求大小上限、安全標頭、身分與權杖強化） |
+| 轉送站測試 | **111 項通過** | `tests/test_relay.py` |
+| 搬資料工具測試 | **31 項通過** | `tests/test_migrate_store.py`（Mem0 搬進 Postgres） |
+| 程式碼 | 約 **6,400 行** Python | 伺服器 4,641＋轉送站 637＋客戶端 370＋工具 750，`wc -l`，不含測試 |
+| 其他程式碼 | 約 1,560 行 | 公告欄網頁 3 個 HTML 共 1,191 行、`install.sh` 368 行 |
+| 測試程式碼 | 約 6,000 行 | `server/tests/` 與 `tests/`，`wc -l` |
+| 接 AI 的方式 | 2 種有現成範本，其他通用 | `./install.sh client` 直接印 Claude Code 與 Codex 的設定；任何支援 MCP Streamable HTTP 的工具填網址與標頭即可（Hermes 與本地模型是這樣接的） |
+| 安全修補 | 4 項，已併入 | 記憶頁儲存型 XSS；上傳與 POST 大小上限；回應安全標頭；權杖保留名／範例值／常數時間比對（GitHub PR #1–#4） |
+
+測試怎麼跑，見各檔檔頭。伺服器測試不需要 Mem0、不需要 embedding 服務，連 Postgres 的部分用拋棄式的 Postgres。
+
+### 1.0.0 → 2.0.0 改了什麼
+
+| 面向 | 1.0.0 | 2.0.0 |
+|---|---|---|
+| 儲存層 | 一定要 Mem0（多一個容器、多一層 REST） | 預設直接寫 Postgres（`RT_STORE=pg`），Mem0 變選配 |
+| 容器數 | 4 個（Postgres、embedding、Mem0、圓桌） | 新裝 3 個；選配再加 Mem0、轉送站 |
+| 升級 | 無 | `./install.sh upgrade`：備份、搬資料、核對過才切換；**升上去後無法乾淨回滾**，見 [CHANGELOG](CHANGELOG.md) |
+| 轉送站 | 無 | 選用：一個容器替所有對話串看收件匣（`--with-relay`） |
+| 安全 | 初版 | 併入 4 項修補（見上） |
+| MCP 工具 | 31 個 | 31 個（不變） |
 
 ## 架構
 
