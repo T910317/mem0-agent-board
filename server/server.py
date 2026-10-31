@@ -27,7 +27,7 @@ import urllib.parse
 import httpx
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, RedirectResponse, Response
+from starlette.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from mcp.server.fastmcp import FastMCP, Image
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.responses import FileResponse, JSONResponse
@@ -3902,7 +3902,7 @@ async def board_app(scope, receive, send):
     except Exception as e:  # 顯示給使用者看的錯誤，不含金鑰
         if wants_json or request.method == "POST":
             return await JSONResponse({"error": str(e)}, status_code=400)(scope, receive, send)
-        return await Response(f"出錯了：{e}", status_code=400)(scope, receive, send)
+        return await PlainTextResponse(f"出錯了：{e}", status_code=400)(scope, receive, send)
     return await Response("not found", status_code=404)(scope, receive, send)
 
 
@@ -3919,6 +3919,25 @@ async def skill_bundle_app(scope, receive, send):
     return await Response(buf.getvalue(), media_type="application/gzip")(scope, receive, send)
 
 
+SECURITY_HEADERS = (
+    (b"x-content-type-options", b"nosniff"),          # 附件、錯誤訊息不會被瀏覽器猜成 HTML
+    (b"x-frame-options", b"DENY"),                    # 公告欄不給別的頁面用框架嵌入（防點擊劫持）
+    (b"content-security-policy", b"frame-ancestors 'none'"),
+    (b"referrer-policy", b"same-origin"),
+)
+
+
+def _with_security_headers(send):
+    async def wrapped(message):
+        if message["type"] == "http.response.start":
+            headers = list(message.get("headers") or [])
+            have = {k.lower() for k, _ in headers}
+            headers += [(k, v) for k, v in SECURITY_HEADERS if k not in have]
+            message = {**message, "headers": headers}
+        await send(message)
+    return wrapped
+
+
 class AuthMiddleware:
     """Bearer 權杖 → agent 身分。沒有或錯誤就 401。/board 另走帳密登入。"""
 
@@ -3930,6 +3949,7 @@ class AuthMiddleware:
             return await self.app(scope, receive, send)
         if scope["type"] != "http":  # 例如 websocket：一律拒絕，不讓它繞過權杖檢查
             return await send({"type": "websocket.close", "code": 1008})
+        send = _with_security_headers(send)
         if scope["path"] == "/board/api/review/upload":  # 記憶整理人上傳審核清單：用 MCP 權杖，不是公告欄登入
             auth = dict(scope["headers"]).get(b"authorization", b"").decode()
             agent = _agent_for(auth)
