@@ -128,7 +128,9 @@ def exp(rid):
 S.current_agent.set("codex-laptop")
 S.EXPERIENCE.add(rec("e-work", "在 A 公司做網管"))
 S.EXPERIENCE.add(rec("e-health", "看過某一科", sens="高度敏感", cat="健康", date="2024"))
+S.current_agent.set("user")  # 安全修補後只有使用者能寫「使用者補充」行，種子資料改用 user 身分
 S.EXPERIENCE.add(rec("e-old", "養過一隻貓\n2026-10-16 使用者補充：牠叫小黑", date=None))
+S.current_agent.set("codex-laptop")
 put_pages("stable", 31, "1.8.0")
 put_pages("preview", 32, "1.9.0")
 c = TestClient(S.board_app, base_url="http://board.test")

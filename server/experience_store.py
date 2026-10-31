@@ -20,6 +20,17 @@ FIELDS = {
 }
 RECORD_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{0,119}$")
 DATE = re.compile(r"^\d{4}(?:-\d{2}(?:-\d{2})?)?$")
+# 使用者在公告欄加的補充，一行一條接在最後（跟 server.py 的 FOOT_RE 同一個格式）；只有使用者（actor 是 user）能寫。
+FOOT_RE = re.compile(r"^\d{4}-\d{2}-\d{2} 使用者補充：")
+def _is_foot(line):
+    return bool(FOOT_RE.match(line.strip()))
+def _feet(text):
+    """最後面連續的補充行（第一行一定是原文）。"""
+    lines = (text or "").rstrip().split("\n")
+    i = len(lines)
+    while i > 1 and _is_foot(lines[i-1]):
+        i -= 1
+    return [x.strip() for x in lines[i:]]
 FORBIDDEN = [
     ("identity_number",re.compile(r"(?<![A-Za-z0-9])[A-Z][12]\d{8}(?!\d)")),
     ("private_key",re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----")),
@@ -129,6 +140,8 @@ class ExperienceStore:
     def add(self,record):
         actor = self._actor()
         record = validate(record)
+        if actor != "user" and any(_is_foot(x) for x in record["content"].split("\n")):
+            raise ValueError("「YYYY-MM-DD 使用者補充：」只能由使用者在公告欄加，內文請換個寫法")
         with self.lock:
             rows = self._current()
             existing = next((r for r in rows if r["metadata"]["record_id"] == record["record_id"]),None)
@@ -196,6 +209,13 @@ class ExperienceStore:
             if row is None: raise KeyError("Experience not found")
             old = self._record(row)
             old_version = fingerprint(old)
+            if actor != "user" and "content" in patch:
+                # AI 不能新增、改寫或拿掉使用者的補充：先拿掉長得像補充的行，再把原本的補充原樣接回最後
+                if not isinstance(patch["content"],str):
+                    raise ValueError("Nonempty text required: content")
+                body = "\n".join(x for x in patch["content"].split("\n") if not _is_foot(x)).rstrip()
+                feet = _feet(old["content"])
+                patch = {**patch,"content":body + ("\n" + "\n".join(feet) if feet and body else "")}
             new = validate({**old,**patch})
             if fingerprint(new) == old_version: return {"changed":False,**self._format(row)}
             if old_version != base_version: raise ValueError("Version conflict; read latest first")

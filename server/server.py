@@ -27,7 +27,7 @@ import urllib.parse
 import httpx
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, RedirectResponse, Response
+from starlette.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from mcp.server.fastmcp import FastMCP, Image
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.responses import FileResponse, JSONResponse
@@ -47,11 +47,45 @@ TAG_RE = re.compile(r"^(\s*\[(狀態|進行中|決策|筆記|訊息)\]\s*)+")
 BOARD_USER = os.environ.get("BOARD_USER", "")
 BOARD_PASSWORD = os.environ.get("BOARD_PASSWORD", "")
 
-TOKENS = {
-    v: k[len("MCP_TOKEN_"):].lower().replace("_", "-")
-    for k, v in os.environ.items()
-    if k.startswith("MCP_TOKEN_") and v
-}
+RESERVED_AGENTS = ("user", "all")  # user＝公告欄上的使用者本人、all＝全體；給 AI 用會變成冒充使用者（結案、撤回任何人的留言）
+AGENT_NAME_RE = re.compile(r"[a-z][a-z0-9-]{0,63}")
+
+
+def _load_tokens(env) -> dict:
+    """MCP_TOKEN_<名字>=權杖 → {權杖: 名字}。保留名、格式不對、還是範例值（change-me）的跳過；
+    兩個名字用同一把權杖時兩個都不收（不然誰拿到都分不清是誰）。"""
+    out, dup = {}, set()
+    for k, v in sorted(env.items()):
+        if not k.startswith("MCP_TOKEN_") or not v.strip():
+            continue
+        name = k[len("MCP_TOKEN_"):].lower().replace("_", "-")
+        if name in RESERVED_AGENTS or not AGENT_NAME_RE.fullmatch(name):
+            print(f"[auth] 略過 {k}：名字是保留字或格式不對", flush=True)
+            continue
+        if "change-me" in v.lower():
+            print(f"[auth] 略過 {k}：還是範例值，請用 ./install.sh 產生的隨機權杖", flush=True)
+            continue
+        if v in out:
+            dup.add(v)
+            print(f"[auth] {k} 跟 MCP_TOKEN_{out[v].upper().replace('-', '_')} 用同一把權杖，兩個都不收", flush=True)
+            continue
+        out[v] = name
+    return {t: n for t, n in out.items() if t not in dup}
+
+
+TOKENS = _load_tokens(os.environ)
+
+
+def _agent_for(authorization: str):
+    """Authorization 標頭 → agent 名字；逐把用 compare_digest 比，不用 dict 查表（比較不受時間差影響）。"""
+    if not authorization.startswith("Bearer "):
+        return None
+    given = authorization[7:].encode()
+    found = None
+    for t, n in TOKENS.items():
+        if hmac.compare_digest(given, t.encode()):
+            found = n
+    return found
 current_agent: contextvars.ContextVar[str] = contextvars.ContextVar("agent", default="")
 
 mcp = FastMCP(
@@ -1034,6 +1068,7 @@ SKILLS_ROOT = os.environ.get("SKILLS_ROOT", "/skills-repo")
 EMB_URL = os.environ.get("EMB_URL", "http://embed:8080").rstrip("/")
 EMB_MODEL = os.environ.get("EMB_MODEL", "qwen3-embedding-0.6b")
 _emb_cache: dict = {}
+EMB_CACHE_MAX = 2048  # 每個查詢句都會進快取；不設上限的話，一直換句子查就能把記憶體吃光
 
 
 def _skill_dir(name: str) -> str:
@@ -1063,6 +1098,9 @@ def _embed(texts: list) -> list:
     """技能搜尋用：同一段文字只算一次。"""
     todo = list(dict.fromkeys(t for t in texts if t not in _emb_cache))
     if todo:
+        if len(_emb_cache) + len(todo) > EMB_CACHE_MAX:
+            _emb_cache.clear()
+            todo = list(dict.fromkeys(texts))
         for t, v in zip(todo, _embed_raw(todo)):
             _emb_cache[t] = v
     return [_emb_cache[t] for t in texts]
@@ -3504,6 +3542,27 @@ def _preview_password_page() -> str:
 
 _auth_slots = asyncio.Semaphore(2)
 
+BOARD_BODY_MAX = 1024 * 1024  # 公告欄一般 POST 的上限；圖片上傳另計（UPLOAD_MAX 再加一點表頭的空間）
+
+
+class _BodyTooLarge(Exception):
+    pass
+
+
+async def _read_body_limited(request, limit: int) -> bytes:
+    """邊讀邊算，超過 limit 就停（不先整包讀進記憶體）。讀完放回 request，後面的 request.body() 直接拿這份。"""
+    cl = request.headers.get("content-length", "")
+    if cl.isdigit() and int(cl) > limit:
+        raise _BodyTooLarge()
+    chunks, n = [], 0
+    async for chunk in request.stream():
+        n += len(chunk)
+        if n > limit:
+            raise _BodyTooLarge()
+        chunks.append(chunk)
+    request._body = b"".join(chunks)
+    return request._body
+
 
 async def _auth_call(fn, *args):
     # Wait outside the shared worker pool; at most two board-auth jobs run.
@@ -3553,6 +3612,11 @@ async def board_app(scope, receive, send):
         return await Response("board disabled", status_code=404)(scope, receive, send)
     path = scope["path"].rstrip("/")
     secure = request.headers.get("x-forwarded-proto", "") == "https"
+    if request.method == "POST":  # 先限制大小再做任何事（登入頁不用登入就打得到）
+        try:
+            await _read_body_limited(request, UPLOAD_MAX + 65536 if path == "/board/upload" else BOARD_BODY_MAX)
+        except _BodyTooLarge:
+            return await Response("too large", status_code=413)(scope, receive, send)
     if path.startswith("/board/preview/") and request.method == "POST":
         origin = request.headers.get("origin", "")
         expected_origin = ("https" if secure else request.url.scheme) + "://" + request.headers.get("host", "")
@@ -3793,7 +3857,7 @@ async def board_app(scope, receive, send):
     except Exception as e:  # 顯示給使用者看的錯誤，不含金鑰
         if wants_json or request.method == "POST":
             return await JSONResponse({"error": str(e)}, status_code=400)(scope, receive, send)
-        return await Response(f"出錯了：{e}", status_code=400)(scope, receive, send)
+        return await PlainTextResponse(f"出錯了：{e}", status_code=400)(scope, receive, send)
     return await Response("not found", status_code=404)(scope, receive, send)
 
 
@@ -3810,6 +3874,25 @@ async def skill_bundle_app(scope, receive, send):
     return await Response(buf.getvalue(), media_type="application/gzip")(scope, receive, send)
 
 
+SECURITY_HEADERS = (
+    (b"x-content-type-options", b"nosniff"),          # 附件、錯誤訊息不會被瀏覽器猜成 HTML
+    (b"x-frame-options", b"DENY"),                    # 公告欄不給別的頁面用框架嵌入（防點擊劫持）
+    (b"content-security-policy", b"frame-ancestors 'none'"),
+    (b"referrer-policy", b"same-origin"),
+)
+
+
+def _with_security_headers(send):
+    async def wrapped(message):
+        if message["type"] == "http.response.start":
+            headers = list(message.get("headers") or [])
+            have = {k.lower() for k, _ in headers}
+            headers += [(k, v) for k, v in SECURITY_HEADERS if k not in have]
+            message = {**message, "headers": headers}
+        await send(message)
+    return wrapped
+
+
 class AuthMiddleware:
     """Bearer 權杖 → agent 身分。沒有或錯誤就 401。/board 另走帳密登入。"""
 
@@ -3821,13 +3904,15 @@ class AuthMiddleware:
             return await self.app(scope, receive, send)
         if scope["type"] != "http":  # 例如 websocket：一律拒絕，不讓它繞過權杖檢查
             return await send({"type": "websocket.close", "code": 1008})
+        send = _with_security_headers(send)
         if scope["path"] == "/board/api/review/upload":  # 記憶整理人上傳審核清單：用 MCP 權杖，不是公告欄登入
             auth = dict(scope["headers"]).get(b"authorization", b"").decode()
-            agent = TOKENS.get(auth[7:]) if auth.startswith("Bearer ") else None
+            agent = _agent_for(auth)
             if not agent or not agent.startswith("claude") or scope.get("method") != "POST":
                 return await JSONResponse({"error": "只有 Claude 的權杖可以上傳審核清單"}, status_code=401)(scope, receive, send)
-            body = await Request(scope, receive).body()
-            if len(body) > 8 * 1024 * 1024:
+            try:
+                body = await _read_body_limited(Request(scope, receive), 8 * 1024 * 1024)
+            except _BodyTooLarge:
                 return await JSONResponse({"error": "清單太大（上限 8MB）"}, status_code=413)(scope, receive, send)
             try:
                 result = await run_in_threadpool(_review_upload, agent, json.loads(body.decode("utf-8")))
@@ -3840,7 +3925,7 @@ class AuthMiddleware:
             return await JSONResponse({"ok": True, "agents": sorted(set(TOKENS.values())),
                                        "store": STORE.name, "store_ok": STORE.ping()})(scope, receive, send)
         auth = dict(scope["headers"]).get(b"authorization", b"").decode()
-        agent = TOKENS.get(auth[7:]) if auth.startswith("Bearer ") else None
+        agent = _agent_for(auth)
         if not agent:
             return await JSONResponse({"error": "unauthorized"}, status_code=401)(scope, receive, send)
         if scope["path"] in ("/skills/manifest.json", "/skills/sync.py"):
