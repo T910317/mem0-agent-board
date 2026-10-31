@@ -95,7 +95,7 @@ box.clear()
 box[("tok-claude", "board-ui")] = [msg(1), msg(2, act=True), msg(3, frm="user", sess="")]
 box[("tok-claude", "mem0-deploy")] = [msg(4, you_owe_opinion=True)]
 box[("tok-claude", "navigator")] = [msg(5, closed={"kind": "recall"})]
-box[("tok-codex", "")] = [msg(6, act=True, frm="claude-laptop", sess="pingpong")]
+box[("tok-codex", "")] = [msg(6, act=True, frm="claude-laptop", sess="worker")]
 calls.clear()
 n = rl.poll_once(now=1000.0)
 check("一輪排進 5 封（一般信不算）", n == 5 and len(rl.queue) == 5)

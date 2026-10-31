@@ -28,8 +28,8 @@ def test_shared_token_is_rejected_for_both_names():
 
 
 def test_agent_names_keep_existing_format():
-    env = {"MCP_TOKEN_CODEX_995XD": "d" * 40, "MCP_TOKEN_CLAUDE_LAPTOP": "e" * 40}
-    assert server._load_tokens(env) == {"d" * 40: "codex-995xd", "e" * 40: "claude-laptop"}
+    env = {"MCP_TOKEN_CODEX_DESK": "d" * 40, "MCP_TOKEN_CLAUDE_LAPTOP": "e" * 40}
+    assert server._load_tokens(env) == {"d" * 40: "codex-desk", "e" * 40: "claude-laptop"}
 
 
 def test_agent_for_bearer():
