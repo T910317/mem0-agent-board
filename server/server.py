@@ -1087,6 +1087,7 @@ SKILLS_ROOT = os.environ.get("SKILLS_ROOT", "/skills-repo")
 EMB_URL = os.environ.get("EMB_URL", "http://embed:8080").rstrip("/")
 EMB_MODEL = os.environ.get("EMB_MODEL", "qwen3-embedding-0.6b")
 _emb_cache: dict = {}
+EMB_CACHE_MAX = 2048  # 每個查詢句都會進快取；不設上限的話，一直換句子查就能把記憶體吃光
 
 
 def _skill_dir(name: str) -> str:
@@ -1108,6 +1109,9 @@ def _manifest() -> list:
 def _embed(texts: list) -> list:
     todo = [t for t in texts if t not in _emb_cache]
     if todo:
+        if len(_emb_cache) + len(todo) > EMB_CACHE_MAX:
+            _emb_cache.clear()
+            todo = list(dict.fromkeys(texts))
         r = httpx.post(EMB_URL + "/v1/embeddings", json={"model": EMB_MODEL, "input": todo}, timeout=60)
         r.raise_for_status()
         for t, d in zip(todo, r.json()["data"]):
@@ -3583,6 +3587,27 @@ def _preview_password_page() -> str:
 
 _auth_slots = asyncio.Semaphore(2)
 
+BOARD_BODY_MAX = 1024 * 1024  # 公告欄一般 POST 的上限；圖片上傳另計（UPLOAD_MAX 再加一點表頭的空間）
+
+
+class _BodyTooLarge(Exception):
+    pass
+
+
+async def _read_body_limited(request, limit: int) -> bytes:
+    """邊讀邊算，超過 limit 就停（不先整包讀進記憶體）。讀完放回 request，後面的 request.body() 直接拿這份。"""
+    cl = request.headers.get("content-length", "")
+    if cl.isdigit() and int(cl) > limit:
+        raise _BodyTooLarge()
+    chunks, n = [], 0
+    async for chunk in request.stream():
+        n += len(chunk)
+        if n > limit:
+            raise _BodyTooLarge()
+        chunks.append(chunk)
+    request._body = b"".join(chunks)
+    return request._body
+
 
 async def _auth_call(fn, *args):
     # Wait outside the shared worker pool; at most two board-auth jobs run.
@@ -3632,6 +3657,11 @@ async def board_app(scope, receive, send):
         return await Response("board disabled", status_code=404)(scope, receive, send)
     path = scope["path"].rstrip("/")
     secure = request.headers.get("x-forwarded-proto", "") == "https"
+    if request.method == "POST":  # 先限制大小再做任何事（登入頁不用登入就打得到）
+        try:
+            await _read_body_limited(request, UPLOAD_MAX + 65536 if path == "/board/upload" else BOARD_BODY_MAX)
+        except _BodyTooLarge:
+            return await Response("too large", status_code=413)(scope, receive, send)
     if path.startswith("/board/preview/") and request.method == "POST":
         origin = request.headers.get("origin", "")
         expected_origin = ("https" if secure else request.url.scheme) + "://" + request.headers.get("host", "")
@@ -3905,8 +3935,9 @@ class AuthMiddleware:
             agent = _agent_for(auth)
             if not agent or not agent.startswith("claude") or scope.get("method") != "POST":
                 return await JSONResponse({"error": "只有 Claude 的權杖可以上傳審核清單"}, status_code=401)(scope, receive, send)
-            body = await Request(scope, receive).body()
-            if len(body) > 8 * 1024 * 1024:
+            try:
+                body = await _read_body_limited(Request(scope, receive), 8 * 1024 * 1024)
+            except _BodyTooLarge:
                 return await JSONResponse({"error": "清單太大（上限 8MB）"}, status_code=413)(scope, receive, send)
             try:
                 result = await run_in_threadpool(_review_upload, agent, json.loads(body.decode("utf-8")))
