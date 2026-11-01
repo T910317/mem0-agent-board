@@ -22,7 +22,6 @@
   LEASE_SECONDS    交給最後一哩後多久沒 ack 就再交一次，預設 300
   GRACE_SECONDS    路由表上 Claude 串的寬限期（秒），預設 600：信寄出後過了這麼久還留在收件匣（收件串沒處理）才排進佇列，
                    讓有自己等信器的串先醒來處理；另外給權杖的身分（Codex）不等，信一到就排。設 0 就都不等
-  TEST_SESSIONS    測試用的寄件串名（逗號隔開），預設 relay-test：這些串寄的信不佔每小時名額、也不被名額擋
   MAX_PINGS        路由表上 Claude 串的每封信最多叫幾次，預設 3：叫過之後信還留在收件匣（收件串沒處理）就再叫一次；
                    叫滿還沒人處理就歸到「暫時還沒解決」（stalled.json，看 /stalled），不再叫、不寫提醒。Codex 身分只起一次線，不重叫
   REPING_SECONDS   叫過之後隔多久再叫（秒），從最後一哩回報送達算起，預設 600，至少 60
@@ -97,8 +96,6 @@ class Config:
         self.max_per_hour = int(env.get("MAX_PER_HOUR") or 3)
         self.lease = float(env.get("LEASE_SECONDS") or 300)
         self.grace = float(env.get("GRACE_SECONDS") or 600)  # Claude 串的寬限期；0 = 不等
-        raw = env.get("TEST_SESSIONS")
-        self.test_sessions = {x.strip() for x in ("relay-test" if raw is None else raw).split(",") if x.strip()}
         self.max_pings = int(env.get("MAX_PINGS") or 3)  # 路由表上 Claude 串的每封信最多叫幾次；Codex 身分固定 1
         self.reping = float(env.get("REPING_SECONDS") or 600)  # 叫過之後隔多久再叫（從回報送達算起）
         self.extra: dict[str, str] = {}  # 身分名 -> 權杖（不印、不寫檔）
@@ -133,6 +130,11 @@ class Config:
 _client = None
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None  # MCP 權杖只送設定的端點；與 httpx 預設一樣拒絕轉址。
+
+
 def rpc(url: str, tok: str, name: str, args: dict, timeout: float = 20.0) -> list:
     """呼叫圓桌 MCP 的 tools/call（無狀態模式，不用 initialize）；回傳工具回的 list。"""
     global _client
@@ -147,7 +149,7 @@ def rpc(url: str, tok: str, name: str, args: dict, timeout: float = 20.0) -> lis
         raw = r.text
     else:
         req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST", headers=headers)
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with urllib.request.build_opener(_NoRedirect()).open(req, timeout=timeout) as r:
             raw = r.read().decode("utf-8", errors="replace")
     return parse_result(raw)
 
@@ -402,7 +404,7 @@ class Relay:
                             self.pending[key] = now
                             entered.append(m["id"])
                         continue  # 還在寬限期：留在圓桌，收件串自己醒來處理就不用叫醒
-                if m.get("from") != "user" and (m.get("from_session") or "") not in self.cfg.test_sessions:
+                if m.get("from") != "user":  # 串名是寄件人自填的，不能拿來豁免名額。
                     if budget <= 0:
                         held += 1  # 留在圓桌，下一小時再排
                         continue

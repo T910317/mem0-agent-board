@@ -29,6 +29,8 @@ docker compose up -d                  # 全部啟動
 
 主機重開機後會自動啟動（`restart: unless-stopped`），前提是 Docker 服務本身有設開機啟動（`sudo systemctl enable docker`）。
 
+`/health` 仍不用權杖，`store_ok` 是儲存層探測結果；同時進來的請求共用一次探測，完成後快取 5 秒。
+
 ## 同一台裝第二套（試新版、做預覽）
 
 compose 檔把專案名寫死成 `roundtable`，同一台不管裝在哪個資料夾都共用容器名（`roundtable-postgres-1`…）和映像名（`roundtable-roundtable`）；直接再裝一套會把原本那套的容器搶走重建。第二套要另取專案名、另換埠：

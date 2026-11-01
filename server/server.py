@@ -3898,6 +3898,21 @@ class AuthMiddleware:
 
     def __init__(self, app):
         self.app = app
+        self._health_task = None
+        self._health_checked_at = 0.0
+
+    async def _probe_store(self):
+        try:
+            return await run_in_threadpool(STORE.ping)
+        finally:
+            self._health_checked_at = time.monotonic()
+
+    async def _store_ok(self):
+        # 所有健康檢查共用一個背景探測，完成後快取 5 秒；不佔住事件迴圈或灌滿 worker。
+        if self._health_task is None or (self._health_task.done() and time.monotonic() - self._health_checked_at >= 5):
+            self._health_task = asyncio.create_task(self._probe_store())
+        # 請求取消不能取消共享探測，否則可用斷線反覆開出新的 worker。
+        return await asyncio.shield(self._health_task)
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "lifespan":
@@ -3923,7 +3938,7 @@ class AuthMiddleware:
             return await board_app(scope, receive, send)
         if scope["path"] == "/health":
             return await JSONResponse({"ok": True, "agents": sorted(set(TOKENS.values())),
-                                       "store": STORE.name, "store_ok": STORE.ping()})(scope, receive, send)
+                                       "store": STORE.name, "store_ok": await self._store_ok()})(scope, receive, send)
         auth = dict(scope["headers"]).get(b"authorization", b"").decode()
         agent = _agent_for(auth)
         if not agent:

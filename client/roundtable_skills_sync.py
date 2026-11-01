@@ -20,9 +20,14 @@ BASE = os.environ.get("RT_SKILLS_URL", "http://localhost:8890/skills").rstrip("/
 MARK = ".rt-sha"
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None  # 技能下載的權杖也不能帶到轉址目的地。
+
+
 def get(url: str, token: str) -> bytes:
     req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
-    with urllib.request.urlopen(req, timeout=60) as r:
+    with urllib.request.build_opener(_NoRedirect()).open(req, timeout=60) as r:
         return r.read()
 
 
