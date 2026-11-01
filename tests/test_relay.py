@@ -68,9 +68,6 @@ check("設定齊全沒問題", c.problems() == [])
 check("GRACE_SECONDS 沒設就是 600 秒、設 0 就是 0", R.Config({k: v for k, v in BASE_ENV.items() if k != "GRACE_SECONDS"}).grace == 600
       and R.Config(dict(BASE_ENV, GRACE_SECONDS="")).grace == 600 and c.grace == 0)
 check("GRACE_SECONDS 負的會列出來", any("GRACE" in p for p in R.Config(dict(BASE_ENV, GRACE_SECONDS="-1")).problems()))
-check("TEST_SESSIONS 沒設就是 relay-test、設了照設的、設空就沒有", c.test_sessions == {"relay-test"}
-      and R.Config(dict(BASE_ENV, TEST_SESSIONS="qa, x,")).test_sessions == {"qa", "x"}
-      and R.Config(dict(BASE_ENV, TEST_SESSIONS="")).test_sessions == set())
 
 # 2. 要看哪些收件匣
 ts = R.targets(c)
@@ -346,21 +343,21 @@ check("路由表上沒有的標籤，寬限期紀錄丟掉；還在的留著", s
 check("GRACE_SECONDS=0 就不等（前面各節）", True)
 R.log = lambda msg: None
 
-# 14. 測試信（寄件串名在 TEST_SESSIONS，預設 relay-test）不佔每小時名額、也不被名額擋
+# 14. 寄件串名不能豁免每小時名額；舊的 TEST_SESSIONS 設定也不例外
 rt = R.Relay(cfg_for("c14"))
 box.clear()
 box[("tok-claude", "board-ui")] = [msg(i, act=True) for i in range(51, 54)] + [msg(54, act=True, sess="relay-test"), msg(55, act=True)]
 n = rt.poll_once(now=T)
 keys = {it["key"] for it in rt.queue}
-check("3 封 AI 的信排滿名額，測試信照排、第 4 封一般信留著", n == 4 and key_of(54) in keys and key_of(55) not in keys
+check("3 封 AI 的信排滿名額，測試信與第 4 封一般信都留著", n == 3 and key_of(54) not in keys and key_of(55) not in keys
       and len(rt.wakes["board-ui"]) == 3)
 box[("tok-claude", "board-ui")].append(msg(56, act=True, sess="relay-test"))
-check("名額滿了之後測試信還是照排", rt.poll_once(now=T + 60) == 1 and key_of(56) in {it["key"] for it in rt.queue})
+check("名額滿了之後測試信也不能排", rt.poll_once(now=T + 60) == 0 and key_of(56) not in {it["key"] for it in rt.queue})
 rt2 = R.Relay(cfg_for("c14b", TEST_SESSIONS="qa"))
 box.clear()
 box[("tok-claude", "board-ui")] = [msg(i, act=True) for i in range(61, 64)] + [msg(64, act=True, sess="relay-test"), msg(65, act=True, sess="qa")]
-check("TEST_SESSIONS 改成別的：relay-test 照一般信算、qa 不佔名額", rt2.poll_once(now=T) == 4
-      and key_of(64) not in {it["key"] for it in rt2.queue} and key_of(65) in {it["key"] for it in rt2.queue})
+check("TEST_SESSIONS 改成別的也不能豁免名額", rt2.poll_once(now=T) == 3
+      and key_of(64) not in {it["key"] for it in rt2.queue} and key_of(65) not in {it["key"] for it in rt2.queue})
 
 # 15. 叫過沒人處理：從回報送達起隔 REPING_SECONDS 再叫、最多 MAX_PINGS 次（Codex 只叫一次），叫滿歸「暫時還沒解決」
 logged = []

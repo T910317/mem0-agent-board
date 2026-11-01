@@ -20,7 +20,8 @@ def test_board_login_page_has_security_headers():
     _assert_headers(r)
 
 
-def test_health_and_unauthorized_have_security_headers():
+def test_health_and_unauthorized_have_security_headers(monkeypatch):
+    monkeypatch.setattr(server.STORE, "ping", lambda: False)
     _assert_headers(client.get("/health"))
     _assert_headers(client.get("/mcp"))
 
