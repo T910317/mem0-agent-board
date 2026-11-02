@@ -92,19 +92,22 @@ write_env() {
 }
 
 prepare_dirs() {
-  mkdir -p data/postgres data/models data/mem0-history data/uploads data/reviews data/board-auth \
+  mkdir -p data/postgres data/models data/mem0-history data/uploads data/reviews data/board-auth data/metrics \
            data/ui/stable data/ui/preview data/skills/skills data/skills/tools
-  for f in board.html memory.html versions.html; do
+  for f in board.html memory.html versions.html monitor.html usage.html; do
     [ -f "data/ui/stable/$f" ] || cp "ui/$f" "data/ui/stable/$f"
     [ -f "data/ui/preview/$f" ] || cp "ui/$f" "data/ui/preview/$f"
   done
-  if [ ! -f data/ui/preview/publish-record.json ]; then  # 登記預覽三頁的指紋：之後有人直接改預覽檔，伺服器會擋下「採用」
+  cp ui/page-runtime.js data/ui/page-runtime.js  # 五頁共用的預載與換頁程式，是程式不是頁面：每次都換成這一版
+  if [ ! -f data/ui/preview/publish-record.json ]; then  # 登記預覽五頁的指紋：之後有人直接改預覽檔，伺服器會擋下「採用」
     {
       printf '{\n "revision": 1,\n "version": "%s",\n "by": "install",\n "at": "%s",\n "sha256": {\n' \
         "$(grep -o 'name="board-version" content="[^"]*"' data/ui/preview/board.html | head -1 | cut -d'"' -f4)" "$(date -Iseconds)"
       printf '  "board.html": "%s",\n' "$(sha256sum data/ui/preview/board.html | cut -d' ' -f1)"
       printf '  "memory.html": "%s",\n' "$(sha256sum data/ui/preview/memory.html | cut -d' ' -f1)"
-      printf '  "versions.html": "%s"\n }\n}\n' "$(sha256sum data/ui/preview/versions.html | cut -d' ' -f1)"
+      printf '  "versions.html": "%s",\n' "$(sha256sum data/ui/preview/versions.html | cut -d' ' -f1)"
+      printf '  "monitor.html": "%s",\n' "$(sha256sum data/ui/preview/monitor.html | cut -d' ' -f1)"
+      printf '  "usage.html": "%s"\n }\n}\n' "$(sha256sum data/ui/preview/usage.html | cut -d' ' -f1)"
     } > data/ui/preview/publish-record.json
   fi
   [ -f data/skills/manifest.json ] || printf '{\n "generated": "",\n "skills": []\n}\n' > data/skills/manifest.json

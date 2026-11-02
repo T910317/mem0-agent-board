@@ -46,7 +46,8 @@ for k in [k for k in os.environ if k.startswith("MCP_TOKEN_")]:
 UP = tempfile.mkdtemp(prefix="rt-up-")
 os.environ.update({"RT_STORE": "mem0", "MEM0_API_KEY": "fake", "MEM0_URL": "http://fake", "MCP_ALIASES": "claude,claude-laptop", "PERSONA_WRITERS": "hermes-gamma,claude", "PERSONA_NAMES": "alpha,beta,gamma", "MCP_TOKEN_CLAUDE_LAPTOP": "t1",
                    "MCP_TOKEN_CODEX_LAPTOP": "t2", "MCP_TOKEN_CODEX_PC": "t3",
-                   "BOARD_USER": "u", "BOARD_PASSWORD": "p" * 16, "MSG_ARCHIVE": "0", "UPLOAD_DIR": UP})
+                   "BOARD_USER": "u", "BOARD_PASSWORD": "p" * 16, "MSG_ARCHIVE": "0", "UPLOAD_DIR": UP,
+                   "RT_LIST_CACHE_S": "0"})  # 這個測試直接改 _list_all 回傳的那個 dict 當作改假 Mem0，要關掉短快取（有快取時回傳的是拷貝）
 
 DB, HIST, TICK = [], {}, [0]
 FAIL = {"put_ignored": False}

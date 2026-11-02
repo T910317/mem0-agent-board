@@ -9,9 +9,12 @@ import asyncio
 import base64
 import contextvars
 import contextlib
+import concurrent.futures
 import time
 import datetime as dt
+import functools
 import hashlib
+import inspect
 import hmac
 import html
 import io
@@ -24,6 +27,7 @@ import secrets
 import threading
 import urllib.parse
 
+import anyio
 import httpx
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
@@ -32,6 +36,17 @@ from mcp.server.fastmcp import FastMCP, Image
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.responses import FileResponse, JSONResponse
 from store import make_store  # 儲存層：RT_STORE=pg 直連 Postgres＋pgvector，RT_STORE=mem0 走 Mem0（Mem0 的設定都在 store.py）
+try:  # U11「誰寫了多少」：寫入紀錄（write_log.py）；模組沒帶進映像檔時只停用這個功能，服務照常起
+    import write_log as _write_log
+    WRITES = _write_log.WriteLog()
+except Exception as _e:
+    _write_log, WRITES = None, None
+    print(f"[寫入紀錄] 載入失敗，停用：{type(_e).__name__}: {_e}", flush=True)
+try:  # U05 找收件人（session_lookup.py）；同上，載入失敗只停用 session_lookup 和 to="auto"
+    import session_lookup as _lookup
+except Exception as _e:
+    _lookup = None
+    print(f"[找收件人] 載入失敗，停用：{type(_e).__name__}: {_e}", flush=True)
 
 USER_ID = "roundtable"      # 原則記憶層：決策、筆記、進度卡（memory_search 預設只查這層）
 OPS_UID = "roundtable-ops"  # 交流層：留言、認領
@@ -90,11 +105,65 @@ current_agent: contextvars.ContextVar[str] = contextvars.ContextVar("agent", def
 
 mcp = FastMCP(
     "roundtable-memory",
+    # 每個 AI 連上時看得到的提示（MCP_INSTRUCTIONS，沒設就不給）
+    instructions=os.environ.get("MCP_INSTRUCTIONS", "").strip() or None,
     host="0.0.0.0",
     port=8890,
     stateless_http=True,
     transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
 )
+
+
+# ── 工具改在執行緒池跑（LOOP-1，2026-10-29）──
+# mcp 1.30.0 把同步的工具函式直接放在事件迴圈上呼叫（func_metadata.call_fn_with_arg_validation 的 else 分支），
+# 工具在等 Mem0 的那幾秒，整台伺服器（含公告欄全部 HTTP）都停住。這裡把每個同步工具包成 async，
+# 真正的工作丟到 starlette 的執行緒池；身分（current_agent 這個 contextvar）由 anyio 複製到執行緒，工具裡照常 get。
+# 模組層級留的仍是原本的同步函式（測試、_as_user 直接呼叫），只有登記給 mcp 的那份是 async 包裝。
+#
+# 工具用自己的執行緒名額（TOOL_LIMITER，RT_TOOL_THREADS 條，預設 16），不跟公告欄搶 anyio 預設那 40 條：
+# 審查時量到 50 個工具同時等 Mem0 會把 40 條占滿，登入頁等了 14.8 秒。超過名額的工具呼叫在事件迴圈上排隊
+# （anyio 的 CapacityLimiter 在 run_sync 之前 async with），排隊中不占任何執行緒，公告欄照常。
+# RT_TOOL_SERIAL=1 就是把名額設成 1：同一時間只跑一個工具（和改之前「在迴圈上排隊」一樣的語意），其餘在迴圈上等；
+# 預設不串行：讀取各自跑，寫入仍靠 _write_lock。
+TOOL_SERIAL = os.environ.get("RT_TOOL_SERIAL", "0") == "1"
+TOOL_THREADS = max(1, int(os.environ.get("RT_TOOL_THREADS", "16") or 16))
+TOOL_LIMITER = anyio.CapacityLimiter(1 if TOOL_SERIAL else TOOL_THREADS)  # anyio 4：迴圈外建立也可以，之後哪個迴圈都能用
+
+
+def _tool_pool_stats() -> dict:
+    """/health 用：工具執行緒現在幾個在跑、幾個在迴圈上排隊、上限多少。"""
+    try:
+        st = TOOL_LIMITER.statistics()
+        return {"running": int(st.borrowed_tokens), "waiting": int(st.tasks_waiting), "limit": int(TOOL_LIMITER.total_tokens),
+                "serial": TOOL_LIMITER.total_tokens == 1}
+    except Exception:
+        return {"running": -1, "waiting": -1, "limit": int(TOOL_LIMITER.total_tokens), "serial": TOOL_SERIAL}
+
+
+def _run_tool_sync(fn, args, kwargs):
+    return fn(*args, **kwargs)
+
+
+def _threaded_tool(*a, **k):
+    """取代 mcp.tool：同步工具登記成「丟到執行緒池跑」的 async 版，schema、docstring、參數註解都從原函式讀（functools.wraps）。"""
+    reg = _mcp_tool_orig(*a, **k)
+
+    def deco(fn):
+        if inspect.iscoroutinefunction(fn):
+            return reg(fn)
+
+        @functools.wraps(fn)
+        async def in_thread(*args, **kwargs):
+            return await anyio.to_thread.run_sync(functools.partial(_run_tool_sync, fn, args, kwargs), limiter=TOOL_LIMITER)
+
+        reg(in_thread)
+        return fn
+
+    return deco
+
+
+_mcp_tool_orig = mcp.tool
+mcp.tool = _threaded_tool
 
 
 STORE = make_store(embed=lambda texts: _embed_raw(texts), actor=current_agent.get)  # 所有記憶的讀寫都經過它（測試會換掉 STORE.http）
@@ -123,8 +192,12 @@ def _fmt(m: dict) -> dict:
     }
 
 
+_store_list_calls = {"n": 0}  # 本程序起來後 STORE.list 真的被呼叫幾次（含兩層、經歷以外的區；/health 回報）
+
+
 def _list_uid(uid: str) -> list:
     """列出某一區（user_id）的全部記憶，一筆不漏；撈不完整時儲存層會直接報錯（寧可停也不默默漏看）。"""
+    _store_list_calls["n"] += 1  # GIL 下整數加一夠用，只是計數
     return STORE.list(uid)
 
 
@@ -133,14 +206,114 @@ def _uid_for(type_: str) -> str:
     return OPS_UID if type_ in OPS_TYPES else USER_ID
 
 
-def _list_all() -> list:
-    """兩層合併的全部記憶（收件匣、公告欄、認領、memory_get 等都讀這個，不用管東西在哪一層）。
+def _list_all_fetch() -> list:
+    """真的去儲存層整批撈兩層（不經快取）。
     先列原則記憶層再列交流層：搬舊資料（roundtable → roundtable-ops）途中，搬到一半的那則最多兩邊都列到，
     照編號去重，不會漏。"""
     seen = {}
     for m in _list_uid(USER_ID) + _list_uid(OPS_UID):
         seen.setdefault(m.get("id"), m)
     return list(seen.values())
+
+
+# ── _list_all 短快取（STORE-1／CL-1，2026-10-29）──
+# 每個工具、公告欄每次 feed 都整批撈兩層（線上 4,196 筆約 7.5MB，一天 9 萬多次，七八成是等信器每 30 秒輪詢）。
+# 這裡記最近一次撈到的結果 RT_LIST_CACHE_S 秒（預設 5；設 0 關掉）：
+# - 本程序任何寫入（_st_add／_st_update／_st_delete）寫完立刻作廢，所以「先查後寫」看到的永遠是最新的；
+# - 撈的時候持 _list_fetch_lock（single-flight）：同時十個呼叫只撈一次，其他人等那一次的結果；
+# - 撈到一半有人寫入（版本號變了）就不存，避免把寫入前的舊資料記成新的；
+# - 每次回傳的是每列的淺拷貝（列與 metadata 各複製一份），呼叫端照舊可以改 metadata 再寫回，不會弄髒快取；
+# - 快取的時間戳記的是「開始撈」的時刻，不是撈完：外部程式直接寫 Mem0 時，圓桌最晚 RT_LIST_CACHE_S 秒後看到；
+# - RT_LIST_CACHE_S=0 只是不記結果、也不進 single-flight 鎖，每次各自去撈（審查時量到關快取還進鎖會把所有撈排成一列，
+#   公告欄 feed 中位數回到 8 秒；現在關快取就是回到改前「各自撈」的行為）。
+LIST_CACHE_S = float(os.environ.get("RT_LIST_CACHE_S", "5") or 0)
+_list_cache = {"rows": None, "at": 0.0, "gen": 0, "store": None, "hits": 0, "fetches": 0, "completed": 0}
+_list_meta_lock = threading.Lock()   # 保護 _list_cache 這個 dict
+_list_fetch_lock = threading.Lock()  # single-flight：同時只有一個人真的去撈
+
+
+def _list_invalidate() -> None:
+    """寫入之後呼叫：作廢快取，並把版本號加一（正在撈的那次知道自己撈到的已經過期）。"""
+    with _list_meta_lock:
+        _list_cache["gen"] += 1
+        _list_cache["rows"] = None
+
+
+def _list_cached_rows():
+    with _list_meta_lock:
+        rows = _list_cache["rows"]
+        if rows is not None and _list_cache["store"] is STORE and time.monotonic() - _list_cache["at"] < LIST_CACHE_S:
+            _list_cache["hits"] += 1
+            return rows
+    return None
+
+
+def _copy_rows(rows: list) -> list:
+    return [{**m, "metadata": dict(m.get("metadata") or {})} for m in rows]
+
+
+def _list_all() -> list:
+    """兩層合併的全部記憶（收件匣、公告欄、認領、memory_get 等都讀這個，不用管東西在哪一層）。
+    有快取（見上面說明）；有快取時回傳的是拷貝，呼叫端可以放心改；關快取時是儲存層給的原列。"""
+    if LIST_CACHE_S <= 0:  # 關快取：各自撈、不進鎖、不記；回傳儲存層給的原列（跟改前一模一樣，幾個舊測試靠這點直接改資料）
+        with _list_meta_lock:
+            _list_cache["fetches"] += 1
+        return _list_all_fetch()
+    with _list_meta_lock:
+        completed = _list_cache["completed"]
+    rows = _list_cached_rows()
+    if rows is not None:
+        return _copy_rows(rows)
+    with _list_fetch_lock:  # single-flight：同時只有一個人真的去撈，其他人等這一次的結果
+        rows = _list_cached_rows()  # 等鎖的這段時間別人可能剛撈好
+        if rows is not None:
+            return _copy_rows(rows)
+        with _list_meta_lock:
+            # 同一批等待者共用剛完成的結果，即使撈取本身已超過 TTL；新來的呼叫仍照開始時間判定過期。
+            rows = _list_cache["rows"]
+            if rows is not None and _list_cache["store"] is STORE and _list_cache["completed"] != completed:
+                _list_cache["hits"] += 1
+                return _copy_rows(rows)
+        with _list_meta_lock:
+            gen = _list_cache["gen"]
+            _list_cache["fetches"] += 1
+            t0 = time.monotonic()  # 用開始撈的時刻當快取時間，撈得越久快取越早過期，不會多留
+        rows = _list_all_fetch()
+        with _list_meta_lock:
+            if _list_cache["gen"] == gen:  # 撈的途中沒有人寫入，才存
+                _list_cache.update(rows=rows, at=t0, store=STORE, completed=_list_cache["completed"] + 1)
+    return _copy_rows(rows)
+
+
+def _list_cache_stats() -> dict:
+    """/health 用：快取命中幾次、真撈幾次、TTL；上線後看 fetches／(hits+fetches) 就知道有沒有省到。"""
+    with _list_meta_lock:
+        h, f = _list_cache["hits"], _list_cache["fetches"]
+        age = round(time.monotonic() - _list_cache["at"], 1) if _list_cache["rows"] is not None else None
+    return {"hits": h, "fetches": f, "hit_rate": round(h / (h + f), 3) if h + f else None, "ttl_s": LIST_CACHE_S,
+            "age_s": age, "store_list_calls": _store_list_calls["n"]}
+
+
+def _st_add(uid: str, agent_id, text: str, metadata: dict) -> dict:
+    """STORE.add 再作廢 _list_all 快取（所有寫入都走這三個包裝，不直接呼叫 STORE.add／update／delete）。"""
+    try:
+        return STORE.add(uid, agent_id, text, metadata)
+    finally:
+        _list_invalidate()
+
+
+def _st_update(memory_id: str, text: str, metadata: dict) -> None:
+    try:
+        return STORE.update(memory_id, text, metadata)
+    finally:
+        _list_invalidate()
+
+
+def _st_delete(memory_id: str) -> None:
+    try:
+        return STORE.delete(memory_id)
+    finally:
+        _list_invalidate()
 
 
 def _match(m: dict, **want) -> bool:
@@ -154,7 +327,7 @@ def _added(row: dict) -> dict:
 
 
 def _add(content: str, metadata: dict) -> dict:
-    return _added(STORE.add(_uid_for(metadata.get("type")), current_agent.get(), content, metadata))
+    return _added(_st_add(_uid_for(metadata.get("type")), current_agent.get(), content, metadata))
 
 
 def _norm(t: str) -> str:
@@ -307,7 +480,7 @@ def _check_done(stage: str, text: str):
 
 
 @mcp.tool()
-def project_set_status(project: str, summary: str, stage: str = "", base_version: str = "") -> dict:
+def project_set_status(project: str, summary: str, stage: str = "", base_version: str = "", session: str = "") -> dict:
     """更新某專案唯一的 status（沒有就建立）。收工後呼叫。summary 寫結論與下一步，會整筆取代舊內容，仍有效的舊內容要保留進去。
     summary 開頭請先寫這幾行白話（公告欄白板照這個顯示給使用者看，不寫技術細節；每行都可省略，但請盡量寫）：
       名稱：給人看的中文名稱（例：弱點掃描）
@@ -320,8 +493,10 @@ def project_set_status(project: str, summary: str, stage: str = "", base_version
     已有 status 時必須帶 base_version（project_status 回傳的 version），表示你看過最新內容才改；
     版本不符代表別人剛改過，會拒絕並回傳最新內容，請重讀後再改。stage 不填就沿用原本的階段。
     標完成（stage=done，或不填而原本就是 done）時小目標要全部勾完；還有「- [ ]」會被拒絕，請改 verifying 或先勾完。
-    使用者在白板設的乒乓開關、優先序會原樣留著，不用帶。"""
+    使用者在白板設的乒乓開關、優先序會原樣留著，不用帶。
+    Claude 的對話串請帶 session=串名（記憶頁「誰寫了多少」照串分）；回傳的 week_count 是你這個身分本週第幾筆寫入。"""
     p = _proj(project)
+    sess = _label(session)
     if stage and stage not in STAGES:
         raise ValueError(f"stage 必須是 {STAGES}")
     text = "[狀態] " + _body(summary, "summary")
@@ -338,12 +513,17 @@ def project_set_status(project: str, summary: str, stage: str = "", base_version
                   "status_at": ""}  # Mem0 更新會合併舊 metadata，要明寫空字串才清得掉切開關時記的時間
             _check_done(md["stage"], text)
             md.update({k: old_md[k] for k in PINGPONG_KEYS + PRIORITY_KEYS if k in old_md})  # 使用者在白板切的乒乓開關、優先序不因更新進度被洗掉
-            STORE.update(existing[0]["id"], text, md)
-            return {"updated": existing[0]["id"], "by": me, "version": _version(text)}
-        md = {"project": p, "type": "status", "stage": stage or "implementing", "updated_by": me}
-        _check_done(md["stage"], text)
-        res = _add(text, md)
-    return {"created": True, "by": me, "version": _version(text), "result": res}
+            _st_update(existing[0]["id"], text, md)
+            out = {"updated": existing[0]["id"], "by": me, "version": _version(text)}
+            mid = existing[0]["id"]
+        else:
+            md = {"project": p, "type": "status", "stage": stage or "implementing", "updated_by": me}
+            _check_done(md["stage"], text)
+            res = _add(text, md)
+            out = {"created": True, "by": me, "version": _version(text), "result": res}
+            mid = _first_id(res)
+    out["week_count"] = _wlog("update" if "updated" in out else "add", "status", p, mid, len(summary or ""), sess)
+    return out
 
 
 @mcp.tool()
@@ -383,7 +563,7 @@ def claim_create(project: str, target: str, summary: str) -> dict:
             else:
                 stale.append(_fmt(m))
         if mine:
-            STORE.update(mine["id"], text, md)
+            _st_update(mine["id"], text, md)
             return {"by": me, "renewed": mine["id"], "previous": mine.get("memory"),
                     "warning": "你的身分原本就有這個 claim，已續期並換成新說明。若 previous 不是你這個對話寫的，"
                                "代表你的另一個對話可能正在做，請先問使用者。"}
@@ -403,13 +583,15 @@ def claim_release(project: str, target: str) -> dict:
     with _write_lock:
         mine = [m for m in _claims(t) if m.get("agent_id") in _names(current_agent.get())]
         for m in mine:
-            STORE.delete(m["id"])
+            _st_delete(m["id"])
     return {"released": len(mine)}
 
 
 @mcp.tool()
-def memory_add(type: str, project: str, content: str) -> dict:
-    """新增 decision（已定案的決定與原因）或 note（值得記的事實）。不要放密碼或金鑰。"""
+def memory_add(type: str, project: str, content: str, session: str = "") -> dict:
+    """新增 decision（已定案的決定與原因）或 note（值得記的事實）。不要放密碼或金鑰。
+    Claude 的對話串請帶 session=串名（記憶頁「誰寫了多少」照串分）；回傳的 week_count 是你這個身分本週第幾筆寫入。"""
+    sess = _label(session)
     if type not in TYPES_ADD:
         raise ValueError(f"type 只能是 {TYPES_ADD}；進度請用 project_set_status，標記請用 claim_create")
     tag = {"decision": "[決策] ", "note": "[筆記] "}[type]
@@ -418,8 +600,9 @@ def memory_add(type: str, project: str, content: str) -> dict:
         raise ValueError("「YYYY-MM-DD 使用者補充：」只能由使用者在公告欄加，內文請換個寫法")
     if not re.match(r"\d{4}-\d{2}-\d{2}", body):  # 每一則開頭都要有時間戳（當地時間），已自帶日期的不重複加
         body = dt.datetime.now(LOCAL_TZ).strftime("%Y-%m-%d %H:%M ") + body
-    res = _add(tag + body, {"project": _proj(project), "type": type})
-    return {"by": current_agent.get(), "result": res}
+    p = _proj(project)
+    res = _add(tag + body, {"project": p, "type": type})
+    return {"by": current_agent.get(), "result": res, "week_count": _wlog("add", type, p, _first_id(res), len(body), sess)}
 
 
 def _group(name: str) -> str:
@@ -603,7 +786,7 @@ def _close(actor: str, message_id: str, reason: str, undo: bool = False) -> dict
         else:
             md.update(closed_by=actor, closed_reason=_clean(reason, "reason", 200),
                       closed_at=dt.datetime.now(LOCAL_TZ).strftime("%Y-%m-%d %H:%M"))
-        STORE.update(message_id, m.get("memory") or "", md)
+        _st_update(message_id, m.get("memory") or "", md)
         readback = _closed(_find_message(message_id))
         if (readback or {}).get("by", "") != md["closed_by"]:
             raise RuntimeError("結案尚未讀回一致，請重新整理確認")
@@ -640,7 +823,7 @@ def _recall(actor: str, message_id: str, reason: str, undo: bool = False) -> dic
                       closed_at=dt.datetime.now(LOCAL_TZ).strftime("%Y-%m-%d %H:%M"),
                       recall_notify=",".join(sorted({_canon(r) for r in _readers(m)})), recall_seen="",
                       recall_replies=str(replies))
-        STORE.update(message_id, m.get("memory") or "", md)
+        _st_update(message_id, m.get("memory") or "", md)
         back = _find_message(message_id)
         if _recalled(back) == bool(undo):
             raise RuntimeError("撤回尚未讀回一致，請重新整理確認")
@@ -770,7 +953,7 @@ def _vote(actor: str, message_id: str, vote: int) -> dict:
         else:
             votes.pop(actor, None)
         md["votes"] = json.dumps(votes, sort_keys=True)
-        STORE.update(message_id, m.get("memory") or "", md)
+        _st_update(message_id, m.get("memory") or "", md)
         readback = _find_message(message_id)
         if json.loads((readback.get("metadata") or {}).get("votes") or "{}") != votes:
             raise RuntimeError("表決尚未讀回一致，請重新整理確認")
@@ -862,7 +1045,26 @@ def _send(frm: str, to: str, subject: str, body: str, needs_action: bool, projec
     if ask_opinion:
         md["ask_opinion"] = "yes"
         text += "｜徵求意見：每位收件者都要用 reply_to 回覆這則"
-    return _added(STORE.add(OPS_UID, frm, text, md))
+    return _added(_st_add(OPS_UID, frm, text, md))
+
+
+def _auto_to(me: str, session: str, project: str, subject: str) -> tuple:
+    """to="auto"：用 project＋subject 找最像的收件人；自己和寄不了的地址先排除，挑不到就退回預設收件人。回 (收件人, 說明)。"""
+    fs = _label(session)
+    mine = {_canon(me)} | ({f"{_canon(me)}:{fs}"} if fs else set())
+    q = " ".join(x for x in ((project or "").strip(), (subject or "").strip()) if x)
+    found = [m for m in _lookup_matches(q, exclude=mine)
+             if not (_group(me) == "claude" and not fs and ":" in m["to"])]  # 同身分串間信要帶 session，沒帶就不挑 Claude 的串
+    if found:
+        pick = found[0]
+        return pick["to"], {"to": pick["to"], "why": pick["why"], "fallback": False,
+                            "others": [m["to"] for m in found[1:]],
+                            "note": f"自動挑了 {pick['to']}（{pick['why']}）；寄錯請用 message_recall 撤回再改寄"}
+    fb = _lookup_fallback()
+    if fb in mine or (":" in fb and _group(me) == "claude" and not fs):
+        fb = "claude" if _group(me) != "claude" else "user"
+    return fb, {"to": fb, "why": "", "fallback": True, "others": [],
+                "note": f"用「{q[:60]}」找不到負責的串或專案，改寄 {fb}"}
 
 
 @mcp.tool()
@@ -878,8 +1080,13 @@ def message_send(to: str, subject: str, body: str = "", needs_action: bool = Fal
     （Claude 的串帶 session 時也可以寄 to="claude"，交給負責該專案的其他串）。
     你自己是有串名的對話串時，帶 session=你的串名，對方回覆才會回到你這串；寄給同身分的其他串一定要帶。
     closes="id1,id2"：這則是追問／合併／更正，或是你徵求意見的結論時，順手把你自己先前寄的那幾則結案（只能結自己寄的）。
-    寄錯、整封作廢（對方不用看也不用做）請用 message_recall 撤回，不要再補寄一封「不用回了」。"""
+    寄錯、整封作廢（對方不用看也不用做）請用 message_recall 撤回，不要再補寄一封「不用回了」。
+    不知道寄給誰：to="auto"，伺服器用 project＋subject 比對路由表和專案卡挑最像的一位（同 session_lookup）；
+    挑不到就寄預設收件人，回傳的 auto 欄會寫挑了誰、為什麼。寄之前想先看候選，用 session_lookup。"""
     me = current_agent.get()
+    auto = None
+    if (to or "").strip().lower() == "auto":
+        to, auto = _auto_to(me, session, project, subject)
     old = [x.strip() for x in (closes or "").split(",") if x.strip()][:10]
     for mid in old:  # 先檢查再寄，避免寄出去了才發現不能結
         om = _find_message(mid)
@@ -891,6 +1098,8 @@ def message_send(to: str, subject: str, body: str = "", needs_action: bool = Fal
                 ask_opinion=ask_opinion, from_session=session)
     by = me + (f":{_label(session)}" if (session or "").strip() else "")
     out = {"sent": True, "by": by, "result": res}
+    if auto:
+        out["auto"] = auto
     if old:
         new_id = next((r.get("id") for r in _items(res) if r.get("id")), "")
         out["closed"] = [_close(by, mid, f"已由 {new_id or '新留言'} 取代：{_body(subject, 'subject')[:60]}")["id"] for mid in old]
@@ -932,7 +1141,7 @@ def message_ask_opinion(message_id: str) -> dict:
             raise ValueError("只有原發問者能把留言改成徵求意見")
         if md.get("ask_opinion") != "yes":
             md["ask_opinion"] = "yes"
-            STORE.update(message_id, m.get("memory") or "", md)
+            _st_update(message_id, m.get("memory") or "", md)
             items = _list_all()
             m = _find_message(message_id, items)
     return {"id": message_id, **(_opinions(m, items) or {})}
@@ -1051,7 +1260,7 @@ def message_ack(message_id: str, session: str = "") -> dict:
                     md["recall_seen"] = ",".join(seen + [who])
                     changed = True
             if changed:
-                STORE.update(message_id, m.get("memory") or "", md)
+                _st_update(message_id, m.get("memory") or "", md)
             return {"acked": message_id, "by": who}
     raise ValueError("找不到這則留言")
 
@@ -1235,7 +1444,7 @@ def persona_put(name: str, kind: str, text: str, source: str = "") -> dict:
             return {"persona": n, "kind": k, "changed": False, "parts": len(old), "sha256": sha}
         src_final = src or ((old[0].get("metadata") or {}).get("source") or "") if old else src
         for i, ch in enumerate(chunks, 1):
-            STORE.add(PERSONA_UID, f"hermes-{n}", ch,
+            _st_add(PERSONA_UID, f"hermes-{n}", ch,
                       {"type": "persona", "persona": n, "kind": k, "part": i, "parts": len(chunks),
                        "source": src_final, "sha256": sha, "written_by": me})
         now = listing()
@@ -1243,11 +1452,11 @@ def persona_put(name: str, kind: str, text: str, source: str = "") -> dict:
         if "\n\n".join(m.get("memory") or "" for m in fresh) != canon or len(fresh) != len(chunks):
             for m in fresh:  # 讀回不一致：撤掉剛寫的，保留舊的（撤不掉也照樣報下面那個錯）
                 with contextlib.suppress(Exception):
-                    STORE.delete(m["id"])
+                    _st_delete(m["id"])
             raise RuntimeError("寫後讀回比對不一致，已撤回這次寫入，舊內容保持不變")
         for m in old:
             with contextlib.suppress(Exception):
-                STORE.delete(m["id"])
+                _st_delete(m["id"])
     return {"persona": n, "kind": k, "changed": True, "parts": len(chunks), "sha256": sha, "by": me}
 
 
@@ -1277,9 +1486,15 @@ def _kw_terms(query: str) -> list:
 
 
 def _kw_corpus(uid: str = USER_ID) -> list:
+    """某一層的 (記憶, 小寫內文) 快照。原則記憶層、交流層從 _list_all()（有 5 秒快取）取，照記憶的 type 分層
+    （_uid_for），不再自己每 KW_TTL 秒整批撈一次；其他區（封存等）照舊直接列。"""
     at, docs = _kw_snap.get(uid, (0.0, []))
     if not docs or time.monotonic() - at > KW_TTL:
-        docs = [(m, (m.get("memory") or "").lower()) for m in _list_uid(uid)]
+        if uid in (USER_ID, OPS_UID):
+            rows = [m for m in _list_all() if _uid_for((m.get("metadata") or {}).get("type")) == uid]
+        else:
+            rows = _list_uid(uid)
+        docs = [(m, (m.get("memory") or "").lower()) for m in rows]
         _kw_snap[uid] = (time.monotonic(), docs)
     return docs
 
@@ -1300,6 +1515,45 @@ def _kw_scores(terms: list, docs: list) -> dict:
         if s > 0:
             out[m.get("id")] = (s / used, m)
     return out
+
+
+# 排序（rerank，2026-10-24，依據 bench/rerank-stress-20261021 千題考試：bge 排混合排序的前 20 名，
+# 第 1 名命中 70.5%→86.2%，見 results/metrics_out.md）：混合排序選好候選後，把前 RERANK_TOPN 則的全文
+# 送 llama-server 的 /v1/rerank 重排，沒進前 N 的接在後面照原順序。預設關；逾時、連不上、回傳格式不對
+# 都退回混合排序並記一行 log，搜尋本身不能壞。
+RERANK_ENABLED = os.environ.get("MEM0_RERANK_ENABLED", "0").strip().lower() in ("1", "true", "yes", "on")
+RERANK_URL = os.environ.get("MEM0_RERANK_URL", "http://rerank:8300").rstrip("/")
+RERANK_MODEL = os.environ.get("MEM0_RERANK_MODEL", "bge-reranker-v2-m3")  # llama-server 只掛一個模型時不看這欄
+RERANK_TOPN = int(os.environ.get("MEM0_RERANK_TOPN", "20"))
+RERANK_TIMEOUT = float(os.environ.get("MEM0_RERANK_TIMEOUT", "4"))
+RERANK_DOC_CHARS = 1500  # 每則送多少字；模型上限 512 字詞，中文約一字一詞，再長也看不到
+
+
+def _rerank(query: str, order: list, texts: dict) -> list:
+    """order 是照混合排序的候選 id，texts 是 id → 全文。回傳重排後的 id 順序；任何失敗都原樣回傳 order。"""
+    head = order[:max(0, RERANK_TOPN)]
+    if len(head) < 2:
+        return order
+    try:
+        r = httpx.post(RERANK_URL + "/v1/rerank", timeout=RERANK_TIMEOUT,
+                       json={"model": RERANK_MODEL, "query": query, "top_n": len(head),
+                             "documents": [(texts.get(i) or "")[:RERANK_DOC_CHARS] for i in head]})
+        r.raise_for_status()
+        res = r.json()["results"]
+        score = {}
+        for x in res:
+            k, s = x["index"], x["relevance_score"]
+            if not isinstance(k, int) or not 0 <= k < len(head) or k in score or not isinstance(s, (int, float)):
+                raise ValueError(f"回傳格式不對：{str(x)[:80]}")
+            score[k] = float(s)
+        if not score:
+            raise ValueError("回傳沒有任何結果")
+    except Exception as e:
+        print(f"[搜尋排序] 退回混合排序：{type(e).__name__}: {str(e)[:160]}", flush=True)
+        return order
+    # 有分數的照分數排（同分維持原順序）；萬一有幾則沒拿到分數，接在有分數的後面照原順序
+    ranked = sorted(score, key=lambda k: -score[k]) + [k for k in range(len(head)) if k not in score]
+    return [head[k] for k in ranked] + order[len(head):]
 
 
 def _in_scope(m: dict, filters: dict) -> bool:
@@ -1342,7 +1596,7 @@ def _brief(m: dict, terms: list) -> dict:
 def memory_search(query: str, project: str = "", type: str = "", agent: str = "", limit: int = 10,
                   full: bool = False, archived: bool = False, messages: bool = False) -> list:
     """搜尋共用記憶：比意思，也一字不差比對問句裡的英數詞（設備名、IP、VM 編號、網址、代號），
-    只打「10.0.0.5」「VM101」也搜得到。預設回 10 則（最多 20）。
+    只打「192.0.2.5」「VM101」也搜得到。預設回 10 則（最多 20）。
     預設只搜決策、筆記、進度卡，不含留言和認領；要連留言一起搜帶 messages=true（決策、狀態排前面，留言排後面），
     只搜留言帶 type=message，只搜認領帶 type=claim。
     可用 project、type（status/claim/decision/note/message）、agent 縮小範圍；不確定放在哪個 project 就先不帶。
@@ -1389,8 +1643,11 @@ def memory_search(query: str, project: str = "", type: str = "", agent: str = ""
         adj = TYPE_ADJ.get((m.get("metadata") or {}).get("type"), 0.0)
         return s + (s - floor) * adj + KW_WEIGHT * kw.get(i, (0.0,))[0]
 
+    order = sorted(cand, key=final, reverse=True)
+    if RERANK_ENABLED:  # score 欄照舊是混合排序的分數，重排後不一定由高到低
+        order = _rerank(q, order, {i: cand[i][1].get("memory") for i in order[:max(0, RERANK_TOPN)]})
     out, seen = [], set()
-    for i in sorted(cand, key=final, reverse=True):
+    for i in order:
         m = _unarchived(cand[i][1]) if archived else cand[i][1]
         if m.get("id") in seen:  # 封存搬到一半重來過，同一則可能有兩份副本
             continue
@@ -1503,7 +1760,7 @@ def _archive(m: dict, kind: str, reason: str, me: str) -> str:
     md = {"type": kind, "memory_id": m["id"], "project": md0.get("project") or "", "orig_type": md0.get("type") or "",
           "author": m.get("agent_id") or "", "by": me, "at": _now_tw(), "reason": reason,
           "base_version": _version(m.get("memory")), "sha256": sha}
-    STORE.add(ARCHIVE_UID, me, text, md)
+    _st_add(ARCHIVE_UID, me, text, md)
     for a in _archive_list():
         am = a.get("metadata") or {}
         if (am.get("memory_id") == m["id"] and am.get("type") == kind and am.get("at") == md["at"]
@@ -1513,14 +1770,16 @@ def _archive(m: dict, kind: str, reason: str, me: str) -> str:
 
 
 @mcp.tool()
-def memory_update(memory_id: str, content: str, base_version: str, reason: str = "") -> dict:
+def memory_update(memory_id: str, content: str, base_version: str, reason: str = "", session: str = "") -> dict:
     """修改一筆 decision／note（例如把重複的幾筆歸納成一筆、更正過時的內容）。content 是整筆新內容，會取代舊內容
     （開頭沒寫日期會自動補上當地時間）。必須帶 base_version（memory_get 回傳的 version），版本不符會拒絕。
     改之前會把完整舊版存進封存區：用 memory_history 查舊版，要改回就把舊內容再 memory_update 回去。
     改別人寫的記憶 reason 必填。任何身分都能改，全部留紀錄。status 用 project_set_status；claim、留言不能用這個改。
     結尾一行行的「YYYY-MM-DD 使用者補充：…」是使用者在公告欄加的註腳，由伺服器保管：content 不用帶（帶了也會被拿掉），
-    改完會自動接回最後面，不佔 1000 字上限。"""
+    改完會自動接回最後面，不佔 1000 字上限。
+    Claude 的對話串請帶 session=串名；回傳的 week_count 是你這個身分本週第幾筆寫入（內容沒變不算）。"""
     me = current_agent.get()
+    sess = _label(session)
     body = _body(_foot_strip(content), "content")  # 註腳行不收，下面用舊記錄的接回去
     why = (reason or "").strip()[:300]
     with _write_lock:
@@ -1541,19 +1800,22 @@ def memory_update(memory_id: str, content: str, base_version: str, reason: str =
             return {"changed": False, "id": memory_id, "version": _version(text)}
         archive_id = _archive(m, "memory_revision", why, me)
         md.update({"updated_by": me, "revision": int(md.get("revision") or 1) + 1})
-        STORE.update(memory_id, text, md)
+        _st_update(memory_id, text, md)
         if (_find_memory(memory_id).get("memory") or "") != text:
             raise RuntimeError(f"改完讀回內容不一致；舊版在封存區 {archive_id}，請用 memory_history 核對")
-    return {"changed": True, "id": memory_id, "by": me, "version": _version(text), "archive_id": archive_id}
+    return {"changed": True, "id": memory_id, "by": me, "version": _version(text), "archive_id": archive_id,
+            "week_count": _wlog("update", md.get("type"), md.get("project"), memory_id, len(body), sess)}
 
 
 @mcp.tool()
-def memory_delete(memory_id: str, reason: str, base_version: str) -> dict:
+def memory_delete(memory_id: str, reason: str, base_version: str, session: str = "") -> dict:
     """刪除一筆重複或已失效的 decision／note／status（軟刪除，可還原）。reason 必填，例如「已併入 <id>」「專案已結束」。
     必須帶 base_version（memory_get 回傳的 version），表示你看過最新內容。
     會先把完整內容、誰刪、何時、為什麼存進封存區並讀回核對，才從共用記憶移除；之後搜尋、列表、公告欄都看不到。
-    刪錯了用 memory_trash 找到 trash_id，再 memory_restore 還原。任何身分都能刪，全部留紀錄。"""
+    刪錯了用 memory_trash 找到 trash_id，再 memory_restore 還原。任何身分都能刪，全部留紀錄。
+    Claude 的對話串請帶 session=串名；回傳的 week_count 是你這個身分本週第幾筆寫入。"""
     me = current_agent.get()
+    sess = _label(session)
     why = _clean(reason, "reason", 300)
     with _write_lock:
         m = _find_memory(memory_id)
@@ -1562,11 +1824,13 @@ def memory_delete(memory_id: str, reason: str, base_version: str) -> dict:
             raise ValueError(f"memory_delete 只能刪 {DELETE_TYPES}，這筆是 {t}（claim 用 claim_release，留言不刪）")
         _check_base(m, base_version)
         trash_id = _archive(m, "memory_trash", why, me)
-        STORE.delete(memory_id)
+        _st_delete(memory_id)
         if any(x.get("id") == memory_id for x in _list_all()):
             raise RuntimeError(f"已存進封存區（{trash_id}），但原記憶還在；請重試或告訴使用者")
+    md = m.get("metadata") or {}
     return {"deleted": memory_id, "trash_id": trash_id, "by": me, "reason": why,
-            "restore": f'memory_restore(trash_id="{trash_id}")'}
+            "restore": f'memory_restore(trash_id="{trash_id}")',
+            "week_count": _wlog("delete", t, md.get("project"), memory_id, len(m.get("memory") or ""), sess)}
 
 
 @mcp.tool()
@@ -1609,13 +1873,13 @@ def memory_restore(trash_id: str, reason: str = "") -> dict:
             raise ValueError("這個專案已經有新的 status，不能直接還原舊的；請把需要的內容用 project_set_status 併進去")
         md.update({"restored_from": trash_id, "orig_id": snap.get("id") or "", "orig_created": snap.get("created_at") or "",
                    "restored_by": me})
-        STORE.add(_uid_for(md.get("type")), snap.get("agent_id") or me, snap.get("memory") or "", md)
+        _st_add(_uid_for(md.get("type")), snap.get("agent_id") or me, snap.get("memory") or "", md)
         back = [m for m in _list_all() if (m.get("metadata") or {}).get("restored_from") == trash_id]
         if len(back) != 1 or (back[0].get("memory") or "") != (snap.get("memory") or ""):
             raise RuntimeError("還原後讀回不一致，請用 memory_list 核對並告訴使用者")
         am.update({"restored_id": back[0]["id"], "restored_by": me, "restored_at": _now_tw(),
                    "restore_reason": (reason or "").strip()[:300]})
-        STORE.update(trash_id, a.get("memory") or "", am)
+        _st_update(trash_id, a.get("memory") or "", am)
     return {"restored": back[0]["id"], "orig_id": snap.get("id"), "from_trash": trash_id, "by": me,
             "text": (snap.get("memory") or "")[:200]}
 
@@ -1736,11 +2000,11 @@ def _archive_msg(m: dict) -> str:
 
     ok = next((a for a in _archived_copies(oid) if same(a)), None)  # 上次搬到一半（副本存了、原留言沒刪）就不再存一份
     if ok is None:
-        STORE.add(MSG_ARCHIVE_UID, m.get("agent_id") or None, m.get("memory") or "", md)  # 舊留言沒作者就不帶
+        _st_add(MSG_ARCHIVE_UID, m.get("agent_id") or None, m.get("memory") or "", md)  # 舊留言沒作者就不帶
         ok = next((a for a in _archived_copies(oid) if same(a)), None)
         if ok is None:
             raise RuntimeError("副本讀回跟原留言對不上，原留言沒刪")
-    STORE.delete(oid)
+    _st_delete(oid)
     if STORE.get(oid):
         raise RuntimeError("刪了原留言但還讀得到")
     return ok["id"]
@@ -2002,6 +2266,98 @@ def _session_names() -> dict:
     return dict(_session_names_cache["names"])
 
 
+# ── U11 誰寫了多少／U05 找收件人──
+_routes_cache = {"mtime": None, "routes": {}}
+
+
+def _routes() -> dict:
+    """路由表全文（UI_DIR/session-routes.json，跟 _session_names 讀同一份）；讀不到回空的。"""
+    path = os.path.join(UI_DIR, "session-routes.json")
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        return {}
+    if mtime != _routes_cache["mtime"]:
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+            routes = {k: v for k, v in data.items() if isinstance(v, dict)} if isinstance(data, dict) else {}
+        except (OSError, ValueError):
+            routes = {}
+        _routes_cache.update(mtime=mtime, routes=routes)
+    return _routes_cache["routes"]
+
+
+def _first_id(res) -> str:
+    return next((str(r.get("id")) for r in _items(res) if isinstance(r, dict) and r.get("id")), "")
+
+
+def _guess_session(agent: str, project: str) -> str:
+    """寫的人沒帶串名時猜是哪一串：Claude 寫的、而且這個專案在路由表只有一串訂閱，就算那一串。猜不到回空字串。"""
+    if _group(agent) != "claude" or not project:
+        return ""
+    subs = [str(v.get("label")) for v in _routes().values()
+            if project in (v.get("projects") or []) and LABEL_RE.match(str(v.get("label") or ""))]
+    return subs[0] if len(subs) == 1 else ""
+
+
+def _wlog(action: str, type_: str, project: str, memory_id: str, chars: int, session: str = ""):
+    """寫成功後記一筆寫入紀錄，回這個身分本週第幾筆；紀錄停用或寫不進去回 None（不擋寫入）。"""
+    if WRITES is None:
+        return None
+    me = current_agent.get() or "unknown"
+    try:
+        guess = "" if session else _guess_session(me, project or "")
+    except Exception:
+        guess = ""
+    return WRITES.record(me, action, type_ or "", project or "", memory_id or "", chars, session=session, guess=guess)
+
+
+def _writes_summary(days) -> dict:
+    """記憶頁「誰寫了多少」：GET /board/api/memory-writes?days=7。"""
+    if WRITES is None:
+        return {"enabled": False, "error": "寫入紀錄沒有啟用"}
+    titles = {k: re.split(r"[（(]", v, 1)[0].strip() or k for k, v in _session_names().items()}
+    data = WRITES.summary(days, titles=titles)
+    data["enabled"] = True
+    data["known"] = sorted({_write_log.person(a) for a in TOKENS.values()})  # 有權杖的每個代表（本週沒寫的頁面顯示 0）
+    return data
+
+
+def _claude_base() -> str:
+    """寄給 Claude 某一串時地址前面那段（claude-laptop；舊名 claude 已停用時自動換成正式名）。"""
+    return _canon("claude")
+
+
+def _lookup_matches(query: str, exclude: set | None = None) -> list:
+    if _lookup is None:
+        return []
+    cards = [{"project": (m.get("metadata") or {}).get("project"), "text": m.get("memory") or ""}
+             for m in _list_all() if _match(m, type="status")]
+    return _lookup.rank(query, _routes(), cards, sorted(set(TOKENS.values())), _claude_base(), exclude=exclude)
+
+
+def _lookup_fallback() -> str:
+    nav = _lookup.navigator(_routes()) if _lookup is not None else ""
+    return f"{_claude_base()}:{nav}" if nav else "claude"
+
+
+@mcp.tool()
+def session_lookup(query: str) -> dict:
+    """不知道某件事該寄給誰時先查：用專案代號、主題或關鍵字（例如「voice-lab」「公告欄 額度頁」「PVE 巡檢」）
+    比對收件匣路由表（每一串的名稱、負責專案、主題）和公告欄白板專案卡的「做事」欄，
+    回最像的 1～3 個收件地址（to，例如 claude-laptop:board-ui、codex-laptop）、負責的專案、一句說明。
+    查完用 message_send(to=matches[0].to, ...) 寄；或直接 message_send(to="auto", project=..., subject=...)
+    讓伺服器用同一套比對自己挑，挑不到就寄給預設收件人。都沒對上時 matches 是空的，fallback 是預設收件人的地址。"""
+    q = _clean(query, "query", 200)
+    if _lookup is None:
+        return {"query": q, "matches": [], "fallback": "claude", "note": "找收件人的模組沒有載入，請寄 claude"}
+    found = _lookup_matches(q)
+    fb = _lookup_fallback()
+    note = (f"最像的是 {found[0]['to']}" if found else f"沒有對上的串或專案，請寄預設收件人 {fb}，由它轉")
+    return {"query": q, "matches": found, "fallback": fb, "note": note}
+
+
 def _feed(limit: int, multi: bool = False) -> dict:
     """新版公告欄的資料：最近 limit 則留言（舊到新）與目前的 claim。文字已在伺服器端跳脫並轉好格式。
     multi＝頁面自己說看得懂逗號收件人（feed 帶 ?multi_to=1）才回 multi_to=true：2.2.0 正式版一看到就會寄逗號 to，
@@ -2162,7 +2518,8 @@ def _whiteboard(items: list) -> tuple:
 
 UI_DIR = os.environ.get("UI_DIR", "/ui")
 _ui_lock = threading.RLock()
-_UI_FILES = ("board.html", "memory.html", "versions.html")
+_UI_FILES = ("board.html", "memory.html", "versions.html", "monitor.html", "usage.html")  # ── 監控 ──／── 額度 ── 跟公告欄一起採用／回滾
+_UI_OPTIONAL = ("monitor.html", "usage.html")  # ── 監控 ──／── 額度 ── 舊備份沒有這兩頁，照樣可以讀、可以回滾（回滾回去就沒有那一頁）
 _last_rollback = {}
 
 
@@ -2173,9 +2530,10 @@ def _ui_file(which: str) -> str:
 def _ui_load_snapshot(path):
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
-    if data.get("schema") != 1 or set(data.get("files", {})) != set(_UI_FILES):
+    files = data.get("files", {})
+    if data.get("schema") != 1 or set(files) | set(_UI_OPTIONAL) != set(_UI_FILES):
         raise ValueError("整批版本備份格式不符")
-    return {n: None if data["files"][n] is None else base64.b64decode(data["files"][n], validate=True)
+    return {n: None if files.get(n) is None else base64.b64decode(files[n], validate=True)
             for n in _UI_FILES}
 
 
@@ -2235,8 +2593,10 @@ def _ui_snapshot(which):
 
 def _ui_release_id(snapshot):
     identities = []
-    for name, kind in zip(_UI_FILES, ("board", "memory", "release")):
+    for name, kind in zip(_UI_FILES, ("board", "memory", "release", "monitor", "usage")):
         content = snapshot[name]
+        if content is None and name in _UI_OPTIONAL:
+            continue
         if content is None:
             raise ValueError("公告欄、記憶頁與版本紀錄須一起備齊")
         version = re.search(rb'<meta name="' + kind.encode() + rb'-version" content="([^"]+)"', content)
@@ -2245,7 +2605,7 @@ def _ui_release_id(snapshot):
             raise ValueError("版本頁面缺少版號或修訂編號")
         identities.append((version[1], revision[1]))
     if len(set(identities)) != 1:
-        raise ValueError("三個頁面的版號或修訂編號不一致")
+        raise ValueError("各頁面的版號或修訂編號不一致")
     return identities[0]
 
 
@@ -2457,6 +2817,25 @@ def _ui_html(which, name):
     return text
 
 
+def _ui_versions() -> dict:
+    """只讀五頁 head 的版本資料；不查記憶、不把整頁送給版本檢查。"""
+    result = {}
+    with _ui_lock:
+        for edition in ("stable", "preview"):
+            pages = {}
+            for filename in _UI_FILES:
+                kind = "release" if filename == "versions.html" else filename[:-5]
+                try:
+                    with open(os.path.join(UI_DIR, edition, filename), encoding="utf-8") as stream:
+                        head = stream.read(4096).split("</head>", 1)[0]
+                except OSError:
+                    continue
+                meta = lambda field: (re.search(r'<meta name="' + kind + '-' + field + r'" content="([^"]*)"', head) or [None, ""])[1]
+                pages[filename[:-5]] = {"version": meta("version"), "revision": meta("revision")}
+            result[edition] = pages
+    return result
+
+
 # 換版後還開著的舊頁面不能再寫入。
 # 送頁面時在 <head> 塞一段小程式，頁面之後送出的每個寫入都帶上「哪一種頁面:內部流水號」；
 # 伺服器拿去比對那一種頁面現在的流水號，對不上就回 409、什麼都不寫。部署前就開著的分頁沒有這段程式、
@@ -2464,9 +2843,10 @@ def _ui_html(which, name):
 BOARD_REV_CHECK = os.environ.get("BOARD_REV_CHECK", "1") != "0"  # 設 0 整個關掉，回到不檢查
 _BOOT = secrets.token_hex(4)
 _REV_WRITE_PATHS = ("/board/send", "/board/upload", "/board/promote", "/board/rollback", "/board/api/avatar",
-                    "/board/preview/vote", "/board/preview/close", "/board/preview/recall")
+                    "/board/preview/vote", "/board/preview/close", "/board/preview/recall", "/board/api/usage/refresh",
+                    "/board/api/usage/settings")
 _REV_WRITE_PREFIXES = ("/board/api/review/", "/board/api/memory/", "/board/api/experience/", "/board/api/project/")
-_REV_META = re.compile(r'<meta name="(?:board|memory|release)-revision" content="(\d+)"')
+_REV_META = re.compile(r'<meta name="(?:board|memory|release|monitor|usage)-revision" content="(\d+)"')
 _REV_GUARD_JS = """<script>(function(){var T=%s,F=window.fetch;
 function stale(){if(document.getElementById('board-stale'))return;var d=document.createElement('div');d.id='board-stale';d.setAttribute('role','alert');
 d.style.cssText='position:fixed;top:0;left:0;right:0;z-index:2147483647;padding:10px 16px;background:#b42318;color:#fff;font:15px/1.5 system-ui,sans-serif;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:center';
@@ -2623,7 +3003,7 @@ def _feet_html(feet: list) -> str:
     return f'<div class="feet">{"".join(out)}</div>'
 
 
-def _memory_html(preview: bool = False) -> str:
+def _memory_html(preview: bool = False, data_only: bool = False, shell: bool = False):
     esc = html.escape
     template = _ui_html("preview" if preview else "stable", "memory.html")
     if preview and template is None:
@@ -2631,7 +3011,7 @@ def _memory_html(preview: bool = False) -> str:
     modern = template is not None
     template = template if modern else MEMORY_TEMPLATE
     feet_ok = modern and 'name="memory-footnotes"' in template  # 頁面版本支援註腳才分開顯示（舊的正式版照舊）
-    items = _list_all()
+    items = [] if shell else _list_all()
     rows, agents, projects = [], set(), set()
     counts = {t: 0 for t in TYPE_ORDER}
     for m in items:
@@ -2698,8 +3078,10 @@ def _memory_html(preview: bool = False) -> str:
         f'<button type="button" class="tchip t-{t} on" data-t="{t}">{TYPE_LABEL[t]} <b>{counts[t]}</b></button>' for t in TYPE_ORDER)
     ag = "".join(f"<option>{esc(a)}</option>" for a in sorted(agents))
     pj = "".join(f"<option>{esc(p)}</option>" for p in sorted(projects))
+    if data_only:
+        return {"rows": "".join(rows), "agents": ag, "projects": pj, "counts": counts, "total": len(items)}
     return (template.replace("@@CHIPS@@", chips).replace("@@AGENTS@@", ag).replace("@@PROJECTS@@", pj)
-            .replace("@@ROWS@@", "".join(rows)).replace("@@TOTAL@@", str(len(items))))
+            .replace("@@ROWS@@", "".join(rows)).replace("@@TOTAL@@", "—" if shell else str(len(items))))
 
 
 MEMORY_TEMPLATE = """<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -2959,7 +3341,7 @@ def _project_pingpong(project: str, on) -> dict:
             md["status_at"] = m.get("updated_at") or m.get("created_at") or ""
         md.update(pingpong="yes" if on else "no", pingpong_by=current_agent.get(), pingpong_at=_now_tw(),
                   pingpong_flips=str(int(md.get("pingpong_flips") or 0) + 1))
-        STORE.update(m["id"], text, md)
+        _st_update(m["id"], text, md)
         back = _find_memory(m["id"])
         if _pingpong(back.get("metadata") or {}) is not on or (back.get("memory") or "") != text:
             raise RuntimeError("寫完讀回對不上，請重新整理再試")
@@ -2987,7 +3369,7 @@ def _project_priority(project: str, priority) -> dict:
             md["status_at"] = m.get("updated_at") or m.get("created_at") or ""
         md.update(priority=str(priority) if priority else "", priority_by=current_agent.get(), priority_at=_now_tw(),
                   priority_flips=str(int(md.get("priority_flips") or 0) + 1))
-        STORE.update(m["id"], text, md)
+        _st_update(m["id"], text, md)
         back = _find_memory(m["id"])
         if _priority(back.get("metadata") or {}) != priority or (back.get("memory") or "") != text:
             raise RuntimeError("寫完讀回對不上，請重新整理再試")
@@ -3076,7 +3458,7 @@ def _memory_footnote(mid: str, text: str) -> dict:
                 raise ValueError(f"這筆的註腳加起來超過 {FOOT_TOTAL_MAX} 字了，沒辦法再加")
             new = old.rstrip() + "\n" + line
             archive_id = _archive(m, "memory_revision", "使用者追加補充（公告欄）", "user")
-            STORE.update(mid, new, dict(md, updated_by="user", revision=int(md.get("revision") or 1) + 1))
+            _st_update(mid, new, dict(md, updated_by="user", revision=int(md.get("revision") or 1) + 1))
             if (_find_memory(mid).get("memory") or "") != new:
                 raise RuntimeError(f"加完讀回內容不一致；舊版在封存區 {archive_id}")
     except Exception as e:
@@ -3104,7 +3486,7 @@ def _memory_footnote_undo(token: str) -> dict:
             m = _find_memory(u["id"])
             if _version(m.get("memory")) != u["version"]:
                 raise ValueError("這筆之後又被改過，沒有拿掉註腳")
-            STORE.update(u["id"], u["old"]["text"], u["old"]["metadata"])
+            _st_update(u["id"], u["old"]["text"], u["old"]["metadata"])
     except Exception as e:
         _review_log("footnotes", {"act": "undo", "id": u["id"], "ok": False, "err": str(e)[:120]})
         raise
@@ -3249,7 +3631,7 @@ def _review_revert(steps: list) -> list:
                     m = _find_memory(s["id"])
                     if _version(m.get("memory")) != s["version"]:
                         raise ValueError(f"{s['id'][:8]} 之後又被改過，沒有改回")
-                    STORE.update(s["id"], s["old"]["text"], s["old"]["metadata"])
+                    _st_update(s["id"], s["old"]["text"], s["old"]["metadata"])
             elif s["op"] == "delete":
                 memory_restore(s["trash_id"], "記憶審核：使用者按了復原")
             elif s["op"] == "add" and s.get("id"):
@@ -3663,7 +4045,8 @@ async def board_app(scope, receive, send):
     if auth_ok == "throttled":
         return await Response("登入失敗次數太多，請一分鐘後再試", status_code=429, headers={"Cache-Control":"no-store", "Retry-After": str(LOGIN_FAIL_WINDOW)})(scope, receive, send)
     if auth_ok is not True:
-        if request.method == "GET" and path in ("/board/preview", "/board/preview/memory", "/board/preview/versions", "/board/preview/password"):
+        if request.method == "GET" and path in ("/board/preview", "/board/preview/memory", "/board/preview/versions", "/board/preview/password",
+                                                "/board/preview/monitor", "/board/preview/usage"):  # ── 監控 ──／── 額度 ──
             return await HTMLResponse(_preview_login_page(), headers={"Cache-Control": "no-store"})(scope, receive, send)
         if request.method == "GET" and path in ("/board", "/board/legacy"):
             return await HTMLResponse(_login_page(), status_code=200, headers={"Cache-Control": "no-store"})(scope, receive, send)
@@ -3707,12 +4090,12 @@ async def board_app(scope, receive, send):
                                           f'<p><a href="/board">回公告欄</a></p></body>', status_code=409, headers=headers)(scope, receive, send)
         if request.method == "POST" and path == "/board/send":
             form = {k: v[0] for k, v in urllib.parse.parse_qs((await request.body()).decode("utf-8")).items()}
-            await run_in_threadpool(_send, "user", form.get("to", "all"), form.get("subject", ""),
+            result = await run_in_threadpool(_send, "user", form.get("to", "all"), form.get("subject", ""),
                                     form.get("body", ""), form.get("needs_action") == "yes", form.get("project", ""), "",
                                      form.get("attachments", ""), form.get("reply_to", ""),
                                      ask_opinion=form.get("ask_opinion") == "yes")
             if wants_json:
-                return await JSONResponse({"sent": True})(scope, receive, send)
+                return await JSONResponse({"sent": True, "id": _first_id(result) or result.get("id", "")})(scope, receive, send)
             return await RedirectResponse("/board", status_code=303)(scope, receive, send)
         if request.method == "POST" and path == "/board/preview/vote":
             form = {k: v[0] for k, v in urllib.parse.parse_qs((await request.body()).decode("utf-8")).items()}
@@ -3728,12 +4111,64 @@ async def board_app(scope, receive, send):
             result = await run_in_threadpool(_recall, "user", form.get("message_id", ""), form.get("reason", ""),
                                              form.get("undo") == "yes")
             return await JSONResponse(result)(scope, receive, send)
+        if request.method == "GET" and path == "/board/api/ui-version":
+            versions = await run_in_threadpool(_ui_versions)
+            credential = request.cookies.get(COOKIE) or request.headers.get("authorization", "")
+            versions["session"] = await _cheap_call(_sign, "ui-cache:" + credential)
+            return await JSONResponse(versions, headers={"Cache-Control": "no-store"})(scope, receive, send)
+        if request.method == "GET" and path == "/board/api/ui-runtime":
+            runtime = os.path.join(UI_DIR, "page-runtime.js")
+            if not os.path.isfile(runtime):
+                return await Response("runtime unavailable", status_code=404)(scope, receive, send)
+            return await FileResponse(runtime, media_type="application/javascript", headers={"Cache-Control": "private, max-age=300"})(scope, receive, send)
+        if request.method == "GET" and path == "/board/api/memory-data":
+            data = await run_in_threadpool(_memory_html, request.query_params.get("preview") == "1", True)
+            return await JSONResponse(data, headers={"Cache-Control": "no-store"})(scope, receive, send)
         if request.method == "GET" and path.startswith("/board/api/message/"):
             items = await run_in_threadpool(_list_all)
             m = _find_message(path[len("/board/api/message/"):], items)
             return await JSONResponse(_message_feed(m, items), headers={"Cache-Control": "no-store"})(scope, receive, send)
         if request.method == "GET" and path == "/board/api/review/list":
             return await JSONResponse(await run_in_threadpool(_review_list), headers={"Cache-Control": "no-store"})(scope, receive, send)
+        if request.method == "GET" and path == "/board/api/memory-writes":  # 記憶頁「誰寫了多少」（U11）
+            data = await run_in_threadpool(_writes_summary, request.query_params.get("days", "7"))
+            return await JSONResponse(data, headers={"Cache-Control": "no-store"})(scope, receive, send)
+        if request.method == "GET" and path == "/board/api/usage":  # ── 額度 ──
+            return await JSONResponse(await run_in_threadpool(_usage_view), headers={"Cache-Control": "no-store"})(scope, receive, send)
+        if request.method == "POST" and path == "/board/api/usage/refresh":  # ── 額度 ── 「請立刻收」：設旗標，電腦端每分鐘來拿
+            if not request.headers.get("origin"):  # 一定要是公告欄頁面自己送的
+                return await Response("bad origin", status_code=403)(scope, receive, send)
+            if len(await request.body()) > 1024:
+                return await Response("too large", status_code=413)(scope, receive, send)
+            if _usage is None:
+                return await JSONResponse({"ok": False, "error": "額度頁沒有啟用"}, status_code=503)(scope, receive, send)
+            result = await run_in_threadpool(_usage.refresh_request, "user")
+            headers = {"Cache-Control": "no-store"}
+            if not result.get("ok"):
+                headers["Retry-After"] = str(result.get("retry_after") or 60)
+            return await JSONResponse(result, status_code=200 if result.get("ok") else 429, headers=headers)(scope, receive, send)
+        if request.method == "POST" and path == "/board/api/usage/settings":  # ── 額度 ── Codex 用量門檻滑桿：存伺服器，AI 照它提醒
+            if not request.headers.get("origin"):  # 一定要是公告欄頁面自己送的（別站的 Origin 前面已經擋掉）
+                return await Response("bad origin", status_code=403)(scope, receive, send)
+            body = await request.body()
+            if len(body) > 1024:
+                return await Response("too large", status_code=413)(scope, receive, send)
+            if _usage is None:
+                return await JSONResponse({"ok": False, "error": "額度頁沒有啟用"}, status_code=503)(scope, receive, send)
+            try:
+                form = json.loads(body.decode("utf-8") or "{}")
+            except (ValueError, UnicodeDecodeError):
+                form = None  # 交給 settings_set 回 400（也算一次限次）
+            result = await run_in_threadpool(_usage.settings_set, form, "user")
+            status = 200 if result.get("ok") else int(result.pop("status", 400))
+            result.pop("status", None)
+            headers = {"Cache-Control": "no-store"}
+            if status == 429:
+                headers["Retry-After"] = str(result.get("retry_after") or 60)
+            return await JSONResponse(result, status_code=status, headers=headers)(scope, receive, send)
+        if request.method == "GET" and path == "/board/api/monitor/series":  # ── 監控 ──
+            data = await run_in_threadpool(_mon_series, request.query_params.get("range", "24h"))
+            return await JSONResponse(data, headers={"Cache-Control": "no-store"})(scope, receive, send)
         if request.method == "GET" and path.startswith("/board/api/review/"):
             data = await run_in_threadpool(_review_get, path[len("/board/api/review/"):])
             return await JSONResponse(data, headers={"Cache-Control": "no-store"})(scope, receive, send)
@@ -3852,7 +4287,19 @@ async def board_app(scope, receive, send):
             return await HTMLResponse(_rev_guard(page, "legacy"), headers={"Cache-Control": "no-store"})(scope, receive, send)
         if request.method == "GET" and path in ("/board/memory", "/board/preview/memory"):
             which = "preview" if path == "/board/preview/memory" else "stable"
-            page = await run_in_threadpool(_memory_html, which == "preview")
+            page = await run_in_threadpool(_memory_html, which == "preview", False, request.query_params.get("rt_shell") == "1")
+            return await HTMLResponse(_rev_guard(page, which), headers={"Cache-Control": "no-store"})(scope, receive, send)
+        if request.method == "GET" and path in ("/board/monitor", "/board/preview/monitor"):  # ── 監控 ──
+            which = "preview" if path == "/board/preview/monitor" else "stable"
+            page = await run_in_threadpool(_ui_html, which, "monitor.html")
+            if page is None:
+                return await Response("還沒有監控頁" + ("預覽版" if which == "preview" else "正式版"), status_code=404)(scope, receive, send)
+            return await HTMLResponse(_rev_guard(page, which), headers={"Cache-Control": "no-store"})(scope, receive, send)
+        if request.method == "GET" and path in ("/board/usage", "/board/preview/usage"):  # ── 額度 ──
+            which = "preview" if path == "/board/preview/usage" else "stable"
+            page = await run_in_threadpool(_ui_html, which, "usage.html")
+            if page is None:
+                return await Response("還沒有額度頁" + ("預覽版" if which == "preview" else "正式版"), status_code=404)(scope, receive, send)
             return await HTMLResponse(_rev_guard(page, which), headers={"Cache-Control": "no-store"})(scope, receive, send)
     except Exception as e:  # 顯示給使用者看的錯誤，不含金鑰
         if wants_json or request.method == "POST":
@@ -3868,10 +4315,76 @@ async def skill_bundle_app(scope, receive, send):
         d = _skill_dir(name)
     except ValueError as e:
         return await JSONResponse({"error": str(e)}, status_code=404)(scope, receive, send)
+    data = await run_in_threadpool(_tar_dir, d, name)  # 打包是同步 I/O，不在迴圈上做
+    return await Response(data, media_type="application/gzip")(scope, receive, send)
+
+
+def _tar_dir(d: str, name: str) -> bytes:
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as tf:
         tf.add(d, arcname=name)
-    return await Response(buf.getvalue(), media_type="application/gzip")(scope, receive, send)
+    return buf.getvalue()
+
+
+def _read_bytes(path: str) -> bytes:
+    with open(path, "rb") as f:
+        return f.read()
+
+
+HEALTH_PING_S = float(os.environ.get("RT_HEALTH_PING_S", "5") or 5)
+_HEALTH_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="rt-health")
+_HEALTH_LOCK = threading.Lock()
+_health_future = None
+_health_waiters = {}
+
+
+def _health_deliver(waiting, answer):
+    if not waiting.done():
+        waiting.set_result(answer)
+
+
+def _health_finished(future):
+    try:
+        answer = bool(future.result()), ""
+    except Exception as e:
+        answer = False, f"ping 出錯：{type(e).__name__}"
+    with _HEALTH_LOCK:
+        waiters = _health_waiters.pop(future, ())
+    for loop, waiting in waiters:
+        with contextlib.suppress(RuntimeError):  # 該等待者的事件迴圈可能已關閉。
+            loop.call_soon_threadsafe(_health_deliver, waiting, answer)
+
+
+async def _store_ping():
+    """同時只留一個底層 ping；等待逾時不取消共用工作，也不增加排隊。
+
+    獨立單條執行緒避免卡住的 ping 占滿其他工作的 executor。
+    若儲存層一直不回來，後續檢查仍回逾時；本函式不強制終止該呼叫。
+    """
+    global _health_future
+    loop = asyncio.get_running_loop()
+    waiting = loop.create_future()
+    future = None
+    try:
+        with _HEALTH_LOCK:
+            started = False
+            if _health_future is None or _health_future.done():
+                _health_future = _HEALTH_POOL.submit(STORE.ping)
+                started = True
+            future = _health_future
+            _health_waiters.setdefault(future, set()).add((loop, waiting))
+        if started:
+            # 每個底層工作只掛一次；不能讓逾時請求的回呼無限累積。
+            future.add_done_callback(_health_finished)
+        return await asyncio.wait_for(waiting, HEALTH_PING_S)
+    except asyncio.TimeoutError:
+        return False, f"ping 超過 {HEALTH_PING_S:g} 秒沒回"
+    except Exception as e:
+        return False, f"ping 出錯：{type(e).__name__}"
+    finally:
+        with _HEALTH_LOCK:
+            if future in _health_waiters:
+                _health_waiters[future].discard((loop, waiting))
 
 
 SECURITY_HEADERS = (
@@ -3922,8 +4435,12 @@ class AuthMiddleware:
         if scope["path"] == "/board" or scope["path"].startswith("/board/"):
             return await board_app(scope, receive, send)
         if scope["path"] == "/health":
-            return await JSONResponse({"ok": True, "agents": sorted(set(TOKENS.values())),
-                                       "store": STORE.name, "store_ok": STORE.ping()})(scope, receive, send)
+            store_ok, note = await _store_ping()
+            body = {"ok": True, "agents": sorted(set(TOKENS.values())), "store": STORE.name, "store_ok": store_ok,
+                    "list_cache": _list_cache_stats(), "tool_threads": _tool_pool_stats()}
+            if note:
+                body["store_note"] = note
+            return await JSONResponse(body)(scope, receive, send)
         auth = dict(scope["headers"]).get(b"authorization", b"").decode()
         agent = _agent_for(auth)
         if not agent:
@@ -3931,7 +4448,8 @@ class AuthMiddleware:
         if scope["path"] in ("/skills/manifest.json", "/skills/sync.py"):
             f = "manifest.json" if scope["path"].endswith(".json") else "tools/roundtable_skills_sync.py"
             mt = "application/json" if f.endswith(".json") else "text/x-python"
-            return await Response(open(os.path.join(SKILLS_ROOT, f), "rb").read(), media_type=mt)(scope, receive, send)
+            data = await run_in_threadpool(_read_bytes, os.path.join(SKILLS_ROOT, f))
+            return await Response(data, media_type=mt)(scope, receive, send)
         if scope["path"].startswith("/files/"):
             try:
                 p = _file_path(scope["path"][len("/files/"):])
@@ -3948,10 +4466,171 @@ class AuthMiddleware:
 
 
 from experience_store import register as register_experience_tools, validate as validate_experience
-EXPERIENCE = register_experience_tools(mcp, STORE, current_agent.get, _write_lock)  # 記憶頁的經歷區分頁也用這一份
+class _ExpToolProxy:
+    """登記經歷區工具時包一層：experience_add 新增成功記一筆寫入紀錄、回傳多 week_count，可帶 session；
+    其他工具照原樣登記（experience_store.py 不用改）。"""
+
+    def __init__(self, real):
+        self._real = real
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+    def tool(self, *a, **k):
+        reg = self._real.tool(*a, **k)
+
+        def deco(fn):
+            if getattr(fn, "__name__", "") != "experience_add":
+                return reg(fn)
+
+            def experience_add(record: dict, session: str = "") -> dict:
+                sess = _label(session)
+                out = fn(record)
+                if isinstance(out, dict) and out.get("created"):
+                    out = dict(out)
+                    out["week_count"] = _wlog("add", "experience", "user-profile", str(out.get("memory_id") or ""),
+                                              len(str((record or {}).get("content") or "")), sess)
+                return out
+
+            experience_add.__doc__ = ((fn.__doc__ or "").rstrip()
+                                      + "\n    Claude 的對話串請帶 session=串名；新增成功時回傳的 week_count 是你這個身分本週第幾筆寫入。")
+            reg(experience_add)
+            return experience_add
+
+        return deco
+
+
+EXPERIENCE = register_experience_tools(_ExpToolProxy(mcp), STORE, current_agent.get, _write_lock)  # 記憶頁的經歷區分頁也用這一份
+
+
+# ── 監控 ──
+# 運作監控（監控頁 /board/monitor 的資料來源）。程式都在 monitor.py，這裡只掛鉤：
+# 1. 包住 FastMCP 的工具呼叫計時（每次呼叫只多一筆 append 進記憶體佇列，寫檔、彙總都在背景執行緒）；
+# 2. 最外層 ASGI 包一層，記來源 IP（分辨等信器輪詢）、數 /mcp 回錯的次數；
+# 3. 每 5 分鐘從 STORE 取兩區記憶總數、收件匣堆積、認領數；
+# 4. 每晚考題用正式的 memory_search 跑 monitor_eval.run_nightly。
+# 任何一步失敗只印一行 log、監控停用，服務照常起、工具呼叫照常。
+try:
+    import monitor as _monitor
+    _monitor.install(mcp._tool_manager, current_agent.get)
+except Exception as e:
+    _monitor = None
+    print(f"[監控] 掛鉤失敗，監控停用：{type(e).__name__}: {e}", flush=True)
+
+
+def _mon_series(rng: str) -> dict:
+    if _monitor is None:
+        raise ValueError("監控沒有啟用")
+    return _monitor.series(rng)
+
+
+def _mon_snapshot() -> dict:
+    """每 5 分鐘存一次：兩區記憶總數、收件匣堆積（沒人讀、要動手）、認領數（含過期）。只走 STORE，不直接打 Mem0。"""
+    totals = {USER_ID: STORE.count(USER_ID), OPS_UID: STORE.count(OPS_UID)}
+    unread = needs = claims = stale = 0
+    for m in _list_uid(OPS_UID):
+        md = m.get("metadata") or {}
+        kind = md.get("type")
+        if kind == "claim":
+            claims += 1
+            if _age_hours(m) > CLAIM_TTL_HOURS:
+                stale += 1
+        elif kind == "message" and not _is_test(m) and not _closed(m):
+            if not _readers(m):
+                unread += 1
+            if _is_todo(m):
+                needs += 1
+    return {"totals": totals, "inbox": {"unread": unread, "needs_action": needs, "claims": claims, "stale_claims": stale}}
+
+
+def _mon_eval_search(query: str, user_id: str, limit: int) -> list:
+    """每晚考題的搜尋：直接呼叫 memory_search（FastMCP 回傳的就是原函式），和人用的是同一條路。題庫全在 USER_ID 區。"""
+    if user_id != USER_ID:
+        raise ValueError(f"題庫的區 {user_id!r} 不是 {USER_ID!r}")
+    return memory_search(query, limit=limit)
+
+
+def _mon_eval_setup() -> dict:
+    """考題開跑前在考題執行緒裡呼叫一次：整輪算成 monitor-eval 這個身分（統計時歸機器、不算人用），
+    並列一次整區拿現存 id 集合，答案已刪的題目不計分。"""
+    current_agent.set("monitor-eval")
+    return {"existing_ids": {m.get("id") for m in _list_uid(USER_ID)},
+            "log": lambda s: print(f"[監控][考題] {s}", flush=True)}
+
+
+# ── 額度 ──
+# 額度頁（/board/usage）：電腦上的收集程式和讀到 get_usage 的串送快照進來，程式在 usage.py，存 MONITOR_DIR/usage.db。
+try:
+    import usage as _usage
+except Exception as e:
+    _usage = None
+    print(f"[額度] 載入失敗，額度頁停用：{type(e).__name__}: {e}", flush=True)
+
+
+def _usage_view() -> dict:
+    if _usage is None:
+        raise ValueError("額度頁沒有啟用")
+    return _usage.view()
+
+
+@mcp.tool()
+def usage_report(report: dict) -> dict:
+    """額度頁的資料入口，給電腦上的收集程式和剛讀過 get_usage 的串用，平常做事不用呼叫。
+    report = {"source": "claude-session", "providers": [{"id": "claude", "windows": [{"key": "weekly", "label": "每週・全部模型",
+    "used": 93, "resets_at": "2026-10-27T13:59:59Z", "minutes": 10080}]}]}；used 是已用百分比。
+    Claude 的三個窗 key 用 five_hour／weekly／weekly_fable，minutes 是 300／10080／10080。沒帶的欄位沿用上次。
+    hook 連線健康，只送 ping：{"source": "claude-hook", "providers": [{"id": "claude", "hook": {"name": "Stop hook"}}]}（ts 秒可省，省了用伺服器時間）。
+    近 15 分鐘 token：provider 加 "tok15": {"tokens": 1490000, "ts": 秒, "minutes": 15}。只帶 hook／tok15 的回報不改「多久前更新」、不清舊額度。
+    2.18 起另收：m5（[[UTC 時間, token], ...] 每 5 分鐘一格）、credits（{balance, has_credits, unlimited, seen_at, changes}）、
+    hook 裡的 error（存成 hook_error＋hook_error_ts）和 version（Codex 版本，依誰送的記到 codex-laptop／codex-max／codex-mini，
+    附伺服器時間的 hook_last_seen）；沒帶就沿用上次，/board/api/usage 原樣回傳。
+    hook 裡的 ms（掛勾這次自己跑了幾毫秒，整數）：依機器存成 hook_ms 清單，最近 30 筆，附在 codex_machines 裡。"""
+    if _usage is None:
+        return {"error": "額度頁沒有啟用"}
+    return _usage.put(report, current_agent.get() or "")
+
+
+@mcp.tool()
+def usage_refresh_poll() -> dict:
+    """額度頁「請立刻收」旗標，只給電腦上的收集程式（collect_usage.py --check-flag，每分鐘一次）用，平常做事不要呼叫：
+    讀一次旗標就清掉，別人呼叫會把使用者按的「更新」吃掉。
+    有人在額度頁按了「更新」回 {"pending": true, "requested_at": ISO}；沒有回 {"pending": false}。"""
+    if _usage is None:
+        return {"error": "額度頁沒有啟用", "pending": False}
+    return _usage.refresh_poll(current_agent.get() or "")
+
+
+# 客服訊息分類（選配）：轉呼叫 LAYA_URL 的 /predict；沒設 LAYA_URL 就回錯誤
+LAYA_URL = os.environ.get("LAYA_URL", "").rstrip("/")
+
+
+@mcp.tool()
+def laya_classify(text: str) -> dict:
+    """用 Laya（LAYA_URL 指向的分類模型服務）判斷一則客服訊息該交給哪個部門：帳務／技術／業務／其他。
+    text 是訊息原文，1～2000 字。回傳 Laya 的原始結果；服務沒回應時回 {"error": ...}，不會丟例外。"""
+    if not LAYA_URL:
+        return {"error": "沒有設定 LAYA_URL，這個工具沒有啟用"}
+    try:
+        r = httpx.post(LAYA_URL + "/predict", json={"text": text}, timeout=15)
+        data = r.json()
+    except Exception as e:
+        return {"error": f"Laya 沒回應：{type(e).__name__}: {str(e)[:160]}"}
+    if r.status_code != 200:
+        return {"error": f"Laya 回 HTTP {r.status_code}", "detail": data}
+    return data
+
+
+def _mon_start():
+    if _monitor is None or os.environ.get("MONITOR_ON", "1") == "0":
+        return
+    _monitor.start(search_fn=_mon_eval_search, eval_setup_fn=_mon_eval_setup, snapshot_fn=_mon_snapshot,
+                   emb_url=EMB_URL, emb_model=EMB_MODEL, mem0_url=getattr(STORE, "url", "") or "",
+                   pg_dsn=os.environ.get("DATABASE_URL", ""))
 
 
 app = AuthMiddleware(mcp.streamable_http_app())
+if _monitor is not None:
+    app = _monitor.wrap_asgi(app)  # ── 監控 ── 記來源 IP、數 /mcp 的錯誤回應；失敗一律放行
 
 if __name__ == "__main__":
     import uvicorn
@@ -3959,4 +4638,5 @@ if __name__ == "__main__":
     STORE.start()  # pg：等資料庫、建表；mem0：不用做事
     if MSG_ARCHIVE_ON:
         threading.Thread(target=_archive_loop, name="msg-archive", daemon=True).start()
+    _mon_start()  # ── 監控 ── 背景執行緒；起不來只印 log
     uvicorn.run(app, host="0.0.0.0", port=8890)

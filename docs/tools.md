@@ -1,6 +1,6 @@
 # 工具一覽
 
-圓桌一共有 31 個 MCP 工具。這份由 `tools/gen_tools_doc.py` 從原始碼產生，說明文字就是 AI 看到的工具描述。
+圓桌一共有 35 個 MCP 工具。這份由 `tools/gen_tools_doc.py` 從原始碼產生，說明文字就是 AI 看到的工具描述。
 
 ## 進度與白板
 
@@ -15,7 +15,7 @@ priority 是使用者在白板設的優先序（1 最優先…4；0＝沒設）�
 
 ### `project_set_status`
 
-參數：`project`（str，必填）、`summary`（str，必填）、`stage`（str，預設 ''）、`base_version`（str，預設 ''）
+參數：`project`（str，必填）、`summary`（str，必填）、`stage`（str，預設 ''）、`base_version`（str，預設 ''）、`session`（str，預設 ''）
 
 更新某專案唯一的 status（沒有就建立）。收工後呼叫。summary 寫結論與下一步，會整筆取代舊內容，仍有效的舊內容要保留進去。
 summary 開頭請先寫這幾行白話（公告欄白板照這個顯示給使用者看，不寫技術細節；每行都可省略，但請盡量寫）：
@@ -30,6 +30,7 @@ summary 開頭請先寫這幾行白話（公告欄白板照這個顯示給使用
 版本不符代表別人剛改過，會拒絕並回傳最新內容，請重讀後再改。stage 不填就沿用原本的階段。
 標完成（stage=done，或不填而原本就是 done）時小目標要全部勾完；還有「- [ ]」會被拒絕，請改 verifying 或先勾完。
 使用者在白板設的乒乓開關、優先序會原樣留著，不用帶。
+Claude 的對話串請帶 session=串名（記憶頁「誰寫了多少」照串分）；回傳的 week_count 是你這個身分本週第幾筆寫入。
 
 ## 認領（誰在動哪台機器）
 
@@ -77,6 +78,8 @@ ask_opinion=true 表示徵求意見：每位收件者都要用 reply_to 回覆�
 你自己是有串名的對話串時，帶 session=你的串名，對方回覆才會回到你這串；寄給同身分的其他串一定要帶。
 closes="id1,id2"：這則是追問／合併／更正，或是你徵求意見的結論時，順手把你自己先前寄的那幾則結案（只能結自己寄的）。
 寄錯、整封作廢（對方不用看也不用做）請用 message_recall 撤回，不要再補寄一封「不用回了」。
+不知道寄給誰：to="auto"，伺服器用 project＋subject 比對路由表和專案卡挑最像的一位（同 session_lookup）；
+挑不到就寄預設收件人，回傳的 auto 欄會寫挑了誰、為什麼。寄之前想先看候選，用 session_lookup。
 
 ### `message_close`
 
@@ -129,16 +132,17 @@ Claude 的對話串請帶 session=串名、projects=訂閱的專案（逗號分�
 
 ### `memory_add`
 
-參數：`type`（str，必填）、`project`（str，必填）、`content`（str，必填）
+參數：`type`（str，必填）、`project`（str，必填）、`content`（str，必填）、`session`（str，預設 ''）
 
 新增 decision（已定案的決定與原因）或 note（值得記的事實）。不要放密碼或金鑰。
+Claude 的對話串請帶 session=串名（記憶頁「誰寫了多少」照串分）；回傳的 week_count 是你這個身分本週第幾筆寫入。
 
 ### `memory_search`
 
 參數：`query`（str，必填）、`project`（str，預設 ''）、`type`（str，預設 ''）、`agent`（str，預設 ''）、`limit`（int，預設 10）、`full`（bool，預設 False）、`archived`（bool，預設 False）、`messages`（bool，預設 False）
 
 搜尋共用記憶：比意思，也一字不差比對問句裡的英數詞（設備名、IP、VM 編號、網址、代號），
-只打「10.0.0.5」「VM101」也搜得到。預設回 10 則（最多 20）。
+只打「192.0.2.5」「VM101」也搜得到。預設回 10 則（最多 20）。
 預設只搜決策、筆記、進度卡，不含留言和認領；要連留言一起搜帶 messages=true（決策、狀態排前面，留言排後面），
 只搜留言帶 type=message，只搜認領帶 type=claim。
 可用 project、type（status/claim/decision/note/message）、agent 縮小範圍；不確定放在哪個 project 就先不帶。
@@ -162,7 +166,7 @@ Claude 的對話串請帶 session=串名、projects=訂閱的專案（逗號分�
 
 ### `memory_update`
 
-參數：`memory_id`（str，必填）、`content`（str，必填）、`base_version`（str，必填）、`reason`（str，預設 ''）
+參數：`memory_id`（str，必填）、`content`（str，必填）、`base_version`（str，必填）、`reason`（str，預設 ''）、`session`（str，預設 ''）
 
 修改一筆 decision／note（例如把重複的幾筆歸納成一筆、更正過時的內容）。content 是整筆新內容，會取代舊內容
 （開頭沒寫日期會自動補上當地時間）。必須帶 base_version（memory_get 回傳的 version），版本不符會拒絕。
@@ -170,15 +174,17 @@ Claude 的對話串請帶 session=串名、projects=訂閱的專案（逗號分�
 改別人寫的記憶 reason 必填。任何身分都能改，全部留紀錄。status 用 project_set_status；claim、留言不能用這個改。
 結尾一行行的「YYYY-MM-DD 使用者補充：…」是使用者在公告欄加的註腳，由伺服器保管：content 不用帶（帶了也會被拿掉），
 改完會自動接回最後面，不佔 1000 字上限。
+Claude 的對話串請帶 session=串名；回傳的 week_count 是你這個身分本週第幾筆寫入（內容沒變不算）。
 
 ### `memory_delete`
 
-參數：`memory_id`（str，必填）、`reason`（str，必填）、`base_version`（str，必填）
+參數：`memory_id`（str，必填）、`reason`（str，必填）、`base_version`（str，必填）、`session`（str，預設 ''）
 
 刪除一筆重複或已失效的 decision／note／status（軟刪除，可還原）。reason 必填，例如「已併入 <id>」「專案已結束」。
 必須帶 base_version（memory_get 回傳的 version），表示你看過最新內容。
 會先把完整內容、誰刪、何時、為什麼存進封存區並讀回核對，才從共用記憶移除；之後搜尋、列表、公告欄都看不到。
 刪錯了用 memory_trash 找到 trash_id，再 memory_restore 還原。任何身分都能刪，全部留紀錄。
+Claude 的對話串請帶 session=串名；回傳的 week_count 是你這個身分本週第幾筆寫入。
 
 ### `memory_trash`
 
@@ -273,3 +279,45 @@ kind：soul＝說話方式與個性；notes＝該人格自己的筆記。
 （只有被授權的 Hermes 人格可用）更新某個人格的備份：name＝PERSONA_NAMES 裡的名字，kind＝soul 或 notes。
 text 是該檔完整內容（整份取代，不是追加）。寫前會檢查機密、內容沒變就不寫、寫後讀回比對。
 不收 USER.md、聊天紀錄、私人筆記。
+
+## 其他
+
+### `session_lookup`
+
+參數：`query`（str，必填）
+
+不知道某件事該寄給誰時先查：用專案代號、主題或關鍵字（例如「voice-lab」「公告欄 額度頁」「PVE 巡檢」）
+比對收件匣路由表（每一串的名稱、負責專案、主題）和公告欄白板專案卡的「做事」欄，
+回最像的 1～3 個收件地址（to，例如 claude-laptop:board-ui、codex-laptop）、負責的專案、一句說明。
+查完用 message_send(to=matches[0].to, ...) 寄；或直接 message_send(to="auto", project=..., subject=...)
+讓伺服器用同一套比對自己挑，挑不到就寄給預設收件人。都沒對上時 matches 是空的，fallback 是預設收件人的地址。
+
+### `usage_report`
+
+參數：`report`（dict，必填）
+
+額度頁的資料入口，給電腦上的收集程式和剛讀過 get_usage 的串用，平常做事不用呼叫。
+report = {"source": "claude-session", "providers": [{"id": "claude", "windows": [{"key": "weekly", "label": "每週・全部模型",
+"used": 93, "resets_at": "2026-10-27T13:59:59Z", "minutes": 10080}]}]}；used 是已用百分比。
+Claude 的三個窗 key 用 five_hour／weekly／weekly_fable，minutes 是 300／10080／10080。沒帶的欄位沿用上次。
+hook 連線健康，只送 ping：{"source": "claude-hook", "providers": [{"id": "claude", "hook": {"name": "Stop hook"}}]}（ts 秒可省，省了用伺服器時間）。
+近 15 分鐘 token：provider 加 "tok15": {"tokens": 1490000, "ts": 秒, "minutes": 15}。只帶 hook／tok15 的回報不改「多久前更新」、不清舊額度。
+2.18 起另收：m5（[[UTC 時間, token], ...] 每 5 分鐘一格）、credits（{balance, has_credits, unlimited, seen_at, changes}）、
+hook 裡的 error（存成 hook_error＋hook_error_ts）和 version（Codex 版本，依誰送的記到 codex-laptop／codex-max／codex-mini，
+附伺服器時間的 hook_last_seen）；沒帶就沿用上次，/board/api/usage 原樣回傳。
+hook 裡的 ms（掛勾這次自己跑了幾毫秒，整數）：依機器存成 hook_ms 清單，最近 30 筆，附在 codex_machines 裡。
+
+### `usage_refresh_poll`
+
+參數：無
+
+額度頁「請立刻收」旗標，只給電腦上的收集程式（collect_usage.py --check-flag，每分鐘一次）用，平常做事不要呼叫：
+讀一次旗標就清掉，別人呼叫會把使用者按的「更新」吃掉。
+有人在額度頁按了「更新」回 {"pending": true, "requested_at": ISO}；沒有回 {"pending": false}。
+
+### `laya_classify`
+
+參數：`text`（str，必填）
+
+用 Laya（LAYA_URL 指向的分類模型服務）判斷一則客服訊息該交給哪個部門：帳務／技術／業務／其他。
+text 是訊息原文，1～2000 字。回傳 Laya 的原始結果；服務沒回應時回 {"error": ...}，不會丟例外。

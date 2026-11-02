@@ -1,0 +1,880 @@
+<!doctype html><html lang="zh-Hant"><head><script src="/board/api/ui-runtime?v=2.22.3"></script><script>window.rtPageHidden=window.rtPageHidden||(()=>document.hidden)</script><meta charset="utf-8"><script>window.RT_TZO=+((document.querySelector('meta[name="rt-tz-offset"]')||{}).content)||0;window.RT_TZMS=window.RT_TZO*36e5;window.RT_TZS=(()=>{const o=window.RT_TZO,a=Math.abs(o);return(o<0?'-':'+')+String(Math.floor(a)).padStart(2,'0')+':'+String(Math.round(a%1*60)).padStart(2,'0')})();window.RT_TZ=(()=>{const o=window.RT_TZO;return Number.isInteger(o)&&o?'Etc/GMT'+(o>0?'-':'+')+Math.abs(o):'UTC'})()</script><meta name="ui-build" content="3a8e001"><meta name="rt-preload" content="monitor,usage"><meta name="monitor-version" content="2.22.3"><meta name="monitor-revision" content="2"><meta name="viewport" content="width=device-width,initial-scale=1">
+<script>/* ── 超紅線門檻：要調就改這裡，改完重放預覽 ──
+   圖上畫紅色虛線、超過的點標紅、卡片標題旁寫「超線幾次」、頁面最下面的異常紀錄都照這幾個數字算。
+   程式和資料裡原本只有「主節點接住比例低於 99% 變橘色」這一條（今天的數字那張卡），接住比例沿用 99%；其他是先定的合理預設。 */
+window.MON_LIMITS={
+  tool_p95_ms:1500,     // 工具呼叫 p95 超過 1,500 毫秒算超線（工具與搜尋耗時那張圖的「工具 p95」）
+  search_p95_ms:1500,   // 搜尋 p95 超過 1,500 毫秒算超線（同一張圖的「搜尋 p95」）
+  emb_p95_ms:300,       // EMB 反應時間 p95 超過 300 毫秒算超線
+  primary_share_min:0.99 // 主節點接住比例低於 99% 算超線（沿用今天的數字卡原本的標準）
+};</script><title>圓桌監控</title><style>
+:root{color-scheme:light dark;--bg:#f2f3f5;--side:#e3e5e8;--card:#fff;--tx:#161b26;--mut:#5b6577;--bd:#d4d8df;--ac:#2456d6;--hover:rgba(0,0,0,.04);--ok:#0f7a4b;--pv:#7a3fc4;--warn:#c2410c;--grid:#e6e8ec;--okbg:#e6f4ec;--warnbg:#fff3ea;
+--c-claude:#2456d6;--c-codex:#0f7a4b;--c-hermes:#7a3fc4;--c-user:#b45309;--c-other:#5b6577;--c-ping:#0e7490;--hot:#c2410c;--bad:#c62828;--badbg:#fdecec;
+/* 2.17.0 狀態色階（四頁共用規格）：好／注意／警告／壞／不明。-tx 是寫字用的那一階（深色底上要 ≥ 4.5:1） */
+--st-ok:#1a7f37;--st-warn:#9a6700;--st-hot:#bc4c00;--st-bad:#cf222e;--st-unk:#6e7781;--st-ok-tx:#1a7f37;--st-warn-tx:#9a6700;--st-hot-tx:#bc4c00;--st-bad-tx:#cf222e;--st-unk-tx:#5b6577}
+@media(prefers-color-scheme:dark){:root{--bg:#1e2128;--side:#16181d;--card:#262a33;--tx:#e8ebf1;--mut:#a0a9ba;--bd:#343a46;--ac:#7aa2ff;--hover:rgba(255,255,255,.04);--ok:#4fd39b;--pv:#c39bff;--warn:#ff9a5c;--grid:#343a46;--okbg:#1d3a2c;--warnbg:#3a2418;
+--c-claude:#7aa2ff;--c-codex:#4fd39b;--c-hermes:#c39bff;--c-user:#ffb454;--c-other:#a0a9ba;--c-ping:#5ad1e6;--hot:#ff9a5c;--bad:#ff6b6b;--badbg:#3a1f22;
+--st-ok:#3fb950;--st-warn:#d29922;--st-hot:#db6d28;--st-bad:#f85149;--st-unk:#8b949e;--st-ok-tx:#3fb950;--st-warn-tx:#d29922;--st-hot-tx:#f0883e;--st-bad-tx:#ff7b72;--st-unk-tx:#a0a9ba}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15.5px/1.6 system-ui,"Segoe UI","Microsoft JhengHei",sans-serif}
+a{color:var(--ac)}button,input,select{font:inherit;color:inherit}button{cursor:pointer}button:disabled{cursor:default;opacity:.5}
+.preview{padding:8px 16px;background:#7a3fc4;color:#fff;display:flex;flex-wrap:wrap;gap:12px;align-items:center;font-size:13px}.preview a{color:inherit}
+.app{display:grid;grid-template-columns:250px minmax(0,1fr);min-height:calc(100vh - 42px)}
+.side{min-width:0;background:var(--side);border-right:1px solid var(--bd);padding:14px 10px}
+.side nav{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:24px}.side nav a{flex:1 1 0;min-width:0;white-space:nowrap;text-align:center;font-size:14px;text-decoration:none;padding:6px 8px;border-radius:6px;border:1px solid var(--bd);color:var(--tx)}.side nav .on{background:var(--ac);border-color:var(--ac);color:var(--on-ac)}
+.side h2{font-size:12px;color:var(--mut);letter-spacing:.08em;margin:12px 8px}
+.jump a{display:block;padding:6px 10px;margin:2px 0;border-radius:8px;color:var(--tx);text-decoration:none;font-size:14px}.jump a:hover{background:var(--hover)}
+.upd{padding:4px 10px;font-size:13px;color:var(--mut);line-height:1.5}.upd b{color:var(--tx);font-weight:600}
+main{min-width:0;padding:18px 24px 48px;max-width:1240px;width:100%;margin:0 auto}
+.heading{display:flex;flex-wrap:wrap;align-items:center;gap:12px}.heading h1{font-size:22px;margin:0;margin-right:auto}
+.heading a.acct,.heading form button{font:inherit;font-size:14px;padding:4px 10px;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--tx);text-decoration:none}.heading form{margin:0}
+.range{display:inline-flex;border:1px solid var(--bd);border-radius:6px;overflow:hidden;background:var(--card)}
+.range button{border:0;background:none;padding:5px 14px;font-size:14px;color:var(--mut);border-right:1px solid var(--bd)}.range button:last-child{border-right:0}
+.range button:hover{background:var(--hover);color:var(--tx)}.range button[aria-pressed="true"]{background:var(--ac);color:var(--on-ac)}
+.summary{font-size:13px;color:var(--mut);margin:2px 0 16px}.summary b{color:var(--tx);font-weight:600;font-variant-numeric:tabular-nums}
+.errbox{margin:0 0 14px;padding:10px 14px;border-radius:8px;background:var(--warnbg);color:var(--warn);font-size:14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.errbox button{border:1px solid currentColor;border-radius:6px;background:none;padding:2px 12px;font-size:13.5px;color:inherit}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:10px;margin-bottom:14px}
+.tile{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px 14px 10px;min-width:0}
+.tile .lb{font-size:12.5px;color:var(--mut);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile .v{font-size:28px;line-height:1.2;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.01em}.tile .v small{font-size:14px;font-weight:500;color:var(--mut);margin-left:3px}
+.tile .v.warn{color:var(--warn)}.tile .v.ok{color:var(--ok)}
+.tile .sub{font-size:12.5px;color:var(--mut);margin-top:4px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.nodes{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;padding:10px 14px;background:var(--card);border:1px solid var(--bd);border-radius:10px;margin-bottom:18px;font-size:14px}
+.nodes .t{color:var(--mut);font-size:13px;margin-right:4px}
+.node{display:inline-flex;align-items:center;gap:7px;white-space:nowrap}.node i{width:10px;height:10px;border-radius:50%;background:var(--ok);flex:none}.node.down i{background:var(--hot)}.node.unknown i{background:var(--mut)}
+.node .nm{display:inline-flex;flex-direction:column;line-height:1.25}.node em{font-style:normal;font-size:12px;color:var(--mut);background:var(--bd);border-radius:4px;padding:0 5px;margin-top:2px;width:fit-content;font-variant-numeric:tabular-nums}
+.node small{color:var(--mut);font-size:12px;font-variant-numeric:tabular-nums}.node.down{color:var(--hot);font-weight:600}
+.charts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.chart{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px 14px 8px;min-width:0}.chart.wide{grid-column:1/-1}
+.chart header{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin-bottom:6px}.chart h2{font-size:15.5px;margin:0;font-weight:700}.chart .sub{font-size:12.5px;color:var(--mut)}
+.chart .seg{margin-left:auto;display:inline-flex;border:1px solid var(--bd);border-radius:6px;overflow:hidden}.seg button{border:0;background:none;padding:2px 10px;font-size:13px;color:var(--mut);border-right:1px solid var(--bd)}.seg button:last-child{border-right:0}.seg button[aria-pressed="true"]{background:var(--ac);color:var(--on-ac)}.seg button:hover{color:var(--tx)}
+.plot{min-height:220px;position:relative}.plot .none{position:absolute;inset:0;display:grid;place-items:center;color:var(--mut);font-size:14px}
+/* uPlot 的圖例改成跟頁面同一套字與顏色 */
+.uplot{font-family:inherit;width:auto!important}.u-legend{font-size:12.5px;text-align:left;margin:2px 0 0;color:var(--mut)}.u-legend .u-value{color:var(--tx);font-variant-numeric:tabular-nums;min-width:4ch}.u-legend th{font-weight:500}.u-inline tr{margin-right:14px}.u-legend .u-marker{border-radius:2px;width:12px;height:3px!important}.u-series>*{padding:2px 3px}
+.u-hz .u-cursor-x{border-right:1px dashed var(--mut)}.u-hz .u-cursor-y{border-bottom:1px dashed var(--mut)}.u-select{background:rgba(127,127,127,.12)}
+.releasebar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:6px 14px;background:var(--side);border-bottom:1px solid var(--bd);font-size:12.5px;color:var(--mut)}.releasebar b{font-weight:600}.releasebar .vswitch{margin-left:auto;display:inline-flex;align-items:center;min-height:30px;padding:0 12px;border:1px solid var(--ac);border-radius:6px;background:transparent;color:var(--ac);font-size:13px;font-weight:600;line-height:1.2;text-decoration:none;white-space:nowrap;cursor:pointer}.releasebar .vswitch:hover{background:color-mix(in srgb,var(--ac) 14%,transparent)}.releasebar .vswitch:focus-visible{outline:2px solid var(--ac);outline-offset:2px}.releasebar .vswitch[hidden]{display:none}@media(max-width:760px){.releasebar{padding:5px 10px;gap:6px 8px}.releasebar .vswitch{min-height:36px;padding:0 14px}}
+/* 超紅線：卡片標題旁的小紅字、最下面的異常紀錄 */
+.chart .overn{font-size:12.5px;font-weight:600;color:var(--bad)}.chart .overn:empty{display:none}
+.anom{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px 14px;margin-top:12px;min-width:0}
+.anom header{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin-bottom:8px}.anom h2{font-size:15.5px;margin:0}.anom .sub{font-size:12.5px;color:var(--mut)}
+.anom .cp{margin-left:auto;border:1px solid var(--bd);border-radius:6px;background:none;padding:3px 12px;font-size:13px;color:var(--tx);white-space:nowrap}.anom .cp:hover{background:var(--hover)}
+.anom ol{list-style:none;margin:0;padding:0}.anom li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 0;border-top:1px solid var(--bd)}.anom li:first-child{border-top:0}
+.anom .at{font-weight:600;font-variant-numeric:tabular-nums}.anom .at .tag{display:inline-block;margin-left:8px;padding:0 8px;border-radius:99px;background:var(--badbg);color:var(--bad);font-size:12px;font-weight:600;line-height:22px}
+.anom .kv{font-size:13.5px;color:var(--mut);overflow-wrap:anywhere}.anom .kv b{color:var(--tx);font-weight:600}.anom .kv .bad{color:var(--bad);font-weight:600}
+.anom li .cp{grid-column:2;grid-row:1/span 3;align-self:start;margin:0}.anom .none2{margin:4px 0;color:var(--mut);font-size:14px}
+@media(max-width:760px){.anom{padding:10px 10px}.anom li{grid-template-columns:1fr}.anom li .cp{grid-column:1;grid-row:auto;justify-self:start;min-height:36px}.anom .cp{min-height:36px}}
+/* 直軸單位：放在每張圖的左上、直軸正上方 */
+/* 考題圖：白天抽考的記號說明和誤差提醒 */
+.chart .evkey{font-size:12px;color:var(--mut);margin:6px 0 0;line-height:1.6}.chart .evkey:empty{display:none}
+.chart .evkey i{display:inline-block;width:9px;height:9px;margin:0 4px 0 0;vertical-align:-1px;background:var(--mut)}.chart .evkey i.c{border-radius:50%}.chart .evkey i.t{clip-path:polygon(50% 0,100% 100%,0 100%)}
+.chart .evkey span{margin-right:12px;white-space:nowrap}
+.chart .yu{font-size:12px;color:var(--mut);margin:0 0 2px;font-variant-numeric:tabular-nums;display:flex;flex-wrap:wrap;align-items:center;gap:2px 12px}
+/* 2.16.2 門檻說明移到圖外（使用者標註「字都糊在一起了」）：單位那行右邊，紅色點線小樣＋淡紅底，不再畫在線上 */
+.chart .yu .lim{margin-left:auto;display:inline-flex;align-items:center;gap:6px;padding:0 8px;border-radius:4px;background:var(--badbg);color:var(--bad);font-weight:600;line-height:20px;white-space:nowrap}
+.chart .yu .lim.far{background:none;color:var(--mut);font-weight:400;padding:0}
+.chart .yu .lim i{display:inline-block;width:18px;border-top:2px dotted currentColor}
+@media(max-width:760px){.chart .yu .lim{margin-left:0;white-space:normal}}
+/* 節點列：後端還沒探測的位置（灰點＋「等資料」） */
+.node.wait{color:var(--mut)}.node.wait small{font-style:normal}
+/* 時間範圍：一排按鈕＋一條可拖的總覽條，所有時間圖一起跟著換（寬螢幕捲下去也黏在上面） */
+.rstrip{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:8px 12px 6px;margin:0 0 12px}
+.rstrip .rrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}.rstrip .rnow{font-size:13px;color:var(--tx);font-variant-numeric:tabular-nums}.rstrip .rh{font-size:12px;color:var(--mut);margin-left:auto}
+.rstrip .rrst{border:1px solid var(--bd);border-radius:6px;background:none;padding:2px 10px;font-size:13px;color:var(--mut)}.rstrip .rrst:hover{color:var(--tx);background:var(--hover)}
+.rstrip .ov{position:relative;margin-top:6px;min-width:0}.rstrip .ov .uplot{width:auto!important}
+@media(min-width:761px){.rstrip{position:sticky;top:0;z-index:5;box-shadow:0 0 0 6px var(--bg)}}
+.ovl{position:absolute;inset:0;cursor:crosshair;touch-action:pan-y;user-select:none;-webkit-user-select:none}
+.ovl .sh{position:absolute;top:0;bottom:0;background:var(--bg);opacity:.7;pointer-events:none}.ovl .sh.l{left:0}.ovl .sh.r{right:0}
+.ovl .fr{position:absolute;top:0;bottom:0;border:2px solid var(--ac);border-radius:6px;cursor:grab}
+.ovl .hd{position:absolute;top:0;bottom:0;width:28px;margin-left:-14px;cursor:ew-resize}
+.ovl .hd::after{content:"";position:absolute;left:11px;top:22%;bottom:22%;width:6px;border-radius:3px;background:var(--ac)}
+.plot .u-over{cursor:crosshair}
+@media(max-width:760px){.rstrip{padding:8px 8px 6px}.rstrip .rh{display:none}.rstrip .range{display:flex;width:100%}.rstrip .range button{flex:1;padding:6px 4px;min-height:36px}}
+[hidden]{display:none!important}:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+@media(max-width:760px){.app{grid-template-columns:1fr;grid-template-rows:auto 1fr}.side{padding:8px;border-right:0;border-bottom:1px solid var(--bd)}.side nav{margin:0 0 4px}.side h2,.jump{display:none}.upd{padding:2px 4px;font-size:12px}
+main{padding:12px 10px 40px}.heading h1{font-size:19px}.heading a.acct,.heading form{display:none}.summary{margin-bottom:10px}
+.stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.tile{padding:10px 11px 8px}.tile .v{font-size:23px}.nodes{gap:4px 14px;padding:8px 10px;font-size:13.5px}
+.charts{grid-template-columns:1fr;gap:10px}.chart{padding:10px 8px 6px}.plot{min-height:190px}.chart .seg{margin-left:0;flex-basis:100%}.seg button{flex:1}.preview{padding:8px 10px}}
+.side nav a{padding:6px 2px;white-space:nowrap}
+/* ===== 2.17.0 圖像化（規格 2.17.0-圖像化規格-20261028.md：監控頁＋四頁共用） ===== */
+/* 左側欄（T2）：三頁同寬 220px、字 13px；目前段落的左色條＋淡底在共用區塊 */
+@media(min-width:761px){.app{grid-template-columns:220px minmax(0,1fr)}}
+.app .side nav.top a{font-size:13px}.app .side .jump a{font-size:13px;padding:6px 10px}
+.side .acctrow{display:flex;gap:6px;align-items:center;margin:0 0 12px;font-size:13px}.side .acctrow form{margin:0}
+.side .acctrow a,.side .acctrow button{font-size:13px;padding:4px 8px;border:0;border-radius:6px;background:none;color:var(--mut);text-decoration:none}
+.side .acctrow a:hover,.side .acctrow button:hover{background:var(--hover);color:var(--tx)}
+/* 寬螢幕放寬（M10） */
+main{max-width:1680px}
+@media(min-width:1640px){.charts{grid-template-columns:repeat(3,minmax(0,1fr))}}
+/* 字在詞的邊界換行，數字和單位不拆 */
+.tile .sub,.anom .kv,.health,.dtl p,.dtl td{word-break:keep-all;overflow-wrap:anywhere}
+/* 頁首右上的更新列：最後更新時間＋環形倒數＋「更新」 */
+.refresh{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--mut);font-variant-numeric:tabular-nums;flex-wrap:wrap;justify-content:flex-end}
+.refresh b{color:var(--tx);font-weight:600;border-radius:4px;padding:0 3px;transition:background-color .6s}
+.refresh b.flash{background:color-mix(in srgb,var(--st-ok) 30%,transparent);transition:none}
+.refresh.fail b{color:var(--st-bad-tx)}.refresh .rfmsg{color:var(--st-bad-tx);font-weight:600}.refresh .rfmsg:empty{display:none}
+.refresh .ring{width:18px;height:18px;transform:rotate(-90deg);flex:none}
+.refresh .ring circle{fill:none;stroke-width:2.5}.refresh .ring .rt{stroke:var(--bd)}.refresh .ring .rp{stroke:var(--ac);stroke-linecap:round;transition:stroke-dashoffset .9s linear}
+.refresh.fail .ring .rp{stroke:var(--st-bad)}
+.refresh button{display:inline-flex;align-items:center;gap:6px;font-size:13.5px;padding:4px 12px;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--tx);min-height:30px}
+.refresh button:hover{border-color:var(--ac)}
+.refresh button i{width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;display:none}
+.refresh button.busy i{display:inline-block;animation:rfspin .8s linear infinite}
+@keyframes rfspin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.refresh button.busy i{animation:none}}
+/* 總狀態燈：一句話＋顏色＋形狀 */
+.health{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0 14px;padding:10px 14px;border-radius:10px;background:var(--card);border:1px solid var(--bd);border-left:5px solid var(--st-unk);font-size:15px}
+.health .hic{width:24px;height:24px;flex:none;border-radius:50%;display:grid;place-items:center;font-size:14px;font-weight:700;color:#fff;background:var(--st-unk)}
+.health b{font-weight:700}.health .hs{color:var(--mut);font-size:13px}.health a{font-size:13px;margin-left:auto}
+.health.ok{border-left-color:var(--st-ok)}.health.ok .hic{background:var(--st-ok)}.health.ok b{color:var(--st-ok-tx)}
+.health.warn{border-left-color:var(--st-warn)}.health.warn .hic{background:var(--st-warn);color:#1b1300}.health.warn b{color:var(--st-warn-tx)}
+.health.bad{border-left-color:var(--st-bad)}.health.bad .hic{background:var(--st-bad)}.health.bad b{color:var(--st-bad-tx)}
+/* 數字卡：可點、下面一行「跟 7 天平均比」 */
+.tile{cursor:pointer;transition:border-color .15s}.tile:hover{border-color:var(--ac)}.tile:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+.tile .cmp{font-size:13px;margin-top:2px;font-variant-numeric:tabular-nums;color:var(--mut);line-height:1.45}.tile .cmp b,.tile .cmp .cs{white-space:nowrap}
+.tile .cmp b{font-weight:700}.tile .cmp .good{color:var(--st-ok-tx)}.tile .cmp .bad{color:var(--st-bad-tx)}.tile .cmp .flat,.tile .cmp .neu{color:var(--tx)}
+.tile .cmp .na{color:var(--st-unk-tx)}
+.tile .v.warn{color:var(--st-hot-tx)}
+/* 節點狀態三種（T3）：開著＝綠實心、離線＝紅空心＋字、不明＝灰虛線＋字 */
+.node i{box-sizing:border-box}.node.up i{background:var(--st-ok)}
+.node.down i{background:transparent;border:2.5px solid var(--st-bad)}.node.down{color:var(--st-bad-tx)}
+.node.unknown i{background:transparent;border:2px dashed var(--st-unk)}.node.unknown small{color:var(--st-unk-tx)}
+.node em{background:var(--grid)}
+/* 10/29 監控線：節點「慢」（在線但回應超過門檻）＝黃實心＋黃字；每秒請求數小字；LAYA 卡自己一列 */
+.node.slow i{background:var(--st-warn)}.node.slow small{color:var(--st-warn-tx)}.node small.rq{color:var(--mut)}
+.nodes .rqh{font-size:12px;margin-left:auto}
+.node .spk{flex:none;vertical-align:middle}.node .spk path{fill:none;stroke:var(--ac);stroke-width:1.5;stroke-linejoin:round}
+.laya{flex:1 1 100%;border-top:1px solid var(--bd);padding-top:10px;margin-top:4px}
+.laya .lh{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px}.laya .lh b{font-weight:600}
+.laya i{width:10px;height:10px;border-radius:50%;box-sizing:border-box;flex:none}
+.laya.up i{background:var(--st-ok)}.laya.slow i{background:var(--st-warn)}.laya.down i{border:2.5px solid var(--st-bad)}.laya.unknown i{border:2px dashed var(--st-unk)}
+.laya .lst{font-size:18px;font-weight:700;line-height:1.2}.laya.up .lst{color:var(--st-ok-tx)}.laya.slow .lst{color:var(--st-warn-tx)}.laya.down .lst{color:var(--st-bad-tx)}.laya.unknown .lst{color:var(--st-unk-tx)}
+.laya .ld{margin:2px 0 6px;font-size:13px;color:var(--mut)}
+.laya .lk{display:flex;flex-wrap:wrap;gap:4px 24px;margin:0}.laya .lk div{display:flex;gap:6px;align-items:baseline}
+.laya dt{color:var(--mut);font-size:13px}.laya dd{margin:0;font-weight:600;font-variant-numeric:tabular-nums}
+@media(max-width:760px){.nodes .rqh{display:none}.laya .lk{gap:2px 16px}}
+/* 異常紀錄：同類併成一列「× N 次」，點開看每次 */
+.anom li.ag{cursor:pointer;border-radius:6px;padding:10px 8px;margin:0 -8px}.anom li.ag:hover{background:var(--hover)}
+.anom .times{font-size:15px;font-weight:700;color:var(--st-bad-tx);margin-left:8px;font-variant-numeric:tabular-nums}
+.anom .more{font-size:12.5px;color:var(--ac);margin-left:8px;font-weight:500}
+/* 細節覆蓋層：✕、點暗處、Esc 都能關 */
+.dtl{box-sizing:border-box;background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:12px;width:min(760px,94vw);max-height:88vh;overflow:auto;padding:18px 20px 16px;position:relative}
+.dtl::backdrop{background:rgba(0,0,0,.55)}
+.dtl h2{font-size:18px;margin:0 36px 2px 0}.dtl .dsub{margin:0 0 10px;font-size:13px;color:var(--mut)}
+.dtl .dx{position:absolute;top:10px;right:10px;border:0;background:none;color:var(--tx);font-size:18px;line-height:1;border-radius:6px;padding:6px 9px}.dtl .dx:hover{background:var(--hover)}
+.dtl .big{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;margin:0 0 6px}.dtl .big .v{font-size:30px;font-weight:700;font-variant-numeric:tabular-nums}.dtl .big .cmp{font-size:14px}
+.dtl .big .good{color:var(--st-ok-tx)}.dtl .big .bad{color:var(--st-bad-tx)}.dtl .big .na{color:var(--st-unk-tx)}
+.dtl .bars{position:relative;margin:6px 0 4px}.dtl svg{display:block;width:100%;height:auto}
+.dtl .bars .tip{position:absolute;pointer-events:none;background:var(--tx);color:var(--card);font-size:12.5px;padding:4px 8px;border-radius:6px;white-space:nowrap;transform:translate(-50%,-100%);font-variant-numeric:tabular-nums}
+.dtl table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums;margin:8px 0 0}.dtl th,.dtl td{text-align:left;padding:5px 6px;border-top:1px solid var(--bd)}.dtl th{color:var(--mut);font-weight:500}.dtl td:last-child,.dtl th:last-child{text-align:right}
+.dtl .note{font-size:12.5px;color:var(--mut);margin:8px 0 0;line-height:1.6}
+.dtl ol{list-style:none;margin:0;padding:0}.dtl ol li{padding:9px 0;border-top:1px solid var(--bd);display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px}.dtl ol li .cp{grid-column:2;grid-row:1/span 2;align-self:start;border:1px solid var(--bd);border-radius:6px;background:none;padding:3px 12px;font-size:13px;color:var(--tx)}
+.dtl ol .at{font-weight:600;font-variant-numeric:tabular-nums}.dtl ol .kv{font-size:13px;color:var(--mut)}.dtl ol .kv b{color:var(--st-bad-tx)}
+/* 版本列：右上只留「版本紀錄 ▾」一顆，切換預覽／正式、回滾、看最舊版收進清單（T5） */
+.releasebar .rbmenu{position:relative;margin-left:auto}.releasebar .rlgo:not([hidden])~.rbmenu{margin-left:0}
+.releasebar .rbbtn{display:inline-flex;align-items:center;gap:4px;min-height:30px;padding:0 12px;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--tx);font-size:13px;font-weight:600}
+.releasebar .rbbtn:hover{border-color:var(--ac)}
+.releasebar .rbpop{position:absolute;right:0;top:calc(100% + 4px);z-index:30;min-width:220px;background:var(--card);border:1px solid var(--bd);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.18);padding:6px;display:flex;flex-direction:column;gap:2px}
+.releasebar .rbpop a,.releasebar .rbpop button{display:flex!important;width:100%;margin:0!important;justify-content:flex-start;text-align:left;min-height:34px;padding:0 10px;border:0!important;border-radius:6px;background:none;font-size:13.5px;text-decoration:none;color:var(--tx)}
+.releasebar .rbpop a:hover,.releasebar .rbpop button:hover{background:var(--hover)}
+.releasebar .rbpop .vswitch{color:var(--ac)}.releasebar .rbpop .rlback{color:var(--rl-danger);border-top:1px solid var(--bd)!important;border-radius:0 0 6px 6px;margin-top:4px!important}
+@media(max-width:760px){.heading{gap:8px}.refresh{width:100%;justify-content:flex-start}.refresh .rlab{order:0}.side .acctrow{display:none}
+.health{padding:8px 10px;font-size:14px;margin-bottom:10px}.health a{margin-left:0}
+.tile .sub{display:none}.tile .cmp{font-size:12.5px;white-space:normal}.dtl{padding:16px 14px 14px}.dtl .big .v{font-size:26px}}
+/* uPlot 1.6.32 的樣式（npm 套件 uplot，MIT）內嵌，不靠 CDN */
+.uplot, .uplot *, .uplot *::before, .uplot *::after {box-sizing: border-box;}.uplot {font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";line-height: 1.5;width: min-content;}.u-title {text-align: center;font-size: 18px;font-weight: bold;}.u-wrap {position: relative;user-select: none;}.u-over, .u-under {position: absolute;}.u-under {overflow: hidden;}.uplot canvas {display: block;position: relative;width: 100%;height: 100%;}.u-axis {position: absolute;}.u-legend {font-size: 14px;margin: auto;text-align: center;}.u-inline {display: block;}.u-inline * {display: inline-block;}.u-inline tr {margin-right: 16px;}.u-legend th {font-weight: 600;}.u-legend th > * {vertical-align: middle;display: inline-block;}.u-legend .u-marker {width: 1em;height: 1em;margin-right: 4px;background-clip: padding-box !important;}.u-inline.u-live th::after {content: ":";vertical-align: middle;}.u-inline:not(.u-live) .u-value {display: none;}.u-series > * {padding: 4px;}.u-series th {cursor: pointer;}.u-legend .u-off > * {opacity: 0.3;}.u-select {background: rgba(0,0,0,0.07);position: absolute;pointer-events: none;}.u-cursor-x, .u-cursor-y {position: absolute;left: 0;top: 0;pointer-events: none;will-change: transform;}.u-hz .u-cursor-x, .u-vt .u-cursor-y {height: 100%;border-right: 1px dashed #607D8B;}.u-hz .u-cursor-y, .u-vt .u-cursor-x {width: 100%;border-bottom: 1px dashed #607D8B;}.u-cursor-pt {position: absolute;top: 0;left: 0;border-radius: 50%;border: 0 solid;pointer-events: none;will-change: transform;/*this has to be !important since we set inline "background" shorthand */background-clip: padding-box !important;}.u-axis.u-off, .u-select.u-off, .u-cursor-x.u-off, .u-cursor-y.u-off, .u-cursor-pt.u-off {display: none;}
+</style><script>/* 預覽跟正式版一樣（沒有待採用的修改）就直接回正式版頁，不讓使用者看到預覽 */(()=>{const m=/^\/board\/preview(\/memory|\/versions|\/monitor)?\/?$/.exec(location.pathname);if(!m)return;try{if(window.frameElement&&window.rtPageHidden())return}catch(e){}/* 2.22.3 外殼背景預載（藏著）的頁不自己轉正式版，由外殼管；正在看的頁照舊轉 */const d=document.documentElement,show=()=>{d.style.visibility=''};d.style.visibility='hidden';setTimeout(show,2500);const own=(document.querySelector('meta[name$="-revision"]')||{}).content;fetch('/board',{cache:'no-store'}).then(r=>r.ok?r.text():'').then(t=>{const s=(/board-revision" content="(\d+)/.exec(t)||[])[1];if(own&&s===own)location.replace('/board'+(m[1]||'')+location.search+location.hash);else show()}).catch(show)})()</script><style>
+/* 本機採用項 M02/M03/M07/M08/M10 */
+.charts{grid-template-columns:repeat(2,minmax(0,1fr))}#c-errors,#c-primary{grid-column:1/-1}.tile .lb{white-space:normal}.term{font-size:11px;font-weight:400;color:var(--mut);margin-left:5px}.group-title{font-size:18px;margin:24px 0 12px;grid-column:1/-1}.jump .group-label{font-size:12px;color:var(--mut);padding:12px 10px 3px}.node.down{color:var(--st-warn-tx)}.node.down i{background:var(--st-warn)}.node.unknown i{background:transparent;border:1.5px dashed var(--mut)}.node.off i{background:var(--st-unk)}.node.off{color:var(--mut)}.nodes{align-items:flex-start}.node{white-space:normal;max-width:100%}.node small{max-width:200px}.chart header{align-items:center}.plot-options{display:flex;flex-wrap:wrap;gap:5px;margin-left:auto}.plot-options select,.monitor-settings select{background:var(--card);border:1px solid var(--bd);border-radius:6px;padding:4px;font-size:12px;max-width:100%}.monitor-settings{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:16px;margin-top:24px;min-width:0}.monitor-settings h2{font-size:16px;margin:0 0 10px}.monitor-settings label{display:flex;flex-direction:column;gap:5px;margin:12px 0;font-size:13px}.monitor-settings .hint{font-size:12px;color:var(--mut)}
+@media(min-width:1600px){main{padding-right:284px;max-width:1930px}.monitor-settings{position:fixed;right:24px;top:100px;width:232px;margin:0;max-height:calc(100vh - 124px);overflow:auto;z-index:8}}
+@media(max-width:760px){.charts{grid-template-columns:1fr}.plot-options{width:100%;margin:4px 0}.plot-options select{min-height:36px}.monitor-settings select{min-height:40px}.tile .lb{white-space:normal}.node{flex-wrap:wrap}.chart{padding-left:10px;padding-right:10px}.u-legend{max-width:100%;overflow-wrap:anywhere}.u-inline tr{margin-right:6px}.rrow .rh{display:none}.group-title{margin-top:18px}}
+:root[data-monitor-theme="light"]{--on-ac:#fff;color-scheme:light;--bg:#f2f3f5;--side:#e3e5e8;--card:#fff;--tx:#161b26;--mut:#5b6577;--bd:#d4d8df;--ac:#2456d6;--hover:rgba(0,0,0,.04);--ok:#0f7a4b;--pv:#7a3fc4;--warn:#c2410c;--grid:#e6e8ec;--okbg:#e6f4ec;--warnbg:#fff3ea;
+--c-claude:#2456d6;--c-codex:#0f7a4b;--c-hermes:#7a3fc4;--c-user:#b45309;--c-other:#5b6577;--c-ping:#0e7490;--hot:#c2410c;--bad:#c62828;--badbg:#fdecec;
+/* 2.17.0 狀態色階（四頁共用規格）：好／注意／警告／壞／不明。-tx 是寫字用的那一階（深色底上要 ≥ 4.5:1） */
+--st-ok:#1a7f37;--st-warn:#9a6700;--st-hot:#bc4c00;--st-bad:#cf222e;--st-unk:#6e7781;--st-ok-tx:#1a7f37;--st-warn-tx:#9a6700;--st-hot-tx:#bc4c00;--st-bad-tx:#cf222e;--st-unk-tx:#5b6577}:root[data-monitor-theme="dark"]{--on-ac:#0b1020;color-scheme:dark;--bg:#1e2128;--side:#16181d;--card:#262a33;--tx:#e8ebf1;--mut:#a0a9ba;--bd:#343a46;--ac:#7aa2ff;--hover:rgba(255,255,255,.04);--ok:#4fd39b;--pv:#c39bff;--warn:#ff9a5c;--grid:#343a46;--okbg:#1d3a2c;--warnbg:#3a2418;
+--c-claude:#7aa2ff;--c-codex:#4fd39b;--c-hermes:#c39bff;--c-user:#ffb454;--c-other:#a0a9ba;--c-ping:#5ad1e6;--hot:#ff9a5c;--bad:#ff6b6b;--badbg:#3a1f22;
+--st-ok:#3fb950;--st-warn:#d29922;--st-hot:#db6d28;--st-bad:#f85149;--st-unk:#8b949e;--st-ok-tx:#3fb950;--st-warn-tx:#d29922;--st-hot-tx:#f0883e;--st-bad-tx:#ff7b72;--st-unk-tx:#a0a9ba}</style></head><body><!-- side-common:start 2.19.0 四頁共用：強調色上的字、版號收進版本紀錄、左側目錄樣式（跟額度頁 2.14.0 同一套）、捲動標亮、回報問題、內部版號；2.19.0 加全站按下態、按鈕忙碌中（window.rtUI.busy）、小提示（window.rtUI.toast）、回報視窗送出逾時。改這份再跑 mcp/ui/apply_side_common.py，四頁一起換 -->
+<style>
+/* 2.19.0 全站按鈕回饋：按下去縮一點；忙碌中（aria-busy）變淡、游標變等待 */
+button:not(:disabled):active,[role=button]:not([aria-disabled=true]):active{transform:scale(.96)}
+@media(prefers-reduced-motion:reduce){button:not(:disabled):active,[role=button]:active{transform:none;opacity:.8}}
+button[aria-busy=true]{opacity:.65;cursor:progress}
+/* 2.19.0 小提示（toast）：畫面下方浮一行，3 秒自己消失；綠＝做好了、紅＝沒成功 */
+#rtToast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);z-index:60;display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none;max-width:min(92vw,520px)}
+#rtToast .tt{background:var(--tx);color:var(--card,#fff);padding:7px 14px;border-radius:8px;font-size:13.5px;line-height:1.5;box-shadow:0 4px 16px rgba(0,0,0,.25);overflow-wrap:anywhere;animation:rtTtIn .18s ease-out}
+#rtToast .tt.ok{background:var(--s-ok,#1a7f37);color:#fff}#rtToast .tt.bad{background:var(--s-bad,#cf222e);color:#fff}
+@keyframes rtTtIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}@media(prefers-reduced-motion:reduce){#rtToast .tt{animation:none}}
+@media(max-width:760px){#rtToast{bottom:72px}}
+/* 2.16.5 強調色上的字（--on-ac）：淺色白字；深色強調色是淺藍，白字只有 2.49:1，改深字。四頁的選中鈕、送出鈕都用這個 */
+:root{--on-ac:#fff}@media(prefers-color-scheme:dark){:root{--on-ac:#0b1020}}
+:root[data-theme="dark"]{--on-ac:#0b1020}:root[data-theme="light"]{--on-ac:#fff}
+/* 2.16.5 版號收進「版本紀錄」：版本列平常只留小灰「正式版／預覽版」，版號和內部碼在版本紀錄視窗（或滑過「版本紀錄」）才看得到 */
+.releasebar [data-ui-version],.releasebar [data-ui-rev]{display:none}
+.releasebar [data-release-which],.releasebar .rbwhich{font-weight:400;font-size:12.5px;color:var(--mut)}
+.rbcur{margin:0 0 10px;font-size:13px;color:var(--mut)}
+.releasebar [data-open-versions],.releasebar a[href$="/versions"]{display:inline-flex;align-items:center;min-height:28px}
+html{scroll-behavior:smooth}@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+main section[id],main details[id],main div[id^="c-"]{scroll-margin-top:14px}
+/* 左側目錄：有底色的卡片、和側欄底色有對比、項目左對齊、目前所在段落高亮、跟著捲動常駐 */
+.side .toc{position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto;overscroll-behavior:contain}
+.side .tocc{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:8px;margin:0 0 12px;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.side .tocc h2,.side .tocc h4{margin:2px 8px 6px;font-size:12.5px;letter-spacing:0;font-weight:600;color:var(--mut)}
+.side .jump{display:flex;flex-direction:column;gap:1px}
+.side .jump a{display:block;flex:none;width:100%;box-sizing:border-box;text-align:left;padding:6px 10px;margin:0;border:0;border-radius:6px;border-left:3px solid transparent;font-size:14px;line-height:1.35;color:var(--tx);text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.side .jump a:hover{background:var(--hover,var(--hov))}
+.side .jump a.on{background:color-mix(in srgb,var(--ac) 14%,transparent);border-left-color:var(--ac);font-weight:600}
+.side .jump a:focus-visible{outline:2px solid var(--ac);outline-offset:-2px}
+/* 2.18.0 T2 篩選鈕前的小色塊：顏色跟卡片上同類的標籤同色，由各頁用 --sw 指定 */
+.sw{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:7px;flex:none;vertical-align:-1px;background:var(--sw,var(--mut))}
+.side .ch .sw,.side .tocc .ch .sw{margin-right:0}
+/* 「更新」區：一行摘要＋兩欄小表（名稱｜時間），長名稱不斷行 */
+.upd .ut{font-size:12.5px;color:var(--mut);margin:0 4px 6px;line-height:1.5}.upd .ut b{color:var(--tx);font-weight:600}
+.updt{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12.5px;font-variant-numeric:tabular-nums}
+.updt td{padding:4px 4px;border-top:1px solid var(--grid,var(--bd));white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:baseline}
+.updt td:first-child{width:44%;color:var(--tx);font-weight:500}.updt td:last-child{text-align:right;color:var(--mut)}
+.updt tr.old td:last-child{color:var(--warn,var(--hot));font-weight:600}
+/* 回報問題：側欄最下面一顆；小視窗有 ✕、點暗處、Esc 三種關法 */
+.side .rptBtn{display:flex;align-items:center;gap:6px;width:100%;box-sizing:border-box;margin:0 0 12px;padding:7px 10px;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--tx);font:inherit;font-size:13.5px;cursor:pointer;text-align:left;white-space:nowrap}
+.side .rptBtn:hover{border-color:var(--ac);color:var(--ac)}.side .rptBtn svg{width:15px;height:15px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#rptDlg{box-sizing:border-box;background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:12px;width:min(460px,92vw);padding:18px 20px 16px;position:relative}
+#rptDlg::backdrop{background:rgba(0,0,0,.45)}
+#rptDlg h2{font-size:17px;margin:0 30px 4px 0}#rptDlg .rsub{margin:0 0 12px;font-size:13px;color:var(--mut);line-height:1.6}
+#rptDlg .rx{position:absolute;top:10px;right:10px;border:0;background:none;color:var(--mut);font:inherit;font-size:16px;cursor:pointer;border-radius:6px;padding:2px 8px}#rptDlg .rx:hover{background:var(--hover,var(--hov));color:var(--tx)}
+#rptDlg label{display:block;font-size:13.5px;font-weight:600;margin:0 0 4px}
+#rptDlg textarea{display:block;box-sizing:border-box;width:100%;min-height:110px;resize:vertical;font:inherit;font-size:14.5px;color:var(--tx);background:var(--bg);border:1px solid var(--bd);border-radius:6px;padding:8px 10px;margin:0 0 12px}
+#rptDlg textarea:focus{outline:2px solid var(--ac);outline-offset:0;border-color:var(--ac)}
+#rptDlg .rfile{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 12px;font-size:13px;color:var(--mut)}
+#rptDlg .rfile button,#rptDlg .rbtns button{font:inherit;font-size:14px;cursor:pointer;border-radius:6px;padding:6px 14px}
+#rptDlg .rghost{background:transparent;border:1px solid transparent;color:var(--tx)}#rptDlg .rghost:hover{background:var(--hover,var(--hov))}
+#rptDlg .rfile .rghost{border-color:var(--bd)}
+#rptDlg .rfname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px}
+#rptDlg .rmsg{font-size:13.5px;margin:0 0 10px;line-height:1.6}#rptDlg .rmsg.bad{color:var(--warn,var(--hot));font-weight:600}#rptDlg .rmsg.ok{color:var(--ok,#0f7a4b);font-weight:600}
+#rptDlg .rbtns{display:flex;justify-content:flex-end;gap:8px}
+#rptDlg .rgo{background:var(--ac);border:1px solid var(--ac);color:var(--on-ac);font-weight:600}#rptDlg .rgo:disabled{opacity:.6;cursor:default}
+@media(max-width:760px){.side .toc{position:static;max-height:none;overflow:visible}.side .tocc.j{display:none}.side .tocc{margin:4px 0 0;padding:6px 8px}.updt{display:none}.upd .ut{margin:0}
+.side .rptBtn{width:auto;margin:6px 0 0;padding:5px 10px}#rptDlg{padding:16px 14px 14px}#rptDlg textarea{min-height:90px}}
+</style>
+<dialog id="rptDlg" aria-labelledby="rptTitle"><button type="button" class="rx" data-rpt-close aria-label="關閉">✕</button>
+<h2 id="rptTitle">回報問題</h2><p class="rsub">寫下哪裡怪怪的，會寄給負責公告欄的 Claude。頁面網址、版號、視窗大小和最近的錯誤會自動附上。</p>
+<label for="rptTx">問題描述</label><textarea id="rptTx" maxlength="600" placeholder="例如：手機上按「採用」沒反應"></textarea>
+<div class="rfile"><button type="button" class="rghost" id="rptPick">附截圖（可不附）</button><input type="file" id="rptFile" accept="image/png,image/jpeg,image/webp,image/gif" hidden><span class="rfname" id="rptFname"></span><button type="button" class="rghost" id="rptClr" hidden>拿掉</button></div>
+<p class="rmsg" id="rptMsg" role="status" hidden></p>
+<div class="rbtns"><button type="button" class="rghost" data-rpt-close>取消</button><button type="button" class="rgo" id="rptGo">送出</button></div></dialog>
+<script>(()=>{
+/* 2.19.0 四頁共用的按鈕回饋：
+   rtUI.busy(btn,'結案中…') → 停用、改字、aria-busy，回傳 done(提示)：做完叫它，按鈕恢復，給了字就順便跳綠色小提示
+   rtUI.toast('已送到 Claude','ok'|'bad'|'',毫秒) → 畫面下方浮一行，預設 3 秒 */
+const toast=(s,k,ms)=>{let box=document.getElementById('rtToast');if(!box){box=document.createElement('div');box.id='rtToast';box.setAttribute('role','status');box.setAttribute('aria-live','polite');document.body.append(box)}
+const t=document.createElement('div');t.className='tt'+(k?' '+k:'');t.textContent=s;box.append(t);while(box.children.length>3)box.firstChild.remove();setTimeout(()=>t.remove(),ms||3000);return t};
+const busy=(btn,label)=>{if(!btn)return()=>{};const was={h:btn.innerHTML,d:btn.disabled,w:btn.style.minWidth};btn.style.minWidth=Math.ceil(btn.getBoundingClientRect().width)+'px';btn.disabled=true;btn.setAttribute('aria-busy','true');if(label)btn.textContent=label;
+let over=false;return done=>{if(over)return;over=true;btn.innerHTML=was.h;btn.disabled=was.d;btn.style.minWidth=was.w;btn.removeAttribute('aria-busy');if(done)toast(done,'ok')}};
+/* fetch 等太久就放棄：預設 15 秒；逾時的錯誤訊息改成人話 */
+const timeoutSig=ms=>{try{return AbortSignal.timeout(ms||15000)}catch(e){return undefined}};
+const fetchErr=e=>e&&(e.name==='TimeoutError'||e.name==='AbortError')?'等了 15 秒伺服器沒回':e&&e.message||String(e);
+window.rtUI={toast,busy,timeoutSig,fetchErr};
+/* 收這頁最近 5 筆程式錯誤，回報時附上 */
+const errs=window.__uiErrs=window.__uiErrs||[],keep=s=>{errs.push(new Date().toLocaleTimeString('zh-TW',{timeZone:window.RT_TZ,hour12:false})+' '+String(s).slice(0,140));if(errs.length>5)errs.shift()};
+addEventListener('error',e=>{if(e.message)keep(e.message+(e.filename?' @'+String(e.filename).split('/').pop()+':'+e.lineno:''))});
+addEventListener('unhandledrejection',e=>{const r=e.reason;keep('Promise：'+(r&&r.message||r))});
+const meta=k=>{const m=document.querySelector('meta[name$="-'+k+'"]');return m?m.content:''};
+const PAGES={'':'公告欄',memory:'記憶',monitor:'監控',usage:'額度',versions:'版本紀錄'};
+const pageName=()=>{const m=/^\/board(?:\/preview)?(?:\/([a-z]+))?/.exec(location.pathname);return PAGES[(m&&m[1])||'']||'公告欄'};
+const ver=()=>meta('version').replace(/-rc\.\d+$/,''),build=()=>{const m=document.querySelector('meta[name="ui-build"]');return m?m.content:''};
+/* 版號：v2.15.0 · 內部 <git 短碼> / rev <內部流水號> */
+const tail=()=>{const b=build(),r=meta('revision');return b||r?' · 內部 '+(b||'—')+(r?' / rev '+r:''):''};
+const label=el=>{const t=el.textContent;if(!/^v\d/.test(t)||t.includes('內部'))return;el.textContent=t+tail()};
+const watch=()=>document.querySelectorAll('[data-ui-version]').forEach(el=>{label(el);new MutationObserver(()=>label(el)).observe(el,{childList:true,characterData:true,subtree:true})});
+/* 左側目錄：目前捲到哪一段就把那一項標亮（只在捲動時算，用 requestAnimationFrame 合併） */
+const spy=()=>{const links=[...document.querySelectorAll('.side .jump a[href^="#"]')];if(!links.length)return;const tg=links.map(a=>document.querySelector(a.getAttribute('href')));let raf=0;
+const mark=()=>{raf=0;let best=-1,bt=-1e9;tg.forEach((el,i)=>{if(!el||!el.offsetParent&&el.tagName!=='DETAILS')return;const t=el.getBoundingClientRect().top;if(t<=140&&t>bt){bt=t;best=i}});
+if(best<0)best=0;if(innerHeight+scrollY>=document.documentElement.scrollHeight-4)best=links.length-1;links.forEach((a,i)=>{const on=i===best;a.classList.toggle('on',on);if(on)a.setAttribute('aria-current','location');else a.removeAttribute('aria-current')})};
+addEventListener('scroll',()=>{if(!raf)raf=requestAnimationFrame(mark)},{passive:true});addEventListener('resize',()=>{if(!raf)raf=requestAnimationFrame(mark)});setTimeout(mark,300);
+links.forEach(a=>a.addEventListener('click',()=>{const el=document.querySelector(a.getAttribute('href'));if(el&&el.tagName==='DETAILS')el.open=true}))};
+/* 回報問題 */
+const theme=()=>{const d=document.documentElement.dataset.theme;return d==='dark'||d==='light'?d:(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')};
+const browser=()=>{const u=navigator.userAgent,m=/(Edg|OPR|Firefox|Chrome|Version)\/([\d.]+)/.exec(u),n={Edg:'Edge',OPR:'Opera',Firefox:'Firefox',Chrome:'Chrome',Version:'Safari'};return (m?n[m[1]]+' '+m[2].split('.')[0]:'不明')+(/Mobi|Android|iPhone/.test(u)?'（手機）':'')+'・'+(/Windows/.test(u)?'Windows':/Android/.test(u)?'Android':/iPhone|iPad|Mac OS/.test(u)?'Apple':/Linux/.test(u)?'Linux':'其他')};
+const setup=()=>{const dlg=document.getElementById('rptDlg'),side=document.querySelector('.side');if(!dlg||!side||side.querySelector('.rptBtn'))return;
+const $=id=>document.getElementById(id),tx=$('rptTx'),file=$('rptFile'),msg=$('rptMsg'),go=$('rptGo');let pic=null;
+const btn=document.createElement('button');btn.type='button';btn.className='rptBtn';btn.setAttribute('aria-haspopup','dialog');
+btn.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V4h11l1 2h4v9h-7l-1-2H6"/></svg>回報問題';
+(side.querySelector('.toc')||side).append(btn);
+const say=(t,k)=>{msg.textContent=t;msg.className='rmsg'+(k?' '+k:'');msg.hidden=!t};
+const showPic=()=>{$('rptFname').textContent=pic?pic.name:'';$('rptClr').hidden=!pic};
+btn.addEventListener('click',()=>{say('');go.disabled=false;go.hidden=false;go.textContent='送出';dlg.showModal();tx.focus()});
+dlg.querySelectorAll('[data-rpt-close]').forEach(b=>b.addEventListener('click',()=>dlg.close()));
+dlg.addEventListener('click',e=>{if(e.target!==dlg)return;const r=dlg.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dlg.close()});
+$('rptPick').addEventListener('click',()=>file.click());
+file.addEventListener('change',()=>{pic=file.files&&file.files[0]||null;if(pic&&pic.size>8*1048576){pic=null;say('截圖超過 8 MB，換一張小一點的','bad')}showPic()});
+$('rptClr').addEventListener('click',()=>{pic=null;file.value='';showPic()});
+go.addEventListener('click',async()=>{const d=tx.value.trim();if(!d){say('先寫一句哪裡有問題','bad');tx.focus();return}
+const done=busy(go,'送出中…');say('送出中…');
+try{let att='';if(pic){const r=await fetch('/board/upload',{method:'POST',headers:{'Content-Type':pic.type},body:pic,signal:timeoutSig(15000)}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error('截圖沒傳上去：'+(j.error||r.status));att=j.id||''}
+const test=/^［測試］/.test(d),core=d.replace(/^［測試］\s*/,''),v=ver(),now=new Date().toLocaleString('zh-TW',{timeZone:window.RT_TZ,hour12:false});
+const subject=(test?'［測試］':'')+'［問題回報］'+pageName()+(v?' v'+v:'')+'：'+core.replace(/\s+/g,' ').slice(0,30);
+const info=['','── 自動附上 ──','頁面：'+location.pathname+location.search+location.hash,'版號：'+(v?'v'+v:'不明')+tail(),'時間（當地）：'+now,'視窗：'+innerWidth+'×'+innerHeight,'深淺色：'+(theme()==='dark'?'深色':'淺色'),'瀏覽器：'+browser(),'最近的程式錯誤：'+(errs.length?'\n'+errs.join('\n'):'沒有')].join('\n');
+const body=(d+'\n'+info).slice(0,1000);
+const r=await fetch('/board/send',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({to:'claude',project:'mem0',needs_action:'yes',subject,body,attachments:att}),signal:timeoutSig(15000)});
+const j=await r.json().catch(()=>({}));if(!r.ok||!j.sent)throw new Error(j.error||('伺服器回 '+r.status));
+tx.value='';pic=null;file.value='';showPic();done('已送到 Claude（公告欄負責串）');say('已送出，Claude 會處理。','ok');go.hidden=true}
+catch(e){done();say('沒送出：'+fetchErr(e)+'。描述還在，按「重送」再試一次。','bad');go.textContent='重送';go.disabled=false}})};
+/* 2.16.5 版號收進版本紀錄：完整版號放在「版本紀錄」鈕的提示和版本紀錄視窗開頭 */
+const verText=()=>{const el=document.querySelector('.releasebar [data-ui-version]');const s=el?el.textContent.trim():'';return /^v\d/.test(s)?s:(ver()?'v'+ver()+tail():'')};
+const verTip=()=>{const bar=document.querySelector('.releasebar');if(!bar)return;const which=bar.querySelector('[data-release-which]')||bar.querySelector('[data-release-state]');if(which&&!bar.querySelector('[data-release-which]'))which.classList.add('rbwhich');
+const fill=()=>{const v=verText();bar.querySelectorAll('[data-open-versions],a[href$="/versions"]').forEach(b=>{if(v)b.title='這一頁的版本：'+v});const dl=document.getElementById('releaseHistory');if(dl&&v){let p=dl.querySelector('.rbcur');if(!p){p=document.createElement('p');p.className='rbcur';const h=dl.querySelector('h2');if(h)h.after(p);else dl.prepend(p)}p.textContent='這一頁的版本：'+v}};
+fill();setTimeout(fill,1500);document.querySelectorAll('[data-open-versions]').forEach(b=>b.addEventListener('click',fill))};
+const ready=()=>{watch();spy();setup();verTip()};
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',ready);else ready()})();</script>
+<!-- side-common:end --><div class="preview" id="pvbar" hidden><b>監控頁預覽</b><span>只改顯示，不改任何資料。按下面的「採用成正式版」，公告欄、記憶、監控、額度 4 頁會一起換。</span></div>
+<div class="releasebar" hidden><b data-ui-version>版本</b><span data-release-state></span><div class="rbmenu" id="rbMenu"><button type="button" class="rbbtn" id="rbBtn" aria-haspopup="true" aria-expanded="false" aria-controls="rbPop">版本紀錄 ▾</button><div class="rbpop" id="rbPop" hidden><a class="vswitch" id="vSwitch" hidden></a><a href="/board/preview/versions" id="rbAll">看全部版本（含最舊版）</a></div></div></div><script>/* 2.17.0「版本紀錄」清單：點按鈕開關；點清單外、按 Esc 關 */(()=>{const b=document.getElementById('rbBtn'),p=document.getElementById('rbPop');if(!b||!p)return;const set=o=>{p.hidden=!o;b.setAttribute('aria-expanded',String(o))};b.addEventListener('click',e=>{e.stopPropagation();set(p.hidden)});document.addEventListener('click',e=>{if(!p.hidden&&!p.contains(e.target))set(false)});document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!p.hidden){set(false);b.focus()}});if(!/^\/board\/preview(\/|$)/.test(location.pathname))document.getElementById('rbAll').href='/board/versions'})();</script><script>/* 預覽版／正式版切換鈕：跳到同一頁的另一版，網址後面的 ?… 和 #… 照帶 */(()=>{const a=document.getElementById('vSwitch');if(!a)return;const p=location.pathname.replace(/\/+$/,'')||'/board',pv=/^\/board\/preview(\/|$)/.test(p),other=pv?p.replace(/^\/board\/preview/,'/board'):p.replace(/^\/board/,'/board/preview'),to=()=>other+location.search+location.hash;a.textContent=pv?'看正式版':'看預覽版';a.title=pv?'切到這一頁的正式版':'切到這一頁的預覽版';a.href=to();a.addEventListener('click',()=>{a.href=to()});if(pv){a.hidden=false;return}/* 正式版：預覽跟正式一樣時，預覽頁會自動跳回正式版，按了沒反應，所以先藏起來，有待採用的修改才出現 */const get=u=>fetch(u,{cache:'no-store'}).then(r=>r.ok?r.text():'').catch(()=>'');Promise.all([get('/board'),get(other)]).then(([s,o])=>{const sr=(/<meta name="board-revision" content="(\d+)"/.exec(s)||[])[1],orv=(/<meta name="[a-z]+-revision" content="(\d+)"/.exec(o)||[])[1];a.hidden=!orv||orv===sr})})();</script>
+<div class="app"><aside class="side" aria-label="監控頁導覽">
+<nav class="top"><a href="/board" id="navBoard">公告欄</a><a href="/board/memory" id="navMemory">記憶</a><a class="on" href="/board/monitor" id="navMonitor" aria-current="page">監控</a><a href="/board/usage" id="navUsage">額度</a></nav>
+<div class="toc"><div class="tocc j"><h2>看哪一段</h2><nav class="jump" aria-label="跳到哪一段"><a href="#s-stats">今天的數字</a><a href="#s-nodes">節點</a><a href="#c-writes">寫入筆數</a><a href="#c-calls">使用次數</a><a href="#c-tool">工具與搜尋要多久</a><a href="#c-emb">搜尋用的向量服務<span class="term">EMB</span></a><a href="#c-primary">主節點接住比例</a><a href="#c-eval">搜尋找得準不準</a><a href="#c-totals">記憶總數</a><a href="#c-errors">錯誤數</a><a href="#s-anom">異常紀錄</a></nav></div>
+<div class="tocc"><h2>更新</h2><div class="upd" id="upd">讀取中…</div></div></div>
+<div class="acctrow"><a class="acct" href="/board/login" id="acct">帳號</a><form method="post" action="/board/logout" id="logout"><button type="submit">登出</button></form></div>
+</aside><main>
+<div class="heading"><h1>圓桌運作監控</h1><div class="refresh" id="refresh"><span class="rlab">最後更新 <b id="rfTime">—</b></span><span class="rfmsg" id="rfMsg" role="status"></span><svg class="ring" viewBox="0 0 20 20" aria-hidden="true"><circle class="rt" cx="10" cy="10" r="8"/><circle class="rp" id="rfRing" cx="10" cy="10" r="8" stroke-dasharray="50.27" stroke-dashoffset="0"/></svg><button type="button" id="rfBtn" title="立刻重抓資料（每 60 秒也會自己抓）"><i aria-hidden="true"></i>更新</button></div></div>
+<div class="health" id="health" role="status"><span class="hic" aria-hidden="true">…</span><b id="hlTx">讀取中…</b><span class="hs" id="hlSub"></span><a href="#s-anom" id="hlGo" hidden>看細節</a></div>
+<p class="summary" id="sum">共用記憶（Mem0）這幾天的寫入、調用、EMB 反應速度和節點狀態。</p>
+<div class="errbox" id="err" hidden role="alert"><span id="errTx"></span><button type="button" id="retry">再試一次</button></div>
+<section class="stats" id="s-stats" aria-label="最近 24 小時（點一張看近 7 天）">
+<div class="tile" data-k="writes" role="button" tabindex="0" aria-haspopup="dialog"><div class="lb">24 小時寫入</div><div class="v" id="t-writes">—</div><div class="cmp" id="t-writes-c"></div><div class="sub" id="t-writes-s"></div></div>
+<div class="tile" data-k="calls" role="button" tabindex="0" aria-haspopup="dialog"><div class="lb">24 小時使用</div><div class="v" id="t-calls">—</div><div class="cmp" id="t-calls-c"></div><div class="sub" id="t-calls-s"></div></div>
+<div class="tile" data-k="emb" role="button" tabindex="0" aria-haspopup="dialog"><div class="lb">向量服務通常要多久<span class="term">EMB・中位數</span></div><div class="v" id="t-emb">—</div><div class="cmp" id="t-emb-c"></div><div class="sub" id="t-emb-s"></div></div>
+<div class="tile" data-k="primary" role="button" tabindex="0" aria-haspopup="dialog"><div class="lb">主節點接住比例</div><div class="v" id="t-primary">—</div><div class="cmp" id="t-primary-c"></div><div class="sub" id="t-primary-s"></div></div>
+<div class="tile" data-k="eval" role="button" tabindex="0" aria-haspopup="dialog"><div class="lb">前 5 名裡找得到的比例<span class="term">hit@5</span></div><div class="v" id="t-eval">—</div><div class="cmp" id="t-eval-c"></div><div class="sub" id="t-eval-s"></div></div>
+<div class="tile" data-k="errors" role="button" tabindex="0" aria-haspopup="dialog"><div class="lb">24 小時錯誤</div><div class="v" id="t-errors">—</div><div class="cmp" id="t-errors-c"></div><div class="sub" id="t-errors-s"></div></div>
+</section>
+<section class="nodes" id="s-nodes" aria-label="節點狀態"><span class="t">節點</span><span class="t" id="nodesNone">讀取中…</span><span class="t rqh" id="rqHint">「每秒」＝近 1 分鐘平均每秒幾個請求；拿不到次數的寫 —</span></section>
+<section class="rstrip" id="rstrip" aria-label="圖的時間範圍"><div class="rrow"><div class="range" role="group" aria-label="時間範圍"><button type="button" data-range="6h" aria-pressed="false">近 6 小時</button><button type="button" data-range="24h" aria-pressed="true">近 24 小時</button><button type="button" data-range="7d" aria-pressed="false">近 7 天</button><button type="button" data-range="30d" aria-pressed="false">近 30 天</button></div><span class="rnow" id="rnow"></span><button type="button" class="rrst" id="rrst" hidden title="回到上面按鈕選的範圍">還原</button><span class="rh">拖下面這條的兩端或中間，或在任一張圖上按住拖一段放大；點兩下還原</span></div><div class="ov" id="ovBox" aria-label="時間範圍條：拖兩端改起訖、拖中間平移、在空白處拖一段重新框，下面的圖一起換"></div></section>
+<div class="charts">
+<section class="chart wide" id="c-writes"><header><h2>寫入筆數</h2><span class="sub" data-sub>新增／更新／刪除</span></header><div class="plot"></div></section>
+<section class="chart wide" id="c-calls"><header><h2>使用次數</h2><span class="sub" data-sub></span><div class="seg" role="group" aria-label="調用分法"><button type="button" data-mode="hp" aria-pressed="true">人用／自動查詢</button><button type="button" data-mode="tool" aria-pressed="false">按工具</button><button type="button" data-mode="agent" aria-pressed="false">按使用者</button></div></header><div class="plot"></div></section>
+<section class="chart" id="c-tool"><header><h2>工具與搜尋要多久</h2><span class="overn" data-over></span><span class="sub" data-sub>通常要多久／最慢那 5% 要多久</span></header><div class="plot"></div></section>
+<section class="chart" id="c-emb"><header><h2>搜尋用的向量服務<span class="term">EMB</span></h2><span class="overn" data-over></span><span class="sub" data-sub>通常要多久／最慢那 5% 要多久</span></header><div class="plot"></div></section>
+<section class="chart" id="c-primary"><header><h2>主節點接住比例</h2><span class="overn" data-over></span><span class="sub" data-sub>低於 100% 代表有請求落到備援</span></header><div class="plot"></div></section>
+<section class="chart" id="c-eval"><header><h2>搜尋找得準不準</h2><span class="sub" data-sub>第一名／前 5 名找得到的比例，每天一點</span></header><div class="plot"></div></section>
+<section class="chart" id="c-totals"><header><h2>記憶總數</h2><span class="sub" data-sub>各區</span></header><div class="plot"></div></section>
+<section class="chart" id="c-errors"><header><h2>錯誤數</h2><span class="sub" data-sub>圓桌連線／工具／向量服務</span></header><div class="plot"></div></section>
+</div>
+<section class="anom" id="s-anom" aria-label="異常紀錄"><header><h2>異常紀錄</h2><span class="sub" id="anomSub">超過門檻的時段，新的在上；連續超線併成一筆</span><button type="button" class="cp" id="anomAll" hidden>全部複製</button></header><div id="anomList"><p class="none2">讀取中…</p></div></section>
+</main></div>
+<dialog class="dtl" id="dtl" aria-labelledby="dtlT"><button type="button" class="dx" id="dtlX" aria-label="關閉">✕</button><h2 id="dtlT"></h2><p class="dsub" id="dtlS"></p><div id="dtlB"></div></dialog>
+<script>/* uPlot 1.6.32（npm 套件 uplot，MIT）內嵌，不靠 CDN */
+/*! https://github.com/leeoniya/uPlot (v1.6.32) */
+var uPlot=function(){"use strict";const l="u-off",e="u-label",t="width",n="height",i="top",o="bottom",s="left",r="right",u="#000",a=u+"0",f="mousemove",c="mousedown",h="mouseup",d="mouseenter",p="mouseleave",m="dblclick",g="change",x="dppxchange",w="--",_="undefined"!=typeof window,b=_?document:null,v=_?window:null,k=_?navigator:null;let y,M;function S(l,e){if(null!=e){let t=l.classList;!t.contains(e)&&t.add(e)}}function T(l,e){let t=l.classList;t.contains(e)&&t.remove(e)}function E(l,e,t){l.style[e]=t+"px"}function z(l,e,t,n){let i=b.createElement(l);return null!=e&&S(i,e),null!=t&&t.insertBefore(i,n),i}function D(l,e){return z("div",l,e)}const P=new WeakMap;function A(e,t,n,i,o){let s="translate("+t+"px,"+n+"px)";s!=P.get(e)&&(e.style.transform=s,P.set(e,s),0>t||0>n||t>i||n>o?S(e,l):T(e,l))}const W=new WeakMap;function Y(l,e,t){let n=e+t;n!=W.get(l)&&(W.set(l,n),l.style.background=e,l.style.borderColor=t)}const C=new WeakMap;function H(l,e,t,n){let i=e+""+t;i!=C.get(l)&&(C.set(l,i),l.style.height=t+"px",l.style.width=e+"px",l.style.marginLeft=n?-e/2+"px":0,l.style.marginTop=n?-t/2+"px":0)}const F={passive:!0},R={...F,capture:!0};function G(l,e,t,n){e.addEventListener(l,t,n?R:F)}function I(l,e,t){e.removeEventListener(l,t,F)}function L(l,e,t,n){let i;t=t||0;let o=2147483647>=(n=n||e.length-1);for(;n-t>1;)i=o?t+n>>1:sl((t+n)/2),l>e[i]?t=i:n=i;return l-e[t]>e[n]-l?n:t}function O(l){return(e,t,n)=>{let i=-1,o=-1;for(let o=t;n>=o;o++)if(l(e[o])){i=o;break}for(let i=n;i>=t;i--)if(l(e[i])){o=i;break}return[i,o]}}_&&function l(){let e=devicePixelRatio;y!=e&&(y=e,M&&I(g,M,l),M=matchMedia(`(min-resolution: ${y-.001}dppx) and (max-resolution: ${y+.001}dppx)`),G(g,M,l),v.dispatchEvent(new CustomEvent(x)))}();const N=l=>null!=l,j=l=>null!=l&&l>0,U=O(N),V=O(j);function B(l,e,t,n){let i=hl(l),o=hl(e);l==e&&(-1==i?(l*=t,e/=t):(l/=t,e*=t));let s=10==t?dl:pl,r=1==o?ul:sl,u=(1==i?sl:ul)(s(ol(l))),a=r(s(ol(e))),f=cl(t,u),c=cl(t,a);return 10==t&&(0>u&&(f=Al(f,-u)),0>a&&(c=Al(c,-a))),n||2==t?(l=f*i,e=c*o):(l=Pl(l,f),e=Dl(e,c)),[l,e]}function $(l,e,t,n){let i=B(l,e,t,n);return 0==l&&(i[0]=0),0==e&&(i[1]=0),i}const J=.1,q={mode:3,pad:J},K={pad:0,soft:null,mode:0},X={min:K,max:K};function Z(l,e,t,n){return Ol(t)?ll(l,e,t):(K.pad=t,K.soft=n?0:null,K.mode=n?3:0,ll(l,e,X))}function Q(l,e){return null==l?e:l}function ll(l,e,t){let n=t.min,i=t.max,o=Q(n.pad,0),s=Q(i.pad,0),r=Q(n.hard,-gl),u=Q(i.hard,gl),a=Q(n.soft,gl),f=Q(i.soft,-gl),c=Q(n.mode,0),h=Q(i.mode,0),d=e-l,p=dl(d),m=fl(ol(l),ol(e)),g=dl(m),x=ol(g-p);(1e-24>d||x>10)&&(d=0,0!=l&&0!=e||(d=1e-24,2==c&&a!=gl&&(o=0),2==h&&f!=-gl&&(s=0)));let w=d||m||1e3,_=dl(w),b=cl(10,sl(_)),v=Al(Pl(l-w*(0==d?0==l?.1:1:o),b/10),24),k=a>l||1!=c&&(3!=c||v>a)&&(2!=c||a>v)?gl:a,y=fl(r,k>v&&l>=k?k:al(k,v)),M=Al(Dl(e+w*(0==d?0==e?.1:1:s),b/10),24),S=e>f||1!=h&&(3!=h||f>M)&&(2!=h||M>f)?-gl:f,T=al(u,M>S&&S>=e?S:fl(S,M));return y==T&&0==y&&(T=100),[y,T]}const el=new Intl.NumberFormat(_?k.language:"en-US"),tl=l=>el.format(l),nl=Math,il=nl.PI,ol=nl.abs,sl=nl.floor,rl=nl.round,ul=nl.ceil,al=nl.min,fl=nl.max,cl=nl.pow,hl=nl.sign,dl=nl.log10,pl=nl.log2,ml=(l,e=1)=>nl.asinh(l/e),gl=1/0;function xl(l){return 1+(0|dl((l^l>>31)-(l>>31)))}function wl(l,e,t){return al(fl(l,e),t)}function _l(l){return"function"==typeof l}function bl(l){return _l(l)?l:()=>l}const vl=l=>l,kl=(l,e)=>e,yl=()=>null,Ml=()=>!0,Sl=(l,e)=>l==e,Tl=/\.\d*?(?=9{6,}|0{6,})/gm,El=l=>{if(Il(l)||Wl.has(l))return l;const e=""+l,t=e.match(Tl);if(null==t)return l;let n=t[0].length-1;if(-1!=e.indexOf("e-")){let[l,t]=e.split("e");return+`${El(l)}e${t}`}return Al(l,n)};function zl(l,e){return El(Al(El(l/e))*e)}function Dl(l,e){return El(ul(El(l/e))*e)}function Pl(l,e){return El(sl(El(l/e))*e)}function Al(l,e=0){if(Il(l))return l;let t=10**e;return rl(l*t*(1+Number.EPSILON))/t}const Wl=new Map;function Yl(l){return((""+l).split(".")[1]||"").length}function Cl(l,e,t,n){let i=[],o=n.map(Yl);for(let s=e;t>s;s++){let e=ol(s),t=Al(cl(l,s),e);for(let r=0;n.length>r;r++){let u=10==l?+`${n[r]}e${s}`:n[r]*t,a=(0>s?e:0)+(o[r]>s?o[r]:0),f=10==l?u:Al(u,a);i.push(f),Wl.set(f,a)}}return i}const Hl={},Fl=[],Rl=[null,null],Gl=Array.isArray,Il=Number.isInteger;function Ll(l){return"string"==typeof l}function Ol(l){let e=!1;if(null!=l){let t=l.constructor;e=null==t||t==Object}return e}function Nl(l){return null!=l&&"object"==typeof l}const jl=Object.getPrototypeOf(Uint8Array),Ul="__proto__";function Vl(l,e=Ol){let t;if(Gl(l)){let n=l.find((l=>null!=l));if(Gl(n)||e(n)){t=Array(l.length);for(let n=0;l.length>n;n++)t[n]=Vl(l[n],e)}else t=l.slice()}else if(l instanceof jl)t=l.slice();else if(e(l)){t={};for(let n in l)n!=Ul&&(t[n]=Vl(l[n],e))}else t=l;return t}function Bl(l){let e=arguments;for(let t=1;e.length>t;t++){let n=e[t];for(let e in n)e!=Ul&&(Ol(l[e])?Bl(l[e],Vl(n[e])):l[e]=Vl(n[e]))}return l}function $l(l,e,t){for(let n,i=0,o=-1;e.length>i;i++){let s=e[i];if(s>o){for(n=s-1;n>=0&&null==l[n];)l[n--]=null;for(n=s+1;t>n&&null==l[n];)l[o=n++]=null}}}const Jl="undefined"==typeof queueMicrotask?l=>Promise.resolve().then(l):queueMicrotask,ql=["January","February","March","April","May","June","July","August","September","October","November","December"],Kl=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];function Xl(l){return l.slice(0,3)}const Zl=Kl.map(Xl),Ql=ql.map(Xl),le={MMMM:ql,MMM:Ql,WWWW:Kl,WWW:Zl};function ee(l){return(10>l?"0":"")+l}const te={YYYY:l=>l.getFullYear(),YY:l=>(l.getFullYear()+"").slice(2),MMMM:(l,e)=>e.MMMM[l.getMonth()],MMM:(l,e)=>e.MMM[l.getMonth()],MM:l=>ee(l.getMonth()+1),M:l=>l.getMonth()+1,DD:l=>ee(l.getDate()),D:l=>l.getDate(),WWWW:(l,e)=>e.WWWW[l.getDay()],WWW:(l,e)=>e.WWW[l.getDay()],HH:l=>ee(l.getHours()),H:l=>l.getHours(),h:l=>{let e=l.getHours();return 0==e?12:e>12?e-12:e},AA:l=>12>l.getHours()?"AM":"PM",aa:l=>12>l.getHours()?"am":"pm",a:l=>12>l.getHours()?"a":"p",mm:l=>ee(l.getMinutes()),m:l=>l.getMinutes(),ss:l=>ee(l.getSeconds()),s:l=>l.getSeconds(),fff:l=>function(l){return(10>l?"00":100>l?"0":"")+l}(l.getMilliseconds())};function ne(l,e){e=e||le;let t,n=[],i=/\{([a-z]+)\}|[^{]+/gi;for(;t=i.exec(l);)n.push("{"==t[0][0]?te[t[1]]:t[0]);return l=>{let t="";for(let i=0;n.length>i;i++)t+="string"==typeof n[i]?n[i]:n[i](l,e);return t}}const ie=(new Intl.DateTimeFormat).resolvedOptions().timeZone,oe=l=>l%1==0,se=[1,2,2.5,5],re=Cl(10,-32,0,se),ue=Cl(10,0,32,se),ae=ue.filter(oe),fe=re.concat(ue),ce="{YYYY}",he="\n"+ce,de="{M}/{D}",pe="\n"+de,me=pe+"/{YY}",ge="{aa}",xe="{h}:{mm}"+ge,we="\n"+xe,_e=":{ss}",be=null;function ve(l){let e=1e3*l,t=60*e,n=60*t,i=24*n,o=30*i,s=365*i;return[(1==l?Cl(10,0,3,se).filter(oe):Cl(10,-3,0,se)).concat([e,5*e,10*e,15*e,30*e,t,5*t,10*t,15*t,30*t,n,2*n,3*n,4*n,6*n,8*n,12*n,i,2*i,3*i,4*i,5*i,6*i,7*i,8*i,9*i,10*i,15*i,o,2*o,3*o,4*o,6*o,s,2*s,5*s,10*s,25*s,50*s,100*s]),[[s,ce,be,be,be,be,be,be,1],[28*i,"{MMM}",he,be,be,be,be,be,1],[i,de,he,be,be,be,be,be,1],[n,"{h}"+ge,me,be,pe,be,be,be,1],[t,xe,me,be,pe,be,be,be,1],[e,_e,me+" "+xe,be,pe+" "+xe,be,we,be,1],[l,_e+".{fff}",me+" "+xe,be,pe+" "+xe,be,we,be,1]],function(e){return(r,u,a,f,c,h)=>{let d=[],p=c>=s,m=c>=o&&s>c,g=e(a),x=Al(g*l,3),w=Pe(g.getFullYear(),p?0:g.getMonth(),m||p?1:g.getDate()),_=Al(w*l,3);if(m||p){let t=m?c/o:0,n=p?c/s:0,i=x==_?x:Al(Pe(w.getFullYear()+n,w.getMonth()+t,1)*l,3),r=new Date(rl(i/l)),u=r.getFullYear(),a=r.getMonth();for(let o=0;f>=i;o++){let s=Pe(u+n*o,a+t*o,1),r=s-e(Al(s*l,3));i=Al((+s+r)*l,3),i>f||d.push(i)}}else{let o=i>c?c:i,s=_+(sl(a)-sl(x))+Dl(x-_,o);d.push(s);let p=e(s),m=p.getHours()+p.getMinutes()/t+p.getSeconds()/n,g=c/n,w=h/r.axes[u]._space;for(;s=Al(s+c,1==l?0:3),f>=s;)if(g>1){let l=sl(Al(m+g,6))%24,t=e(s).getHours()-l;t>1&&(t=-1),s-=t*n,m=(m+g)%24,.7>Al((s-d[d.length-1])/c,3)*w||d.push(s)}else d.push(s)}return d}}]}const[ke,ye,Me]=ve(1),[Se,Te,Ee]=ve(.001);function ze(l,e){return l.map((l=>l.map(((t,n)=>0==n||8==n||null==t?t:e(1==n||0==l[8]?t:l[1]+t)))))}function De(l,e){return(t,n,i,o,s)=>{let r,u,a,f,c,h,d=e.find((l=>s>=l[0]))||e[e.length-1];return n.map((e=>{let t=l(e),n=t.getFullYear(),i=t.getMonth(),o=t.getDate(),s=t.getHours(),p=t.getMinutes(),m=t.getSeconds(),g=n!=r&&d[2]||i!=u&&d[3]||o!=a&&d[4]||s!=f&&d[5]||p!=c&&d[6]||m!=h&&d[7]||d[1];return r=n,u=i,a=o,f=s,c=p,h=m,g(t)}))}}function Pe(l,e,t){return new Date(l,e,t)}function Ae(l,e){return e(l)}function We(l,e){return(t,n,i,o)=>null==o?w:e(l(n))}Cl(2,-53,53,[1]);const Ye={show:!0,live:!0,isolate:!1,mount:()=>{},markers:{show:!0,width:2,stroke:function(l,e){let t=l.series[e];return t.width?t.stroke(l,e):t.points.width?t.points.stroke(l,e):null},fill:function(l,e){return l.series[e].fill(l,e)},dash:"solid"},idx:null,idxs:null,values:[]},Ce=[0,0];function He(l,e,t,n=!0){return l=>{0==l.button&&(!n||l.target==e)&&t(l)}}function Fe(l,e,t,n=!0){return l=>{(!n||l.target==e)&&t(l)}}const Re={show:!0,x:!0,y:!0,lock:!1,move:function(l,e,t){return Ce[0]=e,Ce[1]=t,Ce},points:{one:!1,show:function(l,e){let i=l.cursor.points,o=D(),s=i.size(l,e);E(o,t,s),E(o,n,s);let r=s/-2;E(o,"marginLeft",r),E(o,"marginTop",r);let u=i.width(l,e,s);return u&&E(o,"borderWidth",u),o},size:function(l,e){return l.series[e].points.size},width:0,stroke:function(l,e){let t=l.series[e].points;return t._stroke||t._fill},fill:function(l,e){let t=l.series[e].points;return t._fill||t._stroke}},bind:{mousedown:He,mouseup:He,click:He,dblclick:He,mousemove:Fe,mouseleave:Fe,mouseenter:Fe},drag:{setScale:!0,x:!0,y:!1,dist:0,uni:null,click:(l,e)=>{e.stopPropagation(),e.stopImmediatePropagation()},_x:!1,_y:!1},focus:{dist:(l,e,t,n,i)=>n-i,prox:-1,bias:0},hover:{skip:[void 0],prox:null,bias:0},left:-10,top:-10,idx:null,dataIdx:null,idxs:null,event:null},Ge={show:!0,stroke:"rgba(0,0,0,0.07)",width:2},Ie=Bl({},Ge,{filter:kl}),Le=Bl({},Ie,{size:10}),Oe=Bl({},Ge,{show:!1}),Ne='12px system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"',je="bold "+Ne,Ue={show:!0,scale:"x",stroke:u,space:50,gap:5,alignTo:1,size:50,labelGap:0,labelSize:30,labelFont:je,side:2,grid:Ie,ticks:Le,border:Oe,font:Ne,lineGap:1.5,rotate:0},Ve={show:!0,scale:"x",auto:!1,sorted:1,min:gl,max:-gl,idxs:[]};function Be(l,e){return e.map((l=>null==l?"":tl(l)))}function $e(l,e,t,n,i,o,s){let r=[],u=Wl.get(i)||0;for(let l=t=s?t:Al(Dl(t,i),u);n>=l;l=Al(l+i,u))r.push(Object.is(l,-0)?0:l);return r}function Je(l,e,t,n,i){const o=[],s=l.scales[l.axes[e].scale].log,r=sl((10==s?dl:pl)(t));i=cl(s,r),10==s&&(i=fe[L(i,fe)]);let u=t,a=i*s;10==s&&(a=fe[L(a,fe)]);do{o.push(u),u+=i,10!=s||Wl.has(u)||(u=Al(u,Wl.get(i))),a>u||(a=(i=u)*s,10==s&&(a=fe[L(a,fe)]))}while(n>=u);return o}function qe(l,e,t,n,i){let o=l.scales[l.axes[e].scale].asinh,s=n>o?Je(l,e,fl(o,t),n,i):[o],r=0>n||t>0?[]:[0];return(-o>t?Je(l,e,fl(o,-n),-t,i):[o]).reverse().map((l=>-l)).concat(r,s)}const Ke=/./,Xe=/[12357]/,Ze=/[125]/,Qe=/1/,lt=(l,e,t,n)=>l.map(((l,i)=>4==e&&0==l||i%n==0&&t.test(l.toExponential()[0>l?1:0])?l:null));function et(l,e,t){let n=l.axes[t],i=n.scale,o=l.scales[i],s=l.valToPos,r=n._space,u=s(10,i),a=s(9,i)-u<r?s(7,i)-u<r?s(5,i)-u<r?Qe:Ze:Xe:Ke;if(a==Qe){let l=ol(s(1,i)-u);if(r>l)return lt(e.slice().reverse(),o.distr,a,ul(r/l)).reverse()}return lt(e,o.distr,a,1)}function tt(l,e,t){let n=l.axes[t],i=n.scale,o=n._space,s=l.valToPos,r=ol(s(1,i)-s(2,i));return o>r?lt(e.slice().reverse(),3,Ke,ul(o/r)).reverse():e}function nt(l,e,t,n){return null==n?w:null==e?"":tl(e)}const it={show:!0,scale:"y",stroke:u,space:30,gap:5,alignTo:1,size:50,labelGap:0,labelSize:30,labelFont:je,side:3,grid:Ie,ticks:Le,border:Oe,font:Ne,lineGap:1.5,rotate:0},ot={scale:null,auto:!0,sorted:0,min:gl,max:-gl},st=(l,e,t,n,i)=>i,rt={show:!0,auto:!0,sorted:0,gaps:st,alpha:1,facets:[Bl({},ot,{scale:"x"}),Bl({},ot,{scale:"y"})]},ut={scale:"y",auto:!0,sorted:0,show:!0,spanGaps:!1,gaps:st,alpha:1,points:{show:function(l,e){let{scale:t,idxs:n}=l.series[0],i=l._data[0],o=l.valToPos(i[n[0]],t,!0),s=l.valToPos(i[n[1]],t,!0);return ol(s-o)/(l.series[e].points.space*y)>=n[1]-n[0]},filter:null},values:null,min:gl,max:-gl,idxs:[],path:null,clip:null};function at(l,e,t){return t/10}const ft={time:!0,auto:!0,distr:1,log:10,asinh:1,min:null,max:null,dir:1,ori:0},ct=Bl({},ft,{time:!1,ori:1}),ht={};function dt(l){let e=ht[l];return e||(e={key:l,plots:[],sub(l){e.plots.push(l)},unsub(l){e.plots=e.plots.filter((e=>e!=l))},pub(l,t,n,i,o,s,r){for(let u=0;e.plots.length>u;u++)e.plots[u]!=t&&e.plots[u].pub(l,t,n,i,o,s,r)}},null!=l&&(ht[l]=e)),e}function pt(l,e,t){const n=l.mode,i=l.series[e],o=2==n?l._data[e]:l._data,s=l.scales,r=l.bbox;let u=o[0],a=2==n?o[1]:o[e],f=2==n?s[i.facets[0].scale]:s[l.series[0].scale],c=2==n?s[i.facets[1].scale]:s[i.scale],h=r.left,d=r.top,p=r.width,m=r.height,g=l.valToPosH,x=l.valToPosV;return 0==f.ori?t(i,u,a,f,c,g,x,h,d,p,m,kt,Mt,Tt,zt,Pt):t(i,u,a,f,c,x,g,d,h,m,p,yt,St,Et,Dt,At)}function mt(l,e){let t=0,n=0,i=Q(l.bands,Fl);for(let l=0;i.length>l;l++){let o=i[l];o.series[0]==e?t=o.dir:o.series[1]==e&&(n|=1==o.dir?1:2)}return[t,1==n?-1:2==n?1:3==n?2:0]}function gt(l,e,t,n,i){let o=l.series[e],s=l.scales[2==l.mode?o.facets[1].scale:o.scale];return-1==i?s.min:1==i?s.max:3==s.distr?1==s.dir?s.min:s.max:0}function xt(l,e,t,n,i,o){return pt(l,e,((l,e,s,r,u,a,f,c,h,d,p)=>{let m=l.pxRound;const g=0==r.ori?Mt:St;let x,w;1==r.dir*(0==r.ori?1:-1)?(x=t,w=n):(x=n,w=t);let _=m(a(e[x],r,d,c)),b=m(f(s[x],u,p,h)),v=m(a(e[w],r,d,c)),k=m(f(1==o?u.max:u.min,u,p,h)),y=new Path2D(i);return g(y,v,k),g(y,_,k),g(y,_,b),y}))}function wt(l,e,t,n,i,o){let s=null;if(l.length>0){s=new Path2D;const r=0==e?Tt:Et;let u=t;for(let e=0;l.length>e;e++){let t=l[e];if(t[1]>t[0]){let l=t[0]-u;l>0&&r(s,u,n,l,n+o),u=t[1]}}let a=t+i-u,f=10;a>0&&r(s,u,n-f/2,a,n+o+f)}return s}function _t(l,e,t,n,i,o,s){let r=[],u=l.length;for(let a=1==i?t:n;a>=t&&n>=a;a+=i)if(null===e[a]){let f=a,c=a;if(1==i)for(;++a<=n&&null===e[a];)c=a;else for(;--a>=t&&null===e[a];)c=a;let h=o(l[f]),d=c==f?h:o(l[c]),p=f-i;h=s>0||0>p||p>=u?h:o(l[p]);let m=c+i;d=0>s||0>m||m>=u?d:o(l[m]),h>d||r.push([h,d])}return r}function bt(l){return 0==l?vl:1==l?rl:e=>zl(e,l)}function vt(l){let e=0==l?kt:yt,t=0==l?(l,e,t,n,i,o)=>{l.arcTo(e,t,n,i,o)}:(l,e,t,n,i,o)=>{l.arcTo(t,e,i,n,o)},n=0==l?(l,e,t,n,i)=>{l.rect(e,t,n,i)}:(l,e,t,n,i)=>{l.rect(t,e,i,n)};return(l,i,o,s,r,u=0,a=0)=>{0==u&&0==a?n(l,i,o,s,r):(u=al(u,s/2,r/2),a=al(a,s/2,r/2),e(l,i+u,o),t(l,i+s,o,i+s,o+r,u),t(l,i+s,o+r,i,o+r,a),t(l,i,o+r,i,o,a),t(l,i,o,i+s,o,u),l.closePath())}}const kt=(l,e,t)=>{l.moveTo(e,t)},yt=(l,e,t)=>{l.moveTo(t,e)},Mt=(l,e,t)=>{l.lineTo(e,t)},St=(l,e,t)=>{l.lineTo(t,e)},Tt=vt(0),Et=vt(1),zt=(l,e,t,n,i,o)=>{l.arc(e,t,n,i,o)},Dt=(l,e,t,n,i,o)=>{l.arc(t,e,n,i,o)},Pt=(l,e,t,n,i,o,s)=>{l.bezierCurveTo(e,t,n,i,o,s)},At=(l,e,t,n,i,o,s)=>{l.bezierCurveTo(t,e,i,n,s,o)};function Wt(){return(l,e,t,n,i)=>pt(l,e,((e,o,s,r,u,a,f,c,h,d,p)=>{let m,g,{pxRound:x,points:w}=e;0==r.ori?(m=kt,g=zt):(m=yt,g=Dt);const _=Al(w.width*y,3);let b=(w.size-w.width)/2*y,v=Al(2*b,3),k=new Path2D,M=new Path2D,{left:S,top:T,width:E,height:z}=l.bbox;Tt(M,S-v,T-v,E+2*v,z+2*v);const D=l=>{if(null!=s[l]){let e=x(a(o[l],r,d,c)),t=x(f(s[l],u,p,h));m(k,e+b,t),g(k,e,t,b,0,2*il)}};if(i)i.forEach(D);else for(let l=t;n>=l;l++)D(l);return{stroke:_>0?k:null,fill:k,clip:M,flags:3}}))}function Yt(l){return(e,t,n,i,o,s)=>{n!=i&&(o!=n&&s!=n&&l(e,t,n),o!=i&&s!=i&&l(e,t,i),l(e,t,s))}}const Ct=Yt(Mt),Ht=Yt(St);function Ft(l){const e=Q(l?.alignGaps,0);return(l,t,n,i)=>pt(l,t,((o,s,r,u,a,f,c,h,d,p,m)=>{[n,i]=U(r,n,i);let g,x,w=o.pxRound,_=l=>w(f(l,u,p,h)),b=l=>w(c(l,a,m,d));0==u.ori?(g=Mt,x=Ct):(g=St,x=Ht);const v=u.dir*(0==u.ori?1:-1),k={stroke:new Path2D,fill:null,clip:null,band:null,gaps:null,flags:1},y=k.stroke;let M=!1;if(i-n<4*p)for(let l=1==v?n:i;l>=n&&i>=l;l+=v){let e=r[l];null===e?M=!0:null!=e&&g(y,_(s[l]),b(e))}else{let e,t,o,a=e=>l.posToVal(e,u.key,!0),f=null,c=null,h=_(s[1==v?n:i]),d=_(s[n]),p=_(s[i]),m=a(1==v?d+1:p-1);for(let l=1==v?n:i;l>=n&&i>=l;l+=v){let n=s[l],i=(1==v?m>n:n>m)?h:_(n),o=r[l];i==h?null!=o?(t=o,null==f?(g(y,i,b(t)),e=f=c=t):f>t?f=t:t>c&&(c=t)):null===o&&(M=!0):(null!=f&&x(y,h,b(f),b(c),b(e),b(t)),null!=o?(t=o,g(y,i,b(t)),f=c=e=t):(f=c=null,null===o&&(M=!0)),h=i,m=a(h+v))}null!=f&&f!=c&&o!=h&&x(y,h,b(f),b(c),b(e),b(t))}let[S,T]=mt(l,t);if(null!=o.fill||0!=S){let e=k.fill=new Path2D(y),r=b(o.fillTo(l,t,o.min,o.max,S)),u=_(s[n]),a=_(s[i]);-1==v&&([a,u]=[u,a]),g(e,a,r),g(e,u,r)}if(!o.spanGaps){let a=[];M&&a.push(..._t(s,r,n,i,v,_,e)),k.gaps=a=o.gaps(l,t,n,i,a),k.clip=wt(a,u.ori,h,d,p,m)}return 0!=T&&(k.band=2==T?[xt(l,t,n,i,y,-1),xt(l,t,n,i,y,1)]:xt(l,t,n,i,y,T)),k}))}function Rt(l,e,t,n,i,o,s=gl){if(l.length>1){let r=null;for(let u=0,a=1/0;l.length>u;u++)if(void 0!==e[u]){if(null!=r){let e=ol(l[u]-l[r]);a>e&&(a=e,s=ol(t(l[u],n,i,o)-t(l[r],n,i,o)))}r=u}}return s}function Gt(l,e,t,n,i){const o=l.length;if(2>o)return null;const s=new Path2D;if(t(s,l[0],e[0]),2==o)n(s,l[1],e[1]);else{let t=Array(o),n=Array(o-1),r=Array(o-1),u=Array(o-1);for(let t=0;o-1>t;t++)r[t]=e[t+1]-e[t],u[t]=l[t+1]-l[t],n[t]=r[t]/u[t];t[0]=n[0];for(let l=1;o-1>l;l++)0===n[l]||0===n[l-1]||n[l-1]>0!=n[l]>0?t[l]=0:(t[l]=3*(u[l-1]+u[l])/((2*u[l]+u[l-1])/n[l-1]+(u[l]+2*u[l-1])/n[l]),isFinite(t[l])||(t[l]=0));t[o-1]=n[o-2];for(let n=0;o-1>n;n++)i(s,l[n]+u[n]/3,e[n]+t[n]*u[n]/3,l[n+1]-u[n]/3,e[n+1]-t[n+1]*u[n]/3,l[n+1],e[n+1])}return s}const It=new Set;function Lt(){for(let l of It)l.syncRect(!0)}_&&(G("resize",v,Lt),G("scroll",v,Lt,!0),G(x,v,(()=>{en.pxRatio=y})));const Ot=Ft(),Nt=Wt();function jt(l,e,t,n){return(n?[l[0],l[1]].concat(l.slice(2)):[l[0]].concat(l.slice(1))).map(((l,n)=>Ut(l,n,e,t)))}function Ut(l,e,t,n){return Bl({},0==e?t:n,l)}function Vt(l,e,t){return null==e?Rl:[e,t]}const Bt=Vt;function $t(l,e,t){return null==e?Rl:Z(e,t,J,!0)}function Jt(l,e,t,n){return null==e?Rl:B(e,t,l.scales[n].log,!1)}const qt=Jt;function Kt(l,e,t,n){return null==e?Rl:$(e,t,l.scales[n].log,!1)}const Xt=Kt;function Zt(l,e,t,n,i){let o=fl(xl(l),xl(e)),s=e-l,r=L(i/n*s,t);do{let l=t[r],e=n*l/s;if(e>=i&&17>=o+(5>l?Wl.get(l):0))return[l,e]}while(++r<t.length);return[0,0]}function Qt(l){let e,t;return[l=l.replace(/(\d+)px/,((l,n)=>(e=rl((t=+n)*y))+"px")),e,t]}function ln(l){l.show&&[l.font,l.labelFont].forEach((l=>{let e=Al(l[2]*y,1);l[0]=l[0].replace(/[0-9.]+px/,e+"px"),l[1]=e}))}function en(u,g,_){const k={mode:Q(u.mode,1)},M=k.mode;function P(l,e,t,n){let i=e.valToPct(l);return n+t*(-1==e.dir?1-i:i)}function W(l,e,t,n){let i=e.valToPct(l);return n+t*(-1==e.dir?i:1-i)}function C(l,e,t,n){return 0==e.ori?P(l,e,t,n):W(l,e,t,n)}k.valToPosH=P,k.valToPosV=W;let F=!1;k.status=0;const R=k.root=D("uplot");null!=u.id&&(R.id=u.id),S(R,u.class),u.title&&(D("u-title",R).textContent=u.title);const O=z("canvas"),K=k.ctx=O.getContext("2d"),X=D("u-wrap",R);G("click",X,(l=>{l.target===el&&(Nn!=Gn||jn!=In)&&Zn.click(k,l)}),!0);const ll=k.under=D("u-under",X);X.appendChild(O);const el=k.over=D("u-over",X),tl=+Q((u=Vl(u)).pxAlign,1),sl=bt(tl);(u.plugins||[]).forEach((l=>{l.opts&&(u=l.opts(k,u)||u)}));const hl=u.ms||.001,pl=k.series=1==M?jt(u.series||[],Ve,ut,!1):function(l,e){return l.map(((l,t)=>0==t?{}:Bl({},e,l)))}(u.series||[null],rt),xl=k.axes=jt(u.axes||[],Ue,it,!0),vl=k.scales={},Tl=k.bands=u.bands||[];Tl.forEach((l=>{l.fill=bl(l.fill||null),l.dir=Q(l.dir,-1)}));const El=2==M?pl[1].facets[0].scale:pl[0].scale,Dl={axes:function(){for(let l=0;xl.length>l;l++){let e=xl[l];if(!e.show||!e._show)continue;let t,n,u=e.side,a=u%2,f=e.stroke(k,l),c=0==u||3==u?-1:1,[h,d]=e._found;if(null!=e.label){let s=rl((e._lpos+e.labelGap*c)*y);_n(e.labelFont[0],f,"center",2==u?i:o),K.save(),1==a?(t=n=0,K.translate(s,rl(lt+st/2)),K.rotate((3==u?-il:il)/2)):(t=rl(Qe+ot/2),n=s);let r=_l(e.label)?e.label(k,l,h,d):e.label;K.fillText(r,t,n),K.restore()}if(0==d)continue;let p=vl[e.scale],m=0==a?ot:st,g=0==a?Qe:lt,x=e._splits,w=2==p.distr?x.map((l=>pn[l])):x,_=2==p.distr?pn[x[1]]-pn[x[0]]:h,b=e.ticks,v=e.border,M=b.show?b.size:0,S=rl(M*y),T=rl((2==e.alignTo?e._size-M-e.gap:e.gap)*y),E=e._rotate*-il/180,z=sl(e._pos*y),D=z+(S+T)*c;n=0==a?D:0,t=1==a?D:0,_n(e.font[0],f,1==e.align?s:2==e.align?r:E>0?s:0>E?r:0==a?"center":3==u?r:s,E||1==a?"middle":2==u?i:o);let P=e.font[1]*e.lineGap,A=x.map((l=>sl(C(l,p,m,g)))),W=e._values;for(let l=0;W.length>l;l++){let e=W[l];if(null!=e){0==a?t=A[l]:n=A[l],e=""+e;let i=-1==e.indexOf("\n")?[e]:e.split(/\n/gm);for(let l=0;i.length>l;l++){let e=i[l];E?(K.save(),K.translate(t,n+l*P),K.rotate(E),K.fillText(e,0,0),K.restore()):K.fillText(e,t,n+l*P)}}}b.show&&zn(A,b.filter(k,w,l,d,_),a,u,z,S,Al(b.width*y,3),b.stroke(k,l),b.dash,b.cap);let Y=e.grid;Y.show&&zn(A,Y.filter(k,w,l,d,_),a,0==a?2:1,0==a?lt:Qe,0==a?st:ot,Al(Y.width*y,3),Y.stroke(k,l),Y.dash,Y.cap),v.show&&zn([z],[1],0==a?1:0,0==a?1:2,1==a?lt:Qe,1==a?st:ot,Al(v.width*y,3),v.stroke(k,l),v.dash,v.cap)}Ci("drawAxes")},series:function(){if(Gt>0){let l=pl.some((l=>l._focus))&&dn!=Tt.alpha;l&&(K.globalAlpha=dn=Tt.alpha),pl.forEach(((l,e)=>{if(e>0&&l.show&&(kn(e,!1),kn(e,!0),null==l._paths)){let t=dn;dn!=l.alpha&&(K.globalAlpha=dn=l.alpha);let n=2==M?[0,g[e][0].length-1]:function(l){let e=wl(Lt-1,0,Gt-1),t=wl(en+1,0,Gt-1);for(;null==l[e]&&e>0;)e--;for(;null==l[t]&&Gt-1>t;)t++;return[e,t]}(g[e]);l._paths=l.paths(k,e,n[0],n[1]),dn!=t&&(K.globalAlpha=dn=t)}})),pl.forEach(((l,e)=>{if(e>0&&l.show){let t=dn;dn!=l.alpha&&(K.globalAlpha=dn=l.alpha),null!=l._paths&&yn(e,!1);{let t=null!=l._paths?l._paths.gaps:null,n=l.points.show(k,e,Lt,en,t),i=l.points.filter(k,e,n,t);(n||i)&&(l.points._paths=l.points.paths(k,e,Lt,en,i),yn(e,!0))}dn!=t&&(K.globalAlpha=dn=t),Ci("drawSeries",e)}})),l&&(K.globalAlpha=dn=1)}}},Pl=(u.drawOrder||["axes","series"]).map((l=>Dl[l]));function Cl(l){const e=3==l.distr?e=>dl(e>0?e:l.clamp(k,e,l.min,l.max,l.key)):4==l.distr?e=>ml(e,l.asinh):100==l.distr?e=>l.fwd(e):l=>l;return t=>{let n=e(t),{_min:i,_max:o}=l;return(n-i)/(o-i)}}function Il(l){let e=vl[l];if(null==e){let t=(u.scales||Hl)[l]||Hl;if(null!=t.from){Il(t.from);let e=Bl({},vl[t.from],t,{key:l});e.valToPct=Cl(e),vl[l]=e}else{e=vl[l]=Bl({},l==El?ft:ct,t),e.key=l;let n=e.time,i=e.range,o=Gl(i);if((l!=El||2==M&&!n)&&(!o||null!=i[0]&&null!=i[1]||(i={min:null==i[0]?q:{mode:1,hard:i[0],soft:i[0]},max:null==i[1]?q:{mode:1,hard:i[1],soft:i[1]}},o=!1),!o&&Ol(i))){let l=i;i=(e,t,n)=>null==t?Rl:Z(t,n,l)}e.range=bl(i||(n?Bt:l==El?3==e.distr?qt:4==e.distr?Xt:Vt:3==e.distr?Jt:4==e.distr?Kt:$t)),e.auto=bl(!o&&e.auto),e.clamp=bl(e.clamp||at),e._min=e._max=null,e.valToPct=Cl(e)}}}Il("x"),Il("y"),1==M&&pl.forEach((l=>{Il(l.scale)})),xl.forEach((l=>{Il(l.scale)}));for(let l in u.scales)Il(l);const jl=vl[El],Ul=jl.distr;let $l,ql;0==jl.ori?(S(R,"u-hz"),$l=P,ql=W):(S(R,"u-vt"),$l=W,ql=P);const Kl={};for(let l in vl){let e=vl[l];null==e.min&&null==e.max||(Kl[l]={min:e.min,max:e.max},e.min=e.max=null)}const Xl=u.tzDate||(l=>new Date(rl(l/hl))),Zl=u.fmtDate||ne,Ql=1==hl?Me(Xl):Ee(Xl),le=De(Xl,ze(1==hl?ye:Te,Zl)),ee=We(Xl,Ae("{YYYY}-{MM}-{DD} {h}:{mm}{aa}",Zl)),te=[],ie=k.legend=Bl({},Ye,u.legend),oe=k.cursor=Bl({},Re,{drag:{y:2==M}},u.cursor),se=ie.show,re=oe.show,ue=ie.markers;let ce,he,de;ie.idxs=te,ue.width=bl(ue.width),ue.dash=bl(ue.dash),ue.stroke=bl(ue.stroke),ue.fill=bl(ue.fill);let pe,me=[],ge=[],xe=!1,we={};if(ie.live){const l=pl[1]?pl[1].values:null;xe=null!=l,pe=xe?l(k,1,0):{_:0};for(let l in pe)we[l]=w}if(se)if(ce=z("table","u-legend",R),de=z("tbody",null,ce),ie.mount(k,ce),xe){he=z("thead",null,ce,de);let l=z("tr",null,he);for(var _e in z("th",null,l),pe)z("th",e,l).textContent=_e}else S(ce,"u-inline"),ie.live&&S(ce,"u-live");const be={show:!0},ve={show:!1},Pe=new Map;function Ce(l,e,t,n=!0){const i=Pe.get(e)||{},o=oe.bind[l](k,e,t,n);o&&(G(l,e,i[l]=o),Pe.set(e,i))}function He(l,e){const t=Pe.get(e)||{};for(let n in t)null!=l&&n!=l||(I(n,e,t[n]),delete t[n]);null==l&&Pe.delete(e)}let Fe=0,Ge=0,Ie=0,Le=0,Oe=0,Ne=0,je=Oe,Ke=Ne,Xe=Ie,Ze=Le,Qe=0,lt=0,ot=0,st=0;k.bbox={};let ht=!1,pt=!1,mt=!1,xt=!1,wt=!1,_t=!1;function vt(l,e,t){(t||l!=k.width||e!=k.height)&&kt(l,e),An(!1),mt=!0,pt=!0,Jn()}function kt(l,e){k.width=Fe=Ie=l,k.height=Ge=Le=e,Oe=Ne=0,function(){let l=!1,e=!1,t=!1,n=!1;xl.forEach((i=>{if(i.show&&i._show){let{side:o,_size:s}=i,r=s+(null!=i.label?i.labelSize:0);r>0&&(o%2?(Ie-=r,3==o?(Oe+=r,n=!0):t=!0):(Le-=r,0==o?(Ne+=r,l=!0):e=!0))}})),Ct[0]=l,Ct[1]=t,Ct[2]=e,Ct[3]=n,Ie-=Rt[1]+Rt[3],Oe+=Rt[3],Le-=Rt[2]+Rt[0],Ne+=Rt[0]}(),function(){let l=Oe+Ie,e=Ne+Le,t=Oe,n=Ne;function i(i,o){switch(i){case 1:return l+=o,l-o;case 2:return e+=o,e-o;case 3:return t-=o,t+o;case 0:return n-=o,n+o}}xl.forEach((l=>{if(l.show&&l._show){let e=l.side;l._pos=i(e,l._size),null!=l.label&&(l._lpos=i(e,l.labelSize))}}))}();let t=k.bbox;Qe=t.left=zl(Oe*y,.5),lt=t.top=zl(Ne*y,.5),ot=t.width=zl(Ie*y,.5),st=t.height=zl(Le*y,.5)}const yt=3;if(k.setSize=function({width:l,height:e}){vt(l,e)},null==oe.dataIdx){let l=oe.hover,e=l.skip=new Set(l.skip??[]);e.add(void 0);let t=l.prox=bl(l.prox),n=l.bias??=0;oe.dataIdx=(l,i,o,s)=>{if(0==i)return o;let r=o,u=t(l,i,o,s)??gl,a=u>=0&&gl>u,f=0==jl.ori?Ie:Le,c=oe.left,h=g[0],d=g[i];if(e.has(d[o])){r=null;let l,t=null,i=null;if(0==n||-1==n)for(l=o;null==t&&l-- >0;)e.has(d[l])||(t=l);if(0==n||1==n)for(l=o;null==i&&l++<d.length;)e.has(d[l])||(i=l);if(null!=t||null!=i)if(a){let l=c-(null==t?-1/0:$l(h[t],jl,f,0)),e=(null==i?1/0:$l(h[i],jl,f,0))-c;l>e?e>u||(r=i):l>u||(r=t)}else r=null==i?t:null==t||o-t>i-o?i:t}else a&&ol(c-$l(h[o],jl,f,0))>u&&(r=null);return r}}const Mt=l=>{oe.event=l};oe.idxs=te,oe._lock=!1;let St=oe.points;St.show=bl(St.show),St.size=bl(St.size),St.stroke=bl(St.stroke),St.width=bl(St.width),St.fill=bl(St.fill);const Tt=k.focus=Bl({},u.focus||{alpha:.3},oe.focus),Et=Tt.prox>=0,zt=Et&&St.one;let Dt=[],Pt=[],At=[];function Wt(l,e){let t=St.show(k,e);if(t instanceof HTMLElement)return S(t,"u-cursor-pt"),S(t,l.class),A(t,-10,-10,Ie,Le),el.insertBefore(t,Dt[e]),t}function Yt(t,n){if(1==M||n>0){let l=1==M&&vl[t.scale].time,e=t.value;t.value=l?Ll(e)?We(Xl,Ae(e,Zl)):e||ee:e||nt,t.label=t.label||(l?"Time":"Value")}if(zt||n>0){t.width=null==t.width?1:t.width,t.paths=t.paths||Ot||yl,t.fillTo=bl(t.fillTo||gt),t.pxAlign=+Q(t.pxAlign,tl),t.pxRound=bt(t.pxAlign),t.stroke=bl(t.stroke||null),t.fill=bl(t.fill||null),t._stroke=t._fill=t._paths=t._focus=null;let l=function(l){return Al(1*(3+2*(l||1)),3)}(fl(1,t.width)),e=t.points=Bl({},{size:l,width:fl(1,.2*l),stroke:t.stroke,space:2*l,paths:Nt,_stroke:null,_fill:null},t.points);e.show=bl(e.show),e.filter=bl(e.filter),e.fill=bl(e.fill),e.stroke=bl(e.stroke),e.paths=bl(e.paths),e.pxAlign=t.pxAlign}if(se){let i=function(t,n){if(0==n&&(xe||!ie.live||2==M))return Rl;let i=[],o=z("tr","u-series",de,de.childNodes[n]);S(o,t.class),t.show||S(o,l);let s=z("th",null,o);if(ue.show){let l=D("u-marker",s);if(n>0){let e=ue.width(k,n);e&&(l.style.border=e+"px "+ue.dash(k,n)+" "+ue.stroke(k,n)),l.style.background=ue.fill(k,n)}}let r=D(e,s);for(var u in t.label instanceof HTMLElement?r.appendChild(t.label):r.textContent=t.label,n>0&&(ue.show||(r.style.color=t.width>0?ue.stroke(k,n):ue.fill(k,n)),Ce("click",s,(l=>{if(oe._lock)return;Mt(l);let e=pl.indexOf(t);if((l.ctrlKey||l.metaKey)!=ie.isolate){let l=pl.some(((l,t)=>t>0&&t!=e&&l.show));pl.forEach(((t,n)=>{n>0&&oi(n,l?n==e?be:ve:be,!0,Fi.setSeries)}))}else oi(e,{show:!t.show},!0,Fi.setSeries)}),!1),Et&&Ce(d,s,(l=>{oe._lock||(Mt(l),oi(pl.indexOf(t),ai,!0,Fi.setSeries))}),!1)),pe){let l=z("td","u-value",o);l.textContent="--",i.push(l)}return[o,i]}(t,n);me.splice(n,0,i[0]),ge.splice(n,0,i[1]),ie.values.push(null)}if(re){te.splice(n,0,null);let l=null;zt?0==n&&(l=Wt(t,n)):n>0&&(l=Wt(t,n)),Dt.splice(n,0,l),Pt.splice(n,0,0),At.splice(n,0,0)}Ci("addSeries",n)}k.addSeries=function(l,e){e=null==e?pl.length:e,l=1==M?Ut(l,e,Ve,ut):Ut(l,e,{},rt),pl.splice(e,0,l),Yt(pl[e],e)},k.delSeries=function(l){if(pl.splice(l,1),se){ie.values.splice(l,1),ge.splice(l,1);let e=me.splice(l,1)[0];He(null,e.firstChild),e.remove()}re&&(te.splice(l,1),Dt.splice(l,1)[0].remove(),Pt.splice(l,1),At.splice(l,1)),Ci("delSeries",l)};const Ct=[!1,!1,!1,!1];function Ht(l,e,t){let[n,i,o,s]=t,r=e%2,u=0;return 0==r&&(s||i)&&(u=0==e&&!n||2==e&&!o?rl(Ue.size/3):0),1==r&&(n||o)&&(u=1==e&&!i||3==e&&!s?rl(it.size/2):0),u}const Ft=k.padding=(u.padding||[Ht,Ht,Ht,Ht]).map((l=>bl(Q(l,Ht)))),Rt=k._padding=Ft.map(((l,e)=>l(k,e,Ct,0)));let Gt,Lt=null,en=null;const tn=1==M?pl[0].idxs:null;let nn,on,sn,rn,un,an,fn,cn,hn,dn,pn=null,mn=!1;function gn(l,e){if(k.data=k._data=g=null==l?[]:l,2==M){Gt=0;for(let l=1;pl.length>l;l++)Gt+=g[l][0].length}else{0==g.length&&(k.data=k._data=g=[[]]),pn=g[0],Gt=pn.length;let l=g;if(2==Ul){l=g.slice();let e=l[0]=Array(Gt);for(let l=0;Gt>l;l++)e[l]=l}k._data=g=l}if(An(!0),Ci("setData"),2==Ul&&(mt=!0),!1!==e){let l=jl;l.auto(k,mn)?xn():ii(El,l.min,l.max),xt=xt||oe.left>=0,_t=!0,Jn()}}function xn(){let l,e;mn=!0,1==M&&(Gt>0?(Lt=tn[0]=0,en=tn[1]=Gt-1,l=g[0][Lt],e=g[0][en],2==Ul?(l=Lt,e=en):l==e&&(3==Ul?[l,e]=B(l,l,jl.log,!1):4==Ul?[l,e]=$(l,l,jl.log,!1):jl.time?e=l+rl(86400/hl):[l,e]=Z(l,e,J,!0))):(Lt=tn[0]=l=null,en=tn[1]=e=null)),ii(El,l,e)}function wn(l,e,t,n,i,o){l??=a,t??=Fl,n??="butt",i??=a,o??="round",l!=nn&&(K.strokeStyle=nn=l),i!=on&&(K.fillStyle=on=i),e!=sn&&(K.lineWidth=sn=e),o!=un&&(K.lineJoin=un=o),n!=an&&(K.lineCap=an=n),t!=rn&&K.setLineDash(rn=t)}function _n(l,e,t,n){e!=on&&(K.fillStyle=on=e),l!=fn&&(K.font=fn=l),t!=cn&&(K.textAlign=cn=t),n!=hn&&(K.textBaseline=hn=n)}function bn(l,e,t,n,i=0){if(n.length>0&&l.auto(k,mn)&&(null==e||null==e.min)){let e=Q(Lt,0),o=Q(en,n.length-1),s=null==t.min?function(l,e,t,n=0,i=!1){let o=i?V:U,s=i?j:N;[e,t]=o(l,e,t);let r=l[e],u=l[e];if(e>-1)if(1==n)r=l[e],u=l[t];else if(-1==n)r=l[t],u=l[e];else for(let n=e;t>=n;n++){let e=l[n];s(e)&&(r>e?r=e:e>u&&(u=e))}return[r??gl,u??-gl]}(n,e,o,i,3==l.distr):[t.min,t.max];l.min=al(l.min,t.min=s[0]),l.max=fl(l.max,t.max=s[1])}}k.setData=gn;const vn={min:null,max:null};function kn(l,e){let t=e?pl[l].points:pl[l];t._stroke=t.stroke(k,l),t._fill=t.fill(k,l)}function yn(l,e){let t=e?pl[l].points:pl[l],{stroke:n,fill:i,clip:o,flags:s,_stroke:r=t._stroke,_fill:u=t._fill,_width:a=t.width}=t._paths;a=Al(a*y,3);let f=null,c=a%2/2;e&&null==u&&(u=a>0?"#fff":r);let h=1==t.pxAlign&&c>0;if(h&&K.translate(c,c),!e){let l=Qe-a/2,e=lt-a/2,t=ot+a,n=st+a;f=new Path2D,f.rect(l,e,t,n)}e?Sn(r,a,t.dash,t.cap,u,n,i,s,o):function(l,e,t,n,i,o,s,r,u,a,f){let c=!1;0!=u&&Tl.forEach(((h,d)=>{if(h.series[0]==l){let l,p=pl[h.series[1]],m=g[h.series[1]],x=(p._paths||Hl).band;Gl(x)&&(x=1==h.dir?x[0]:x[1]);let w=null;p.show&&x&&function(l,e,t){for(e=Q(e,0),t=Q(t,l.length-1);t>=e;){if(null!=l[e])return!0;e++}return!1}(m,Lt,en)?(w=h.fill(k,d)||o,l=p._paths.clip):x=null,Sn(e,t,n,i,w,s,r,u,a,f,l,x),c=!0}})),c||Sn(e,t,n,i,o,s,r,u,a,f)}(l,r,a,t.dash,t.cap,u,n,i,s,f,o),h&&K.translate(-c,-c)}const Mn=3;function Sn(l,e,t,n,i,o,s,r,u,a,f,c){wn(l,e,t,n,i),(u||a||c)&&(K.save(),u&&K.clip(u),a&&K.clip(a)),c?(r&Mn)==Mn?(K.clip(c),f&&K.clip(f),En(i,s),Tn(l,o,e)):2&r?(En(i,s),K.clip(c),Tn(l,o,e)):1&r&&(K.save(),K.clip(c),f&&K.clip(f),En(i,s),K.restore(),Tn(l,o,e)):(En(i,s),Tn(l,o,e)),(u||a||c)&&K.restore()}function Tn(l,e,t){t>0&&(e instanceof Map?e.forEach(((l,e)=>{K.strokeStyle=nn=e,K.stroke(l)})):null!=e&&l&&K.stroke(e))}function En(l,e){e instanceof Map?e.forEach(((l,e)=>{K.fillStyle=on=e,K.fill(l)})):null!=e&&l&&K.fill(e)}function zn(l,e,t,n,i,o,s,r,u,a){let f=s%2/2;1==tl&&K.translate(f,f),wn(r,s,u,a,r),K.beginPath();let c,h,d,p,m=i+(0==n||3==n?-o:o);0==t?(h=i,p=m):(c=i,d=m);for(let n=0;l.length>n;n++)null!=e[n]&&(0==t?c=d=l[n]:h=p=l[n],K.moveTo(c,h),K.lineTo(d,p));K.stroke(),1==tl&&K.translate(-f,-f)}function Dn(l){let e=!0;return xl.forEach(((t,n)=>{if(!t.show)return;let i=vl[t.scale];if(null==i.min)return void(t._show&&(e=!1,t._show=!1,An(!1)));t._show||(e=!1,t._show=!0,An(!1));let o=t.side,s=o%2,{min:r,max:u}=i,[a,f]=function(l,e,t,n){let i,o=xl[l];if(n>0){let s=o._space=o.space(k,l,e,t,n);i=Zt(e,t,o._incrs=o.incrs(k,l,e,t,n,s),n,s)}else i=[0,0];return o._found=i}(n,r,u,0==s?Ie:Le);if(0==f)return;let c=t._splits=t.splits(k,n,r,u,a,f,2==i.distr),h=2==i.distr?c.map((l=>pn[l])):c,d=2==i.distr?pn[c[1]]-pn[c[0]]:a,p=t._values=t.values(k,t.filter(k,h,n,f,d),n,f,d);t._rotate=2==o?t.rotate(k,p,n,f):0;let m=t._size;t._size=ul(t.size(k,p,n,l)),null!=m&&t._size!=m&&(e=!1)})),e}function Pn(l){let e=!0;return Ft.forEach(((t,n)=>{let i=t(k,n,Ct,l);i!=Rt[n]&&(e=!1),Rt[n]=i})),e}function An(l){pl.forEach(((e,t)=>{t>0&&(e._paths=null,l&&(1==M?(e.min=null,e.max=null):e.facets.forEach((l=>{l.min=null,l.max=null}))))}))}let Wn,Yn,Cn,Hn,Fn,Rn,Gn,In,Ln,On,Nn,jn,Un=!1,Vn=!1,Bn=[];function $n(){Vn=!1;for(let l=0;Bn.length>l;l++)Ci(...Bn[l]);Bn.length=0}function Jn(){Un||(Jl(qn),Un=!0)}function qn(){if(ht&&(function(){for(let l in vl){let e=vl[l];null==Kl[l]&&(null==e.min||null!=Kl[El]&&e.auto(k,mn))&&(Kl[l]=vn)}for(let l in vl){let e=vl[l];null==Kl[l]&&null!=e.from&&null!=Kl[e.from]&&(Kl[l]=vn)}null!=Kl[El]&&An(!0);let l={};for(let e in Kl){let t=Kl[e];if(null!=t){let n=l[e]=Vl(vl[e],Nl);if(null!=t.min)Bl(n,t);else if(e!=El||2==M)if(0==Gt&&null==n.from){let l=n.range(k,null,null,e);n.min=l[0],n.max=l[1]}else n.min=gl,n.max=-gl}}if(Gt>0){pl.forEach(((e,t)=>{if(1==M){let n=e.scale,i=Kl[n];if(null==i)return;let o=l[n];if(0==t){let l=o.range(k,o.min,o.max,n);o.min=l[0],o.max=l[1],Lt=L(o.min,g[0]),en=L(o.max,g[0]),en-Lt>1&&(o.min>g[0][Lt]&&Lt++,g[0][en]>o.max&&en--),e.min=pn[Lt],e.max=pn[en]}else e.show&&e.auto&&bn(o,i,e,g[t],e.sorted);e.idxs[0]=Lt,e.idxs[1]=en}else if(t>0&&e.show&&e.auto){let[n,i]=e.facets,o=n.scale,s=i.scale,[r,u]=g[t],a=l[o],f=l[s];null!=a&&bn(a,Kl[o],n,r,n.sorted),null!=f&&bn(f,Kl[s],i,u,i.sorted),e.min=i.min,e.max=i.max}}));for(let e in l){let t=l[e],n=Kl[e];if(null==t.from&&(null==n||null==n.min)){let l=t.range(k,t.min==gl?null:t.min,t.max==-gl?null:t.max,e);t.min=l[0],t.max=l[1]}}}for(let e in l){let t=l[e];if(null!=t.from){let n=l[t.from];if(null==n.min)t.min=t.max=null;else{let l=t.range(k,n.min,n.max,e);t.min=l[0],t.max=l[1]}}}let e={},t=!1;for(let n in l){let i=l[n],o=vl[n];if(o.min!=i.min||o.max!=i.max){o.min=i.min,o.max=i.max;let l=o.distr;o._min=3==l?dl(o.min):4==l?ml(o.min,o.asinh):100==l?o.fwd(o.min):o.min,o._max=3==l?dl(o.max):4==l?ml(o.max,o.asinh):100==l?o.fwd(o.max):o.max,e[n]=t=!0}}if(t){pl.forEach(((l,t)=>{2==M?t>0&&e.y&&(l._paths=null):e[l.scale]&&(l._paths=null)}));for(let l in e)mt=!0,Ci("setScale",l);re&&oe.left>=0&&(xt=_t=!0)}for(let l in Kl)Kl[l]=null}(),ht=!1),mt&&(function(){let l=!1,e=0;for(;!l;){e++;let t=Dn(e),n=Pn(e);l=e==yt||t&&n,l||(kt(k.width,k.height),pt=!0)}}(),mt=!1),pt){if(E(ll,s,Oe),E(ll,i,Ne),E(ll,t,Ie),E(ll,n,Le),E(el,s,Oe),E(el,i,Ne),E(el,t,Ie),E(el,n,Le),E(X,t,Fe),E(X,n,Ge),O.width=rl(Fe*y),O.height=rl(Ge*y),xl.forEach((({_el:e,_show:t,_size:n,_pos:i,side:o})=>{if(null!=e)if(t){let t=o%2==1;E(e,t?"left":"top",i-(3===o||0===o?n:0)),E(e,t?"width":"height",n),E(e,t?"top":"left",t?Ne:Oe),E(e,t?"height":"width",t?Le:Ie),T(e,l)}else S(e,l)})),nn=on=sn=un=an=fn=cn=hn=rn=null,dn=1,_i(!0),Oe!=je||Ne!=Ke||Ie!=Xe||Le!=Ze){An(!1);let l=Ie/Xe,e=Le/Ze;if(re&&!xt&&oe.left>=0){oe.left*=l,oe.top*=e,Cn&&A(Cn,rl(oe.left),0,Ie,Le),Hn&&A(Hn,0,rl(oe.top),Ie,Le);for(let t=0;Dt.length>t;t++){let n=Dt[t];null!=n&&(Pt[t]*=l,At[t]*=e,A(n,ul(Pt[t]),ul(At[t]),Ie,Le))}}if(ei.show&&!wt&&ei.left>=0&&ei.width>0){ei.left*=l,ei.width*=l,ei.top*=e,ei.height*=e;for(let l in ki)E(ti,l,ei[l])}je=Oe,Ke=Ne,Xe=Ie,Ze=Le}Ci("setSize"),pt=!1}Fe>0&&Ge>0&&(K.clearRect(0,0,O.width,O.height),Ci("drawClear"),Pl.forEach((l=>l())),Ci("draw")),ei.show&&wt&&(ni(ei),wt=!1),re&&xt&&(xi(null,!0,!1),xt=!1),ie.show&&ie.live&&_t&&(mi(),_t=!1),F||(F=!0,k.status=1,Ci("ready")),mn=!1,Un=!1}function Kn(l,e){let t=vl[l];if(null==t.from){if(0==Gt){let n=t.range(k,e.min,e.max,l);e.min=n[0],e.max=n[1]}if(e.min>e.max){let l=e.min;e.min=e.max,e.max=l}if(Gt>1&&null!=e.min&&null!=e.max&&1e-16>e.max-e.min)return;l==El&&2==t.distr&&Gt>0&&(e.min=L(e.min,g[0]),e.max=L(e.max,g[0]),e.min==e.max&&e.max++),Kl[l]=e,ht=!0,Jn()}}k.batch=function(l,e=!1){Un=!0,Vn=e,l(k),qn(),e&&Bn.length>0&&queueMicrotask($n)},k.redraw=(l,e)=>{mt=e||!1,!1!==l?ii(El,jl.min,jl.max):Jn()},k.setScale=Kn;let Xn=!1;const Zn=oe.drag;let Qn=Zn.x,li=Zn.y;re&&(oe.x&&(Wn=D("u-cursor-x",el)),oe.y&&(Yn=D("u-cursor-y",el)),0==jl.ori?(Cn=Wn,Hn=Yn):(Cn=Yn,Hn=Wn),Nn=oe.left,jn=oe.top);const ei=k.select=Bl({show:!0,over:!0,left:0,width:0,top:0,height:0},u.select),ti=ei.show?D("u-select",ei.over?el:ll):null;function ni(l,e){if(ei.show){for(let e in l)ei[e]=l[e],e in ki&&E(ti,e,l[e]);!1!==e&&Ci("setSelect")}}function ii(l,e,t){Kn(l,{min:e,max:t})}function oi(e,t,n,i){null!=t.focus&&function(l){if(l!=ui){let e=null==l,t=1!=Tt.alpha;pl.forEach(((n,i)=>{if(1==M||i>0){let o=e||0==i||i==l;n._focus=e?null:o,t&&function(l,e){pl[l].alpha=e,re&&null!=Dt[l]&&(Dt[l].style.opacity=e),se&&me[l]&&(me[l].style.opacity=e)}(i,o?1:Tt.alpha)}})),ui=l,t&&Jn()}}(e),null!=t.show&&pl.forEach(((n,i)=>{0>=i||e!=i&&null!=e||(n.show=t.show,function(e){if(pl[e].show)se&&T(me[e],l);else if(se&&S(me[e],l),re){let l=zt?Dt[0]:Dt[e];null!=l&&A(l,-10,-10,Ie,Le)}}(i),2==M?(ii(n.facets[0].scale,null,null),ii(n.facets[1].scale,null,null)):ii(n.scale,null,null),Jn())})),!1!==n&&Ci("setSeries",e,t),i&&Ii("setSeries",k,e,t)}let si,ri,ui;k.setSelect=ni,k.setSeries=oi,k.addBand=function(l,e){l.fill=bl(l.fill||null),l.dir=Q(l.dir,-1),Tl.splice(e=null==e?Tl.length:e,0,l)},k.setBand=function(l,e){Bl(Tl[l],e)},k.delBand=function(l){null==l?Tl.length=0:Tl.splice(l,1)};const ai={focus:!0};function fi(l,e,t){let n=vl[e];t&&(l=l/y-(1==n.ori?Ne:Oe));let i=Ie;1==n.ori&&(i=Le,l=i-l),-1==n.dir&&(l=i-l);let o=n._min,s=o+l/i*(n._max-o),r=n.distr;return 3==r?cl(10,s):4==r?((l,e=1)=>nl.sinh(l)*e)(s,n.asinh):100==r?n.bwd(s):s}function ci(l,e){E(ti,s,ei.left=l),E(ti,t,ei.width=e)}function hi(l,e){E(ti,i,ei.top=l),E(ti,n,ei.height=e)}se&&Et&&Ce(p,ce,(l=>{oe._lock||(Mt(l),null!=ui&&oi(null,ai,!0,Fi.setSeries))})),k.valToIdx=l=>L(l,g[0]),k.posToIdx=function(l,e){return L(fi(l,El,e),g[0],Lt,en)},k.posToVal=fi,k.valToPos=(l,e,t)=>0==vl[e].ori?P(l,vl[e],t?ot:Ie,t?Qe:0):W(l,vl[e],t?st:Le,t?lt:0),k.setCursor=(l,e,t)=>{Nn=l.left,jn=l.top,xi(null,e,t)};let di=0==jl.ori?ci:hi,pi=1==jl.ori?ci:hi;function mi(l,e){if(null!=l&&(l.idxs?l.idxs.forEach(((l,e)=>{te[e]=l})):(l=>void 0===l)(l.idx)||te.fill(l.idx),ie.idx=te[0]),se&&ie.live){for(let l=0;pl.length>l;l++)(l>0||1==M&&!xe)&&gi(l,te[l]);!function(){if(se&&ie.live)for(let l=2==M?1:0;pl.length>l;l++){if(0==l&&xe)continue;let e=ie.values[l],t=0;for(let n in e)ge[l][t++].firstChild.nodeValue=e[n]}}()}_t=!1,!1!==e&&Ci("setLegend")}function gi(l,e){let t,n=pl[l],i=0==l&&2==Ul?pn:g[l];xe?t=n.values(k,l,e)??we:(t=n.value(k,null==e?null:i[e],l,e),t=null==t?we:{_:t}),ie.values[l]=t}function xi(l,e,t){let n;Ln=Nn,On=jn,[Nn,jn]=oe.move(k,Nn,jn),oe.left=Nn,oe.top=jn,re&&(Cn&&A(Cn,rl(Nn),0,Ie,Le),Hn&&A(Hn,0,rl(jn),Ie,Le)),si=gl,ri=null;let i=0==jl.ori?Ie:Le,o=1==jl.ori?Ie:Le;if(0>Nn||0==Gt||Lt>en){n=oe.idx=null;for(let l=0;pl.length>l;l++){let e=Dt[l];null!=e&&A(e,-10,-10,Ie,Le)}Et&&oi(null,ai,!0,null==l&&Fi.setSeries),ie.live&&(te.fill(n),_t=!0)}else{let l,e,t;1==M&&(l=0==jl.ori?Nn:jn,e=fi(l,El),n=oe.idx=L(e,g[0],Lt,en),t=$l(g[0][n],jl,i,0));let s=-10,r=-10,u=0,a=0,f=!0,c="",h="";for(let l=2==M?1:0;pl.length>l;l++){let d=pl[l],p=te[l],m=null==p?null:1==M?g[l][p]:g[l][1][p],x=oe.dataIdx(k,l,n,e),w=null==x?null:1==M?g[l][x]:g[l][1][x];if(_t=_t||w!=m||x!=p,te[l]=x,l>0&&d.show){let e=null==x?-10:x==n?t:$l(1==M?g[0][x]:g[l][0][x],jl,i,0),p=null==w?-10:ql(w,1==M?vl[d.scale]:vl[d.facets[1].scale],o,0);if(Et&&null!=w){let e=1==jl.ori?Nn:jn,t=ol(Tt.dist(k,l,x,p,e));if(si>t){let n=Tt.bias;if(0!=n){let i=fi(e,d.scale),o=0>i?-1:1;o!=(0>w?-1:1)||(1==o?1==n?i>w:w>i:1==n?w>i:i>w)||(si=t,ri=l)}else si=t,ri=l}}if(_t||zt){let t,n;0==jl.ori?(t=e,n=p):(t=p,n=e);let i,o,d,m,g,x,w=!0,_=St.bbox;if(null!=_){w=!1;let e=_(k,l);d=e.left,m=e.top,i=e.width,o=e.height}else d=t,m=n,i=o=St.size(k,l);if(x=St.fill(k,l),g=St.stroke(k,l),zt)l!=ri||si>Tt.prox||(s=d,r=m,u=i,a=o,f=w,c=x,h=g);else{let e=Dt[l];null!=e&&(Pt[l]=d,At[l]=m,H(e,i,o,w),Y(e,x,g),A(e,ul(d),ul(m),Ie,Le))}}}}if(zt){let l=Tt.prox;if(_t||(null==ui?l>=si:si>l||ri!=ui)){let l=Dt[0];null!=l&&(Pt[0]=s,At[0]=r,H(l,u,a,f),Y(l,c,h),A(l,ul(s),ul(r),Ie,Le))}}}if(ei.show&&Xn)if(null!=l){let[e,t]=Fi.scales,[n,s]=Fi.match,[r,u]=l.cursor.sync.scales,a=l.cursor.drag;if(Qn=a._x,li=a._y,Qn||li){let a,f,c,h,d,{left:p,top:m,width:g,height:x}=l.select,w=l.scales[r].ori,_=l.posToVal,b=null!=e&&n(e,r),v=null!=t&&s(t,u);b&&Qn?(0==w?(a=p,f=g):(a=m,f=x),c=vl[e],h=$l(_(a,r),c,i,0),d=$l(_(a+f,r),c,i,0),di(al(h,d),ol(d-h))):di(0,i),v&&li?(1==w?(a=p,f=g):(a=m,f=x),c=vl[t],h=ql(_(a,u),c,o,0),d=ql(_(a+f,u),c,o,0),pi(al(h,d),ol(d-h))):pi(0,o)}else yi()}else{let l=ol(Ln-Fn),e=ol(On-Rn);if(1==jl.ori){let t=l;l=e,e=t}Qn=Zn.x&&l>=Zn.dist,li=Zn.y&&e>=Zn.dist;let t,n,s=Zn.uni;null!=s?Qn&&li&&(Qn=l>=s,li=e>=s,Qn||li||(e>l?li=!0:Qn=!0)):Zn.x&&Zn.y&&(Qn||li)&&(Qn=li=!0),Qn&&(0==jl.ori?(t=Gn,n=Nn):(t=In,n=jn),di(al(t,n),ol(n-t)),li||pi(0,o)),li&&(1==jl.ori?(t=Gn,n=Nn):(t=In,n=jn),pi(al(t,n),ol(n-t)),Qn||di(0,i)),Qn||li||(di(0,0),pi(0,0))}if(Zn._x=Qn,Zn._y=li,null==l){if(t){if(null!=Ri){let[l,e]=Fi.scales;Fi.values[0]=null!=l?fi(0==jl.ori?Nn:jn,l):null,Fi.values[1]=null!=e?fi(1==jl.ori?Nn:jn,e):null}Ii(f,k,Nn,jn,Ie,Le,n)}if(Et){let l=t&&Fi.setSeries,e=Tt.prox;null==ui?si>e||oi(ri,ai,!0,l):si>e?oi(null,ai,!0,l):ri!=ui&&oi(ri,ai,!0,l)}}_t&&(ie.idx=n,mi()),!1!==e&&Ci("setCursor")}k.setLegend=mi;let wi=null;function _i(l=!1){l?wi=null:(wi=el.getBoundingClientRect(),Ci("syncRect",wi))}function bi(l,e,t,n,i,o){oe._lock||Xn&&null!=l&&0==l.movementX&&0==l.movementY||(vi(l,e,t,n,i,o,0,!1,null!=l),null!=l?xi(null,!0,!0):xi(e,!0,!1))}function vi(l,e,t,n,i,o,s,r,u){if(null==wi&&_i(!1),Mt(l),null!=l)t=l.clientX-wi.left,n=l.clientY-wi.top;else{if(0>t||0>n)return Nn=-10,void(jn=-10);let[l,s]=Fi.scales,r=e.cursor.sync,[u,a]=r.values,[f,c]=r.scales,[h,d]=Fi.match,p=e.axes[0].side%2==1,m=0==jl.ori?Ie:Le,g=1==jl.ori?Ie:Le,x=p?o:i,w=p?i:o,_=p?n:t,b=p?t:n;if(t=null!=f?h(l,f)?C(u,vl[l],m,0):-10:m*(_/x),n=null!=c?d(s,c)?C(a,vl[s],g,0):-10:g*(b/w),1==jl.ori){let l=t;t=n,n=l}}!u||null!=e&&e.cursor.event.type!=f||(t>1&&Ie-1>t||(t=zl(t,Ie)),n>1&&Le-1>n||(n=zl(n,Le))),r?(Fn=t,Rn=n,[Gn,In]=oe.move(k,t,n)):(Nn=t,jn=n)}Object.defineProperty(k,"rect",{get:()=>(null==wi&&_i(!1),wi)});const ki={width:0,height:0,left:0,top:0};function yi(){ni(ki,!1)}let Mi,Si,Ti,Ei;function zi(l,e,t,n,i,o){Xn=!0,Qn=li=Zn._x=Zn._y=!1,vi(l,e,t,n,i,o,0,!0,!1),null!=l&&(Ce(h,b,Di,!1),Ii(c,k,Gn,In,Ie,Le,null));let{left:s,top:r,width:u,height:a}=ei;Mi=s,Si=r,Ti=u,Ei=a}function Di(l,e,t,n,i,o){Xn=Zn._x=Zn._y=!1,vi(l,e,t,n,i,o,0,!1,!0);let{left:s,top:r,width:u,height:a}=ei,f=u>0||a>0,c=Mi!=s||Si!=r||Ti!=u||Ei!=a;if(f&&c&&ni(ei),Zn.setScale&&f&&c){let l=s,e=u,t=r,n=a;if(1==jl.ori&&(l=r,e=a,t=s,n=u),Qn&&ii(El,fi(l,El),fi(l+e,El)),li)for(let l in vl){let e=vl[l];l!=El&&null==e.from&&e.min!=gl&&ii(l,fi(t+n,l),fi(t,l))}yi()}else oe.lock&&(oe._lock=!oe._lock,xi(e,!0,null!=l));null!=l&&(He(h,b),Ii(h,k,Nn,jn,Ie,Le,null))}function Pi(l){oe._lock||(Mt(l),xn(),yi(),null!=l&&Ii(m,k,Nn,jn,Ie,Le,null))}function Ai(){xl.forEach(ln),vt(k.width,k.height,!0)}G(x,v,Ai);const Wi={};Wi.mousedown=zi,Wi.mousemove=bi,Wi.mouseup=Di,Wi.dblclick=Pi,Wi.setSeries=(l,e,t,n)=>{-1!=(t=(0,Fi.match[2])(k,e,t))&&oi(t,n,!0,!1)},re&&(Ce(c,el,zi),Ce(f,el,bi),Ce(d,el,(l=>{Mt(l),_i(!1)})),Ce(p,el,(function(l){if(oe._lock)return;Mt(l);let e=Xn;if(Xn){let l,e,t=!0,n=!0,i=10;0==jl.ori?(l=Qn,e=li):(l=li,e=Qn),l&&e&&(t=i>=Nn||Nn>=Ie-i,n=i>=jn||jn>=Le-i),l&&t&&(Nn=Gn>Nn?0:Ie),e&&n&&(jn=In>jn?0:Le),xi(null,!0,!0),Xn=!1}Nn=-10,jn=-10,te.fill(null),xi(null,!0,!0),e&&(Xn=e)})),Ce(m,el,Pi),It.add(k),k.syncRect=_i);const Yi=k.hooks=u.hooks||{};function Ci(l,e,t){Vn?Bn.push([l,e,t]):l in Yi&&Yi[l].forEach((l=>{l.call(null,k,e,t)}))}(u.plugins||[]).forEach((l=>{for(let e in l.hooks)Yi[e]=(Yi[e]||[]).concat(l.hooks[e])}));const Hi=(l,e,t)=>t,Fi=Bl({key:null,setSeries:!1,filters:{pub:Ml,sub:Ml},scales:[El,pl[1]?pl[1].scale:null],match:[Sl,Sl,Hi],values:[null,null]},oe.sync);2==Fi.match.length&&Fi.match.push(Hi),oe.sync=Fi;const Ri=Fi.key,Gi=dt(Ri);function Ii(l,e,t,n,i,o,s){Fi.filters.pub(l,e,t,n,i,o,s)&&Gi.pub(l,e,t,n,i,o,s)}function Li(){Ci("init",u,g),gn(g||u.data,!1),Kl[El]?Kn(El,Kl[El]):xn(),wt=ei.show&&(ei.width>0||ei.height>0),xt=_t=!0,vt(u.width,u.height)}return Gi.sub(k),k.pub=function(l,e,t,n,i,o,s){Fi.filters.sub(l,e,t,n,i,o,s)&&Wi[l](null,e,t,n,i,o,s)},k.destroy=function(){Gi.unsub(k),It.delete(k),Pe.clear(),I(x,v,Ai),R.remove(),ce?.remove(),Ci("destroy")},pl.forEach(Yt),xl.forEach((function(l,e){if(l._show=l.show,l.show){let t=vl[l.scale];null==t&&(l.scale=l.side%2?pl[1].scale:El,t=vl[l.scale]);let n=t.time;l.size=bl(l.size),l.space=bl(l.space),l.rotate=bl(l.rotate),Gl(l.incrs)&&l.incrs.forEach((l=>{!Wl.has(l)&&Wl.set(l,Yl(l))})),l.incrs=bl(l.incrs||(2==t.distr?ae:n?1==hl?ke:Se:fe)),l.splits=bl(l.splits||(n&&1==t.distr?Ql:3==t.distr?Je:4==t.distr?qe:$e)),l.stroke=bl(l.stroke),l.grid.stroke=bl(l.grid.stroke),l.ticks.stroke=bl(l.ticks.stroke),l.border.stroke=bl(l.border.stroke);let i=l.values;l.values=Gl(i)&&!Gl(i[0])?bl(i):n?Gl(i)?De(Xl,ze(i,Zl)):Ll(i)?function(l,e){let t=ne(e);return(e,n)=>n.map((e=>t(l(e))))}(Xl,i):i||le:i||Be,l.filter=bl(l.filter||(3>t.distr||10!=t.log?3==t.distr&&2==t.log?tt:kl:et)),l.font=Qt(l.font),l.labelFont=Qt(l.labelFont),l._size=l.size(k,null,e,0),l._space=l._rotate=l._incrs=l._found=l._splits=l._values=null,l._size>0&&(Ct[e]=!0,l._el=D("u-axis",X))}})),_?_ instanceof HTMLElement?(_.appendChild(R),Li()):_(k,Li):Li(),k}en.assign=Bl,en.fmtNum=tl,en.rangeNum=Z,en.rangeLog=B,en.rangeAsinh=$,en.orient=pt,en.pxRatio=y,en.join=function(l,e){if(function(l){let e=l[0][0],t=e.length;for(let n=1;l.length>n;n++){let i=l[n][0];if(i.length!=t)return!1;if(i!=e)for(let l=0;t>l;l++)if(i[l]!=e[l])return!1}return!0}(l)){let e=l[0].slice();for(let t=1;l.length>t;t++)e.push(...l[t].slice(1));return function(l,e=100){const t=l.length;if(1>=t)return!0;let n=0,i=t-1;for(;i>=n&&null==l[n];)n++;for(;i>=n&&null==l[i];)i--;if(n>=i)return!0;const o=fl(1,sl((i-n+1)/e));for(let e=l[n],t=n+o;i>=t;t+=o){const n=l[t];if(null!=n){if(e>=n)return!1;e=n}}return!0}(e[0])||(e=function(l){let e=l[0],t=e.length,n=Array(t);for(let l=0;n.length>l;l++)n[l]=l;n.sort(((l,t)=>e[l]-e[t]));let i=[];for(let e=0;l.length>e;e++){let o=l[e],s=Array(t);for(let l=0;t>l;l++)s[l]=o[n[l]];i.push(s)}return i}(e)),e}let t=new Set;for(let e=0;l.length>e;e++){let n=l[e][0],i=n.length;for(let l=0;i>l;l++)t.add(n[l])}let n=[Array.from(t).sort(((l,e)=>l-e))],i=n[0].length,o=new Map;for(let l=0;i>l;l++)o.set(n[0][l],l);for(let t=0;l.length>t;t++){let s=l[t],r=s[0];for(let l=1;s.length>l;l++){let u=s[l],a=Array(i).fill(void 0),f=e?e[t][l]:1,c=[];for(let l=0;u.length>l;l++){let e=u[l],t=o.get(r[l]);null===e?0!=f&&(a[t]=e,2==f&&c.push(t)):a[t]=e}$l(a,c,i),n.push(a)}}return n},en.fmtDate=ne,en.tzDate=function(l,e){let t;return"UTC"==e||"Etc/UTC"==e?t=new Date(+l+6e4*l.getTimezoneOffset()):e==ie?t=l:(t=new Date(l.toLocaleString("en-US",{timeZone:e})),t.setMilliseconds(l.getMilliseconds())),t},en.sync=dt;{en.addGap=function(l,e,t){let n=l[l.length-1];n&&n[0]==e?n[1]=t:l.push([e,t])},en.clipGaps=wt;let l=en.paths={points:Wt};l.linear=Ft,l.stepped=function(l){const e=Q(l.align,1),t=Q(l.ascDesc,!1),n=Q(l.alignGaps,0),i=Q(l.extend,!1);return(l,o,s,r)=>pt(l,o,((u,a,f,c,h,d,p,m,g,x,w)=>{[s,r]=U(f,s,r);let _=u.pxRound,{left:b,width:v}=l.bbox,k=l=>_(d(l,c,x,m)),M=l=>_(p(l,h,w,g)),S=0==c.ori?Mt:St;const T={stroke:new Path2D,fill:null,clip:null,band:null,gaps:null,flags:1},E=T.stroke,z=c.dir*(0==c.ori?1:-1);let D=M(f[1==z?s:r]),P=k(a[1==z?s:r]),A=P,W=P;i&&-1==e&&(W=b,S(E,W,D)),S(E,P,D);for(let l=1==z?s:r;l>=s&&r>=l;l+=z){let t=f[l];if(null==t)continue;let n=k(a[l]),i=M(t);1==e?S(E,n,D):S(E,A,i),S(E,n,i),D=i,A=n}let Y=A;i&&1==e&&(Y=b+v,S(E,Y,D));let[C,H]=mt(l,o);if(null!=u.fill||0!=C){let e=T.fill=new Path2D(E),t=M(u.fillTo(l,o,u.min,u.max,C));S(e,Y,t),S(e,W,t)}if(!u.spanGaps){let i=[];i.push(..._t(a,f,s,r,z,k,n));let h=u.width*y/2,d=t||1==e?h:-h,p=t||-1==e?-h:h;i.forEach((l=>{l[0]+=d,l[1]+=p})),T.gaps=i=u.gaps(l,o,s,r,i),T.clip=wt(i,c.ori,m,g,x,w)}return 0!=H&&(T.band=2==H?[xt(l,o,s,r,E,-1),xt(l,o,s,r,E,1)]:xt(l,o,s,r,E,H)),T}))},l.bars=function(l){const e=Q((l=l||Hl).size,[.6,gl,1]),t=l.align||0,n=l.gap||0;let i=l.radius;i=null==i?[0,0]:"number"==typeof i?[i,0]:i;const o=bl(i),s=1-e[0],r=Q(e[1],gl),u=Q(e[2],1),a=Q(l.disp,Hl),f=Q(l.each,(()=>{})),{fill:c,stroke:h}=a;return(l,e,i,d)=>pt(l,e,((p,m,g,x,w,_,b,v,k,M,S)=>{let T,E,z=p.pxRound,D=t,P=n*y,A=r*y,W=u*y;0==x.ori?[T,E]=o(l,e):[E,T]=o(l,e);const Y=x.dir*(0==x.ori?1:-1);let C,H,F,R=0==x.ori?Tt:Et,G=0==x.ori?f:(l,e,t,n,i,o,s)=>{f(l,e,t,i,n,s,o)},I=Q(l.bands,Fl).find((l=>l.series[0]==e)),L=p.fillTo(l,e,p.min,p.max,null!=I?I.dir:0),O=z(b(L,w,S,k)),N=M,j=z(p.width*y),U=!1,V=null,B=null,$=null,J=null;null==c||0!=j&&null==h||(U=!0,V=c.values(l,e,i,d),B=new Map,new Set(V).forEach((l=>{null!=l&&B.set(l,new Path2D)})),j>0&&($=h.values(l,e,i,d),J=new Map,new Set($).forEach((l=>{null!=l&&J.set(l,new Path2D)}))));let{x0:q,size:K}=a;if(null!=q&&null!=K){D=1,m=q.values(l,e,i,d),2==q.unit&&(m=m.map((e=>l.posToVal(v+e*M,x.key,!0))));let t=K.values(l,e,i,d);H=2==K.unit?t[0]*M:_(t[0],x,M,v)-_(0,x,M,v),N=Rt(m,g,_,x,M,v,N),F=N-H+P}else N=Rt(m,g,_,x,M,v,N),F=N*s+P,H=N-F;1>F&&(F=0),H/2>j||(j=0),5>F&&(z=vl);let X=F>0;H=z(wl(N-F-(X?j:0),W,A)),C=(0==D?H/2:D==Y?0:H)-D*Y*((0==D?P/2:0)+(X?j/2:0));const Z={stroke:null,fill:null,clip:null,band:null,gaps:null,flags:0},ll=U?null:new Path2D;let el=null;if(null!=I)el=l.data[I.series[1]];else{let{y0:t,y1:n}=a;null!=t&&null!=n&&(g=n.values(l,e,i,d),el=t.values(l,e,i,d))}let tl=T*H,nl=E*H;for(let t=1==Y?i:d;t>=i&&d>=t;t+=Y){let n=g[t];if(null==n)continue;if(null!=el){let l=el[t]??0;if(n-l==0)continue;O=b(l,w,S,k)}let i=_(2!=x.distr||null!=a?m[t]:t,x,M,v),o=b(Q(n,L),w,S,k),s=z(i-C),r=z(fl(o,O)),u=z(al(o,O)),f=r-u;if(null!=n){let i=0>n?nl:tl,o=0>n?tl:nl;U?(j>0&&null!=$[t]&&R(J.get($[t]),s,u+sl(j/2),H,fl(0,f-j),i,o),null!=V[t]&&R(B.get(V[t]),s,u+sl(j/2),H,fl(0,f-j),i,o)):R(ll,s,u+sl(j/2),H,fl(0,f-j),i,o),G(l,e,t,s-j/2,u,H+j,f)}}return j>0?Z.stroke=U?J:ll:U||(Z._fill=0==p.width?p._fill:p._stroke??p._fill,Z.width=0),Z.fill=U?B:ll,Z}))},l.spline=function(l){return function(l,e){const t=Q(e?.alignGaps,0);return(e,n,i,o)=>pt(e,n,((s,r,u,a,f,c,h,d,p,m,g)=>{[i,o]=U(u,i,o);let x,w,_,b=s.pxRound,v=l=>b(c(l,a,m,d)),k=l=>b(h(l,f,g,p));0==a.ori?(x=kt,_=Mt,w=Pt):(x=yt,_=St,w=At);const y=a.dir*(0==a.ori?1:-1);let M=v(r[1==y?i:o]),S=M,T=[],E=[];for(let l=1==y?i:o;l>=i&&o>=l;l+=y)if(null!=u[l]){let e=v(r[l]);T.push(S=e),E.push(k(u[l]))}const z={stroke:l(T,E,x,_,w,b),fill:null,clip:null,band:null,gaps:null,flags:1},D=z.stroke;let[P,A]=mt(e,n);if(null!=s.fill||0!=P){let l=z.fill=new Path2D(D),t=k(s.fillTo(e,n,s.min,s.max,P));_(l,S,t),_(l,M,t)}if(!s.spanGaps){let l=[];l.push(..._t(r,u,i,o,y,v,t)),z.gaps=l=s.gaps(e,n,i,o,l),z.clip=wt(l,a.ori,d,p,m,g)}return 0!=A&&(z.band=2==A?[xt(e,n,i,o,D,-1),xt(e,n,i,o,D,1)]:xt(e,n,i,o,D,A)),z}))}(Gt,l)}}return en}();</script>
+<script>(()=>{'use strict';
+const $=id=>document.getElementById(id),API='/board/api/monitor/series',EVERY=60*1000;
+const HOSTS={};  // 位址 → 顯示名稱（家裡的對照表不公開；要用就自己填）
+function host(s){s=String(s||'');const m=s.match(/(\d+\.\d+\.\d+\.\d+)(:\d+)?/);if(!m)return {name:s,ip:''};return {name:s.replace(m[0],HOSTS[m[1]]||'').trim()||m[0],ip:m[0]}}
+const isPreview=location.pathname.indexOf('/board/preview')===0;
+if(isPreview){$('pvbar').hidden=false;$('navBoard').href='/board/preview';$('navMemory').href='/board/preview/memory';$('navMonitor').href='/board/preview/monitor';$('navUsage').href='/board/preview/usage';$('acct').href='/board/preview/login';$('logout').action='/board/preview/logout'}
+const rb=document.querySelector('.releasebar');if(rb){const v=(document.querySelector('meta[name="monitor-version"]')||{}).content;if(v){rb.querySelector('[data-ui-version]').textContent='v'+v;rb.querySelector('[data-release-state]').textContent=isPreview?'預覽版':'正式版';rb.hidden=false}}
+
+// ---- 格式 ----
+const N=v=>v==null||isNaN(v)?'—':Math.round(v).toLocaleString('zh-TW');
+const MS=v=>v==null||isNaN(v)?'—':(v<10?Number(v).toFixed(1):N(v))+' ms';
+const PCT=v=>v==null||isNaN(v)?'—':(Math.round(v*1000)/10).toLocaleString('zh-TW',{maximumFractionDigits:1})+'%';
+const pad=n=>String(n).padStart(2,'0'),dt=s=>new Date(s*1000);
+const HM=d=>pad(d.getHours())+':'+pad(d.getMinutes()),MD=d=>(d.getMonth()+1)+'/'+d.getDate();
+const FULL=s=>{const d=dt(s);return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+' '+(d.getHours()<12?'上午':'下午')+' '+(d.getHours()%12||12)+':'+pad(d.getMinutes())};
+// 四頁共用時間格式（2.17.0 規格 T4＋B06）：12 小時制帶秒「上午 8:29:05」；不是今天就在前面加「10/28」。四頁同名、邏輯一字不差
+function fmtTime(d){d=d instanceof Date?d:new Date(d);if(isNaN(d))return '—';const p=n=>String(n).padStart(2,'0'),h=d.getHours(),t=(h<12?'上午':'下午')+' '+(h%12||12)+':'+p(d.getMinutes());return d.toDateString()===new Date().toDateString()?t:(d.getMonth()+1)+'/'+d.getDate()+' '+t}
+// 相對時間「5 分鐘前」，跟 fmtTime 並列用
+function fmtAgo(d){d=d instanceof Date?d:new Date(d);if(isNaN(d))return '';const s=Math.max(0,Math.round((Date.now()-d)/1000));return s<60?'剛剛':s<3600?Math.floor(s/60)+' 分鐘前':s<86400?Math.floor(s/3600)+' 小時前':Math.floor(s/86400)+' 天前'}
+const TS=s=>fmtTime(dt(s)),TONLY=s=>fmtTime(dt(s)).replace(/^\d+\/\d+ /,'');
+// 圖的時間刻度：12 小時制、不帶秒（刻度太擠），例「下午 3:00」
+const HM12=d=>(d.getHours()<12?'上午':'下午')+' '+(d.getHours()%12||12)+':'+pad(d.getMinutes());
+const ZONE={roundtable:'原則層','roundtable-ops':'交流層',archive:'封存','roundtable-archive':'封存',profile:'經歷區','profile-history':'經歷歷史',personas:'人格備份',experience:'經歷區'};
+const sp=s=>(/^[A-Za-z0-9]/.test(s)?' ':'')+s+(/[A-Za-z0-9]$/.test(s)?' ':'');
+
+// ---- 顏色：跟公告欄的代理顏色同一套，深淺色各一組 ----
+let C={};
+function readColors(){const cs=getComputedStyle(document.documentElement),g=n=>cs.getPropertyValue(n).trim();
+C={claude:g('--c-claude'),codex:g('--c-codex'),hermes:g('--c-hermes'),user:g('--c-user'),other:g('--c-other'),ping:g('--c-ping'),hot:g('--hot'),ok:g('--ok'),tx:g('--tx'),mut:g('--mut'),grid:g('--grid'),card:g('--card'),bad:g('--bad')};
+C.order=[C.claude,C.hot,C.codex,C.hermes,C.user,C.ping,C.other,C.ok]}
+function agentColor(name,i){const n=String(name).toLowerCase();if(n.indexOf('claude')===0)return C.claude;if(n.indexOf('codex')===0)return C.codex;if(n.indexOf('hermes')===0)return C.hermes;if(n==='user'||n.indexOf('使用者')===0)return C.user;if(n==='其他'||n==='other')return C.other;return C.order[i%C.order.length]}
+
+// ---- 狀態 ----
+const LSget=k=>{try{return localStorage.getItem(k)}catch(e){return null}},LSset=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
+// 範圍按鈕：近 6 小時是讀 24 小時的資料、只看最後 6 小時；其他三顆照伺服器的三種範圍讀（每 5 分鐘／每小時／每天一點）
+const PRE={'6h':{load:'24h',span:6*3600},'24h':{load:'24h'},'7d':{load:'7d'},'30d':{load:'30d'}};
+let preset=LSget('monitor:range')||'24h',callMode=LSget('monitor:calls')||'hp',data=null,timer=null,loadedAt=0;
+if(!PRE[preset])preset='24h';if(!/^(hp|tool|agent)$/.test(callMode))callMode='hp';
+let range=PRE[preset].load;
+// 正在看的時間窗：p 是按了哪顆鈕（自己拖的是 'c'，記住絕對的起訖秒數，每分鐘重抓也不會跑掉）
+let view={p:preset,min:null,max:null};
+const charts={};
+const plotPrefs={};let powerStates={};let autoRefresh=LSget('monitor:auto')!=='off';
+const pref=id=>plotPrefs[id]||(plotPrefs[id]={mode:LSget('monitor:'+id+':mode')==='scatter'?'scatter':'line',scale:LSget('monitor:'+id+':scale')==='log'?'log':'linear'});
+function nodeState(n){const key=String(n.key||'').toLowerCase(),m=key.match(/^(?:codex-)?(pc|desk)$/);if(m&&powerStates[m[1]]==='off')return 'off';return ['up','slow','down','unknown'].includes(n.state)?n.state:n.up===true?'up':n.up===false?'down':'unknown'}
+// 2.22.2 只為兩台的電源狀態抓 100KB 的額度資料，5 分鐘一次就夠（按「更新」才強制）
+let powerAt=0;async function loadPower(force){if(!force&&Date.now()-powerAt<300000)return;powerAt=Date.now();try{const r=await fetch('/board/api/usage',{cache:'no-store'});if(!r.ok)throw new Error('power unavailable');const j=await r.json(),ps={};for(const row of (Array.isArray(j.providers)?j.providers:Object.entries(j.providers||{}).map(([id,v])=>({...v,id})))){const k=String(row.id||row.key||row.provider||'').toLowerCase();if(/^(?:codex-)?(pc|desk)$/.test(k)&&row.power_state==='off')ps[k.replace(/^codex-/,'')]='off'}powerStates=ps;if(data){renderNodes();renderHealth()}}catch(e){powerStates={};if(data){renderNodes();renderHealth()}}}
+function setupMonitor(){
+const groups=[['有沒有出事',['s-nodes','c-errors','s-anom']],['快不快',['c-tool','c-emb','c-calls','c-primary']],['記憶有沒有長',['c-writes','c-totals','c-eval']]];
+const nav=document.querySelector('.jump'),grid=document.querySelector('.charts');nav.innerHTML='<a href="#s-stats">今天的數字</a>';
+for(const [title,ids]of groups){const label=document.createElement('div');label.className='group-label';label.textContent=title;nav.append(label);const head=document.createElement('h2');head.className='group-title';head.textContent=title;grid.append(head);for(const id of ids){const sec=$(id);if(id==='s-nodes'||id==='s-anom'){sec.style.gridColumn='1/-1';sec.style.margin='0'}grid.append(sec);const a=document.createElement('a');a.href='#'+id;a.innerHTML=id==='s-nodes'?'節點狀態':sec.querySelector('h2').innerHTML;nav.append(a)}}
+for(const sec of document.querySelectorAll('.chart')){const id=sec.id,p=pref(id),opts=document.createElement('div');opts.className='plot-options';opts.innerHTML='<select aria-label="圖形式"><option value="line">折線</option><option value="scatter">散點</option></select><select aria-label="數字刻度"><option value="linear">一般刻度</option><option value="log">對數刻度</option></select>';sec.querySelector('header').append(opts);[...opts.children].forEach((el,i)=>{const key=i?'scale':'mode';el.value=p[key];el.onchange=()=>{p[key]=el.value;LSset('monitor:'+id+':'+key,p[key]);if(data){draw(CHARTS.find(c=>c.id===id));plainTerms();queueMicrotask(applyView)}}})}
+const panel=document.createElement('section');panel.className='monitor-settings';panel.id='monitor-settings';panel.setAttribute('aria-label','監控設定');panel.innerHTML='<h2>監控設定</h2><label>時間範圍<select id="settingRange"><option value="6h">近 6 小時</option><option value="24h">近 24 小時</option><option value="7d">近 7 天</option><option value="30d">近 30 天</option></select></label><label>全部圖形式<select id="settingMode"><option value="">各圖自行選擇</option><option value="line">全部折線</option><option value="scatter">全部散點</option></select></label><label>自動重抓<select id="settingAuto"><option value="on">每 60 秒</option><option value="off">暫停</option></select></label><label>深淺色<select id="settingTheme"><option value="system">跟著系統</option><option value="light">淺色</option><option value="dark">深色</option></select></label><p class="hint">每張圖右上可選圖形式與刻度。對數刻度保留正數，零值不畫；較少的人用次數也看得清。</p>';document.querySelector('main').append(panel);
+$('settingRange').value=preset;$('settingRange').onchange=e=>document.querySelector('.rstrip button[data-range="'+e.target.value+'"]').click();
+$('settingMode').onchange=e=>{if(!e.target.value)return;document.querySelectorAll('.plot-options select:first-child').forEach(s=>{s.value=e.target.value;s.dispatchEvent(new Event('change'))})};
+$('settingAuto').value=autoRefresh?'on':'off';$('settingAuto').onchange=e=>{autoRefresh=e.target.value==='on';LSset('monitor:auto',e.target.value);clearTimeout(timer);clearInterval(tick);if(data)renderSummary();if(failed&&!data)renderHealthFail();if(autoRefresh)schedule(EVERY);else{$('refresh').title='自動重抓已暫停';$('rfRing').setAttribute('stroke-dashoffset','50.27')}};
+const theme=$('settingTheme');theme.value=LSget('monitor:theme')||'system';if(!['system','light','dark'].includes(theme.value))theme.value='system';const applyTheme=()=>{if(theme.value==='system')delete document.documentElement.dataset.monitorTheme;else document.documentElement.dataset.monitorTheme=theme.value;LSset('monitor:theme',theme.value);if(data)render()};theme.onchange=applyTheme;applyTheme();
+}
+
+
+// ---- 讀資料 ----
+// 2.17.0 更新列：每 60 秒自己重抓（不整頁重整）；失敗 15 秒後重試；分頁在背景時暫停，切回來立刻抓
+const RETRY=15*1000;let nextAt=0,waitMs=EVERY,failed=false,busy=false,tick=null,lastTxt='',drawn=null;
+async function load(fresh=false){const r0=range;clearTimeout(timer);busy=true;$('rfBtn').classList.add('busy');$('rfBtn').setAttribute('aria-busy','true');
+try{const r=await fetch(API+'?range='+r0,{cache:'no-store',headers:{Accept:'application/json',...(fresh===true?{'X-RT-Fresh':'1'}:{})}});
+const txt=await r.text().catch(()=>'');let j;try{j=JSON.parse(txt)}catch(e){j={error:'回應不是資料（'+r.status+'）'}}if(!r.ok)throw new Error(j.error||('HTTP '+r.status));
+// 2.22.2 回來的資料跟上次畫的一模一樣（每 5 分鐘才有新點，60 秒輪詢多半沒變）就不整頁重畫，只更新時間
+if(r0!==range)return;const same=!!data&&txt===lastTxt&&drawn===r0;data=j;lastTxt=txt;loadPower(fresh===true);loadedAt=Date.now();failed=false;$('err').hidden=true;if(r0==='7d'){wk=j;wkAt=loadedAt}if(!same)render();
+const b=$('rfTime');b.textContent=fmtTime(new Date(loadedAt));b.title=new Date(loadedAt).toLocaleString('zh-TW',{hour12:true});b.classList.add('flash');setTimeout(()=>b.classList.remove('flash'),120);
+$('refresh').classList.remove('fail');$('rfMsg').textContent='';loadWeek()}
+catch(e){failed=true;$('refresh').classList.add('fail');
+// 已經有資料就只把更新列變紅、不蓋掉畫面；連第一次都抓不到才出橫條
+if(!data){$('errTx').textContent='讀不到監控資料：'+e.message+'。';$('err').hidden=false;$('upd').innerHTML='<div class="ut"><b>讀不到資料</b>・'+fmtTime(new Date())+' 試過</div>';renderHealthFail(e.message)}
+$('rfBtn').title='上次失敗：'+e.message}
+finally{busy=false;$('rfBtn').classList.remove('busy');$('rfBtn').removeAttribute('aria-busy');if(!window.rtPageHidden()&&autoRefresh)schedule(failed?RETRY:EVERY)}}
+window.addEventListener('rt:data-updated',e=>{if(e.detail.startsWith(API+'?range='+range)&&!window.rtPageHidden()&&!busy)load()});
+function schedule(ms){clearTimeout(timer);waitMs=ms==null?EVERY:ms;nextAt=Date.now()+waitMs;timer=setTimeout(load,waitMs);startTick()}
+// 環形倒數：一秒走一格；失敗時寫「更新失敗，N 秒後重試」
+function paintTick(){const left=Math.max(0,nextAt-Date.now()),s=Math.ceil(left/1000),ring=$('rfRing');ring.setAttribute('stroke-dashoffset',String(50.27*(1-left/waitMs)));
+$('refresh').title=busy?'正在更新…':s+' 秒後自動更新';if(failed)$('rfMsg').textContent='更新失敗，'+s+' 秒後重試'}
+function startTick(){clearInterval(tick);paintTick();tick=setInterval(paintTick,1000)}
+// 2.22.2 切回來：寬度有變才補尺寸；距上次抓資料不到 60 秒就只接著倒數，不重抓不重畫（預先載入的頁切過去才不會再畫一次）
+document.addEventListener('visibilitychange',()=>{if(window.rtPageHidden()){clearTimeout(timer);clearInterval(tick)}else{sizeAll();if(!busy&&autoRefresh){const left=loadedAt+EVERY-Date.now();if(data&&left>1000)schedule(left);else load()}}});
+// 「跟 7 天平均比」用的近 7 天每小時資料：正在看 7 天就直接用；不然另外抓 range=7d（5 分鐘最多一次，抓不到就灰字）
+let wk=null,wkAt=0;
+async function loadWeek(){if(range==='7d'||Date.now()-wkAt<5*60*1000){renderCmp();return}
+try{const r=await fetch(API+'?range=7d',{cache:'no-store',headers:{Accept:'application/json'}});if(!r.ok)throw new Error('HTTP '+r.status);wk=await r.json();wkAt=Date.now()}catch(e){console.warn('近 7 天資料抓不到',e)}renderCmp()}
+
+// ---- 畫面：大數字、節點 ----
+function tile(id,val,cls,sub){const v=$(id);v.innerHTML=val;v.className='v'+(cls?' '+cls:'');$(id+'-s').textContent=sub}
+// 今天白天抽考做了幾次（summary.eval_spot 的 random＋idle）；後端還沒有這欄就不寫
+function spotToday(es){if(!es)return '';let d=0,pl=0;for(const k of ['random','idle']){const x=es[k]||{};d+=+x.today_done||0;pl+=+x.today_planned||0}return pl||d?'・今天白天抽考 '+d+'／'+pl+' 次':''}
+function renderSummary(){const s=data.summary||{},w=s.writes_24h||{},c=s.calls_24h||{},e=s.emb_24h||{},er=s.errors_24h||{},ev=s.eval,ib=s.inbox||{};
+tile('t-writes',N((w.add||0)+(w.update||0)+(w.delete||0))+'<small>筆</small>','','新增 '+N(w.add||0)+'・更新 '+N(w.update||0)+'・刪除 '+N(w.delete||0));
+tile('t-calls',N(c.total||0)+'<small>次</small>','','人用 '+N(c.human||0)+'・輪詢 '+N(c.poll||0));
+tile('t-emb',e.p50_ms==null?'—':N(e.p50_ms)+'<small>ms</small>','','p95 '+MS(e.p95_ms)+'・共 '+N(e.calls||0)+' 次');
+const ps=e.primary_share;tile('t-primary',ps==null?'—':PCT(ps),ps!=null&&ps<0.99?'warn':'','落到備援 '+N(e.fallback||0)+' 次'+(e.primary?'・主節點 '+host(String(e.primary).replace(/^[a-z]+:\/\//i,'')).name:''));
+if(ev&&ev.hit5!=null)tile('t-eval',PCT(ev.hit5),'','hit@1 '+PCT(ev.hit1)+'・'+(ev.date||'')+'・可計分 '+N(ev.scored)+' 題'+spotToday(s.eval_spot));else tile('t-eval','—','','還沒有考題結果');
+const errs=(er.mcp||0)+(er.tool||0)+(er.emb||0);tile('t-errors',N(errs)+'<small>次</small>',errs>0?'warn':'','MCP '+N(er.mcp||0)+'・工具 '+N(er.tool||0)+'・EMB '+N(er.emb||0));
+const tot=s.totals||{},tz=Object.keys(tot).map(k=>(ZONE[k]||k)+' '+N(tot[k])).join('・');
+$('sum').innerHTML='最近 24 小時的數字；下面的圖是'+({'24h':'最近 24 小時（每 5 分鐘一點）','7d':'最近 7 天（每小時一點）','30d':'最近 30 天（每天一點）'}[range])+'。'+(tz?'記憶總數：<b>'+tz+'</b>。':'')+(ib.unread!=null?'收件匣沒人讀 <b>'+N(ib.unread)+'</b>・要動手 <b>'+N(ib.needs_action)+'</b>・認領 <b>'+N(ib.claims)+'</b>'+(ib.stale_claims?'（過期 <b>'+N(ib.stale_claims)+'</b>）':'')+'。':'');
+const gen=data.generated?new Date(data.generated):null,ok=gen&&!isNaN(gen);$('upd').innerHTML='<div class="ut">伺服器資料 <b>'+(ok?fmtAgo(gen):'—')+'</b></div><table class="updt"><tbody><tr><td>伺服器資料</td><td>'+(ok?fmtTime(gen):'—')+'</td></tr><tr><td>頁面重抓</td><td>'+fmtTime(new Date(loadedAt))+'</td></tr><tr><td>多久重抓</td><td>'+(autoRefresh?'每 60 秒':'已暫停（手動更新）')+'</td></tr></tbody></table>';}
+function renderNodes(){const box=$('s-nodes');[...box.querySelectorAll('.node,.laya')].forEach(n=>n.remove());const ns=data.nodes||[];$('nodesNone').hidden=ns.length>0;$('nodesNone').textContent='還沒有節點資料';
+for(const n of ns){if(n.key==='laya')continue;const el=document.createElement('span'),state=nodeState(n),rh0=rpsHist(n.key);el.className='node '+state;
+const hostInfo=host(n.label||n.key),since=n.since?new Date(n.since):null;const status=state==='up'?'在線':state==='slow'?'慢'+(n.slow_ms?'・超過 '+N(n.slow_ms)+' ms':''):state==='off'?'關機':state==='down'?'離線'+(since&&!isNaN(since)?'・從 '+fmtTime(since)+' 開始':'・開始時間不明'):'不明・還沒回報';
+el.innerHTML='<i aria-hidden="true"></i><span class="nm">'+esc(hostInfo.name)+(hostInfo.ip?'<em>'+esc(hostInfo.ip)+'</em>':'')+'</span><small>'+esc(status)+((state==='up'||state==='slow')&&n.ms!=null?'・'+MS(n.ms):'')+'</small><small class="rq">每秒 '+RPS(n.rps)+(n.rps!=null?' 次':'')+'</small>'+(rh0?spark(rh0):'');
+el.title=status+(since&&!isNaN(since)?'；狀態開始：'+since.toLocaleString('zh-TW',{hour12:true}):'')+(n.last_seen?'；最後成功：'+new Date(n.last_seen).toLocaleString('zh-TW',{hour12:true}):'')+'；'+rqTitle(n)+(rh0?'；小折線＝最後 '+rpsSpan()+'的每秒請求數':'');box.appendChild(el)}
+// 2.16.2 使用者問「除了 EMB 之外，RNK、LAYA 呢」：這兩台由後端 monitor.py 探測（key＝rerank／laya）；後端還沒上線前先佔位、寫「等資料」
+for(const w of WANT_NODES){if(w.key==='laya'||ns.some(n=>n.key===w.key))continue;const el=document.createElement('span');el.className='node unknown wait';const h=host(w.label);
+el.innerHTML='<i></i><span class="nm">'+esc(h.name)+(h.ip?'<em>'+esc(h.ip)+'</em>':'')+'</span> <small>不明・還沒回報</small>';el.title='不明：'+w.why;box.appendChild(el)}
+const rh=$('rqHint');if(rh)box.appendChild(rh);renderLaya(box,ns);
+$('nodesNone').hidden=ns.length>0||WANT_NODES.length>0}
+const WANT_NODES=[{key:'rerank',label:'RNK 重排序 192.0.2.88:8300',why:'重排序服務（搜尋結果重新排名次）。監控後端還沒開始探測這台，上線後會顯示狀態和反應時間'},
+{key:'laya',label:'LAYA 客服分類 192.0.2.88:8765',why:'客服訊息分類模型。監控後端還沒開始探測這台，上線後會顯示狀態和反應時間'}];
+// 10/29 每秒請求數（近 1 分鐘）：後端 rps＝近 60 秒請求數 ÷ 60；null＝拿不到次數（顯示 —，不放假數字）
+const RPS=v=>v==null||isNaN(v)?'—':v===0?'0':v<10?String(+Number(v).toFixed(v<1?2:1)):N(v);
+function rqTitle(n){return n.rps==null?'每秒請求數：這台拿不到請求次數，所以寫 —':'每秒請求數（近 1 分鐘）：'+RPS(n.rps)+' 次（1 分鐘共 '+N(n.req_1m)+' 次）'}
+// 10/29 小折線：從已經載入的數列推每個節點最後 24 個點的每秒請求數（次數 ÷ 每點秒數）；拿不到的節點不畫
+// EMB 閘道＝成功的 EMB 次數、主節點／備援＝照主節點接住比例拆開、圓桌 MCP＝人用＋自動查詢的工具呼叫
+function rpsHist(key){const S=(data&&data.series)||{},t=S.t||[],st=data.step_sec||300,e=S.emb||{},c=S.calls||{};
+const sh=(i,pri)=>{const n=(e.calls||[])[i],r=(e.primary_share||[])[i];if(n==null)return null;if(n===0)return 0;return r==null?null:n*(pri?r:1-r)};
+const f={'emb-gw':i=>(e.calls||[])[i],'emb-primary':i=>sh(i,true),'emb-backup':i=>sh(i,false),'mem0-mcp':i=>{const h=(c.human||[])[i];return h==null?null:h+((c.poll||[])[i]||0)}}[key];
+if(!f||!t.length)return null;const out=[];for(let i=Math.max(0,t.length-24);i<t.length;i++){const v=f(i);out.push(v==null?null:v/st)}return out.filter(v=>v!=null).length>1?out:null}
+function rpsSpan(){const st=data.step_sec||300,sec=Math.min(24,((data.series||{}).t||[]).length)*st;return sec>=2*86400?Math.round(sec/86400)+' 天':Math.round(sec/3600)+' 小時'}
+function spark(vals){const w=56,h=16,mx=Math.max(0.0001,...vals.filter(v=>v!=null));let d='',pen=false;vals.forEach((v,i)=>{if(v==null){pen=false;return}const x=i/((vals.length-1)||1)*w,y=h-1-v/mx*(h-2);d+=(pen?'L':'M')+x.toFixed(1)+' '+y.toFixed(1);pen=true});
+return '<svg class="spk" viewBox="0 0 '+w+' '+h+'" width="'+w+'" height="'+h+'" aria-hidden="true"><path d="'+d+'"/></svg>'}
+// 10/29 LAYA 卡：狀態四種（正常／慢／不通／不明）、回應時間、最後成功時間、每秒請求數
+function renderLaya(box,ns){const n=ns.find(x=>x.key==='laya'),st=n?nodeState(n):'unknown';
+const word={up:'正常',slow:'慢',down:'不通'}[st]||'不明';
+const why=!n?'監控後端還沒開始探測這台。':st==='slow'?'有回應，但超過 '+N(n.slow_ms)+' ms 才回。':st==='down'?'3 秒內沒回應或回了錯誤'+(n.since?'，從 '+fmtTime(n.since)+' 開始':'')+'。':st==='unknown'?'超過 3 分鐘沒有探測結果。':'';
+const el=document.createElement('div');el.className='laya '+(st==='off'?'unknown':st);el.id='layaCard';
+el.innerHTML='<div class="lh"><i aria-hidden="true"></i><b>Laya（GPU 主機 GPU）</b><span class="lst">'+word+'</span></div>'
++'<p class="ld">客服訊息分類：把客人傳來的訊息分給帳務、技術、業務或其他。'+esc(why)+'</p>'
++'<dl class="lk"><div><dt>回應時間</dt><dd>'+(n&&n.ms!=null&&st!=='down'?MS(n.ms):'—')+'</dd></div>'
++'<div><dt>最後成功</dt><dd>'+(n&&n.last_seen?esc(fmtTime(n.last_seen)):'—')+'</dd></div>'
++'<div><dt>每秒請求數（近 1 分鐘）</dt><dd title="'+esc(n?rqTitle(n):'還沒有資料')+'">'+RPS(n&&n.rps)+'</dd></div></dl>';
+box.appendChild(el)}
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+// ---- 折線圖 ----
+const S=(label,arr,color,extra)=>Object.assign({label,data:arr,color},extra||{});
+function series(k){const s=(data.series||{})[k]||{};return s}
+// 考題（10/28 加白天抽考）：每晚固定那次（eval_daily）照舊連線；白天隨機抽考、空閒時抽考（eval_spot）只畫散點、不連線（20 題一次誤差大）。
+// 兩組時間併成一條時間軸，對不到的格子填 null；沒有 eval_spot 時就只剩每晚那兩條，跟原本一樣
+const SPOT_KIND={random:{name:'隨機抽考',shape:'sq'},idle:{name:'空閒抽考',shape:'tri'}};
+const hasSpot=()=>((data.eval_spot||{}).t||[]).length>0;
+function evalT(){const d=(data.eval_daily||{}).t||[],sp=(data.eval_spot||{}).t||[];return [...new Set(d.concat(sp).filter(x=>x!=null))].sort((a,b)=>a-b)}
+function evalSeries(){const T=evalT(),ix=new Map(T.map((x,i)=>[x,i])),d=data.eval_daily||{},sp=data.eval_spot||{},spot=hasSpot();
+const put=(ts,vals,keep)=>{const a=new Array(T.length).fill(null);(ts||[]).forEach((x,i)=>{if(keep&&!keep(i))return;const j=ix.get(x);if(j!=null&&vals&&vals[i]!=null)a[j]=vals[i]});return a};
+const out=[S(spot?'每晚 hit@1':'hit@1',put(d.t,d.hit1),C.user,{points:true,span:spot}),S(spot?'每晚 hit@5':'hit@5',put(d.t,d.hit5),C.claude,{points:true,span:spot})];
+if(spot)for(const k in SPOT_KIND){const keep=i=>(sp.kind||[])[i]===k;if(!(sp.t||[]).some((_,i)=>keep(i)))continue;const nm=SPOT_KIND[k].name,sh=SPOT_KIND[k].shape;
+out.push(S(nm+' hit@1',put(sp.t,sp.hit1,keep),C.user,{shape:sh}),S(nm+' hit@5',put(sp.t,sp.hit5,keep),C.claude,{shape:sh}))}
+return out}
+// 抽考散點：方塊＝隨機、三角＝空閒；外圈墊一圈卡片底色，疊在線上也看得清楚
+function spotHook(ss){return u=>{const ctx=u.ctx,k=devicePixelRatio||1,xs=u.data[0],r=5*k;ctx.save();
+ss.forEach((s,i)=>{if(!s.shape||!u.series[i+1].show)return;const ys=u.data[i+1];
+for(let j=0;j<xs.length;j++){const v=ys[j];if(v==null||xs[j]<u.scales.x.min||xs[j]>u.scales.x.max)continue;const x=u.valToPos(xs[j],'x',true),y=u.valToPos(v,'y',true);ctx.beginPath();
+if(s.shape==='sq')ctx.rect(x-r*.85,y-r*.85,r*1.7,r*1.7);else{ctx.moveTo(x,y-r*1.1);ctx.lineTo(x+r,y+r*.8);ctx.lineTo(x-r,y+r*.8);ctx.closePath()}
+ctx.fillStyle=s.color;ctx.fill();ctx.lineWidth=1.5*k;ctx.strokeStyle=C.card;ctx.stroke()}});ctx.restore()}}
+const CHARTS=[
+{id:'c-writes',t:()=>data.series.t,fmt:N,gap:'zero',build(){const w=series('writes');return [S('新增',w.add,C.codex),S('更新',w.update,C.claude),S('刪除',w.delete,C.hot)]}},
+{id:'c-calls',t:()=>data.series.t,fmt:N,gap:'zero',build(){if(callMode==='hp'){const c=series('calls');return [S('人用',c.human,C.claude),S('自動查詢（輪詢）',c.poll,C.other)]}
+const by=series(callMode==='tool'?'calls_by_tool':'calls_by_agent'),keys=Object.keys(by);return keys.map((k,i)=>S(k,by[k],callMode==='agent'?agentColor(k,i):C.order[i%C.order.length],{dash:callMode==='agent'&&keys.slice(0,i).some(o=>agentColor(o,0)===agentColor(k,0))?[6,4]:null}))}},
+{id:'c-tool',t:()=>data.series.t,fmt:MS,gap:'span',build(){const a=series('tool_ms'),b=series('search_ms');return [S('工具通常耗時（中位數）',a.p50,C.claude),S('工具最慢那 5%（p95）',a.p95,C.claude,{dash:[6,4]}),S('搜尋通常耗時（中位數）',b.p50,C.hermes),S('搜尋最慢那 5%（p95）',b.p95,C.hermes,{dash:[6,4]})]}},
+{id:'c-emb',t:()=>data.series.t,fmt:MS,gap:'span',build(){const e=series('emb');return [S('通常耗時（中位數）',e.p50_ms,C.ping),S('最慢那 5%（p95）',e.p95_ms,C.ping,{dash:[6,4]})]}},
+{id:'c-primary',t:()=>data.series.t,fmt:PCT,pct:true,gap:'span',build(){const e=series('emb');return [S('主節點接住',e.primary_share,C.codex)]}},
+{id:'c-eval',t:evalT,fmt:PCT,pct:true,daily:true,build:evalSeries},
+{id:'c-totals',t:()=>data.series.t,fmt:N,gap:'span',build(){const t=series('totals');return Object.keys(t).map((k,i)=>S(ZONE[k]||k,t[k],C.order[i%C.order.length]))}},
+{id:'c-errors',t:()=>data.series.t,fmt:N,gap:'zero',build(){const e=series('errors');return [S('圓桌連線（MCP）',e.mcp,C.claude),S('工具',e.tool,C.hermes),S('向量服務（EMB）',e.emb,C.hot)]}}];
+
+// 直軸單位：寫入、調用、錯誤是「每一點那段時間裡加起來的數」，所以跟著取樣間隔寫；
+// 間隔照伺服器回的 step_sec（24 小時＝每 5 分鐘、7 天＝每小時、30 天＝每天）；耗時是毫秒；接住比例、考題是百分比；記憶總數是當下的筆數
+const PER=()=>({300:'每 5 分鐘',3600:'每小時',86400:'每天'}[(data&&data.step_sec)||300]||('每 '+Math.round(((data&&data.step_sec)||300)/60)+' 分鐘'));
+const UNIT={'c-writes':()=>'筆／'+PER(),'c-calls':()=>'次／'+PER(),'c-tool':()=>'毫秒','c-emb':()=>'毫秒','c-primary':()=>'%（主節點接住的請求占全部的比例）',
+'c-eval':()=>'%（答對的題目占可計分題目的比例）','c-totals':()=>'筆（那個時間點的記憶總數）','c-errors':()=>'次／'+PER()};
+// ---- 時間窗：所有時間圖一起看同一段（每晚考題一天一點，自己單獨縮放）----
+function bounds(){const t=(data&&data.series&&data.series.t)||[];return t.length?[t[0],t[t.length-1]]:null}
+function curWin(){const b=bounds();if(!b)return null;const [lo,hi]=b,st=(data&&data.step_sec)||300;
+if(view.p==='c'){const a=Math.max(lo,view.min),z=Math.min(hi,view.max);if(z-a>=st*2)return [a,z];view={p:preset,min:null,max:null}}
+const sp=(PRE[view.p]||{}).span;return sp?[Math.max(lo,hi-sp),hi]:[lo,hi]}
+let OV=null;const linked=()=>CHARTS.filter(c=>!c.daily&&charts[c.id]).map(c=>charts[c.id]);
+function applyView(){const w=curWin();if(!w)return;for(const u of linked())u.setScale('x',{min:w[0],max:w[1]});paintBar(w);
+document.querySelectorAll('.rstrip .range button').forEach(x=>x.setAttribute('aria-pressed',String(view.p!=='c'&&x.dataset.range===view.p)));
+const d0=dt(w[0]),d1=dt(w[1]),same=d0.toDateString()===d1.toDateString();$('rnow').textContent='正在看 '+MD(d0)+' '+HM12(d0)+' – '+(same?'':MD(d1)+' ')+HM12(d1);$('rrst').hidden=view.p!=='c'}
+function setWin(a,z){const st=(data&&data.step_sec)||300,b=bounds();if(!b)return;if(z<a)[a,z]=[z,a];if(z-a<st*2){const m=(a+z)/2;a=m-st;z=m+st}
+a=Math.max(b[0],a);z=Math.min(b[1],z);view={p:'c',min:a,max:z};applyView()}
+// 在任一張時間圖上按住拖一段＝放大那一段（所有圖一起）；點兩下回到按鈕選的範圍
+function onSel(u){const s=u.select;if(!s||s.width<6)return;const a=u.posToVal(s.left,'x'),z=u.posToVal(s.left+s.width,'x');u.setSelect({left:0,top:0,width:0,height:0},false);setWin(a,z)}
+// 總覽條：每一點的調用總數畫成淡淡的面積，只看高低；上面疊一層框和把手（照額度頁 mkusage.py 的做法，改成連續時間）
+function paintBar(w){if(!OV||!w)return;const lay=OV.over.querySelector('.ovl');if(!lay)return;const W=lay.clientWidth,L=Math.max(0,OV.valToPos(w[0],'x')),R=Math.min(W,OV.valToPos(w[1],'x')),q=s=>lay.querySelector(s);
+q('.sh.l').style.width=L+'px';q('.sh.r').style.width=Math.max(0,W-R)+'px';Object.assign(q('.fr').style,{left:L+'px',width:Math.max(2,R-L)+'px'});q('.hd.l').style.left=L+'px';q('.hd.r').style.left=R+'px'}
+function drawBar(w){const box=$('ovBox');if(OV){OV.destroy();OV=null}box.innerHTML='';const t=(data.series&&data.series.t)||[];if(t.length<3){$('rstrip').hidden=true;return}$('rstrip').hidden=false;
+const c=series('calls'),tot=t.map((_,i)=>((c.human||[])[i]||0)+((c.poll||[])[i]||0));
+OV=new uPlot({width:Math.max(120,w||box.clientWidth),height:innerWidth<760?48:40,padding:[3,0,1,0],cursor:{show:false,drag:{x:false,y:false}},legend:{show:false},select:{show:false},tzDate:ts=>dt(ts),
+scales:{x:{time:true},y:{range:(u,mn,mx)=>[0,mx>0?mx*1.05:1]}},axes:[{show:false},{show:false}],series:[{},{stroke:C.mut,width:1.25,fill:C.grid,spanGaps:true,points:{show:false}}]},[t,tot],box);
+const lay=document.createElement('div');lay.className='ovl';lay.innerHTML='<i class="sh l"></i><i class="sh r"></i><b class="fr"></b><b class="hd l"></b><b class="hd r"></b>';OV.over.appendChild(lay);
+const val=x=>OV.posToVal(Math.max(0,Math.min(lay.clientWidth,x)),'x');let drag=null;
+lay.addEventListener('pointerdown',e=>{const w=curWin();if(!w)return;const r=lay.getBoundingClientRect(),x=e.clientX-r.left,L=OV.valToPos(w[0],'x'),R=OV.valToPos(w[1],'x'),dL=Math.abs(x-L),dR=Math.abs(x-R);
+drag=Math.min(dL,dR)<=14?{m:dL<dR||(dL===dR&&x<(L+R)/2)?'L':'R',a:w[0],b:w[1]}:x>L&&x<R?{m:'pan',g:val(x),a:w[0],b:w[1]}:{m:'new',k:val(x)};lay.setPointerCapture(e.pointerId);e.preventDefault()});
+lay.addEventListener('pointermove',e=>{if(!drag)return;const b=bounds(),v=val(e.clientX-lay.getBoundingClientRect().left);
+if(drag.m==='L')setWin(Math.min(v,drag.b),drag.b);else if(drag.m==='R')setWin(drag.a,Math.max(v,drag.a));else if(drag.m==='new')setWin(drag.k,v);
+else{const wd=drag.b-drag.a,a=Math.min(b[1]-wd,Math.max(b[0],drag.a+v-drag.g));setWin(a,a+wd)}});
+const end=()=>{drag=null};lay.addEventListener('pointerup',end);lay.addEventListener('pointercancel',end)}
+// ---- 超紅線：門檻在檔案最上面的 MON_LIMITS ----
+const LIM=Object.assign({tool_p95_ms:1500,search_p95_ms:1500,emb_p95_ms:300,primary_share_min:0.99},window.MON_LIMITS||{});
+// 哪台機器：EMB 的主節點伺服器有回（summary.emb_24h.primary）；工具和搜尋是圓桌自己（圓桌主機 的 mem0-mcp）；分不出來就寫「圓桌」
+const embSvc=()=>{const p=((data&&data.summary||{}).emb_24h||{}).primary;if(!p)return '圓桌';const h=host(String(p).replace(/^[a-z]+:\/\//i,'').replace(/\/.*$/,''));return 'EMB 主節點 '+h.name+(h.ip&&h.ip!==h.name?'（'+h.ip+'）':'')};
+const RULES={
+'c-tool':[{sl:'工具 p95',name:'工具 p95 耗時',get:()=>series('tool_ms').p95,lim:LIM.tool_p95_ms,fmt:MS,svc:()=>'圓桌（MCP 工具）'},
+          {sl:'搜尋 p95',name:'搜尋 p95 耗時',get:()=>series('search_ms').p95,lim:LIM.search_p95_ms,fmt:MS,svc:()=>'圓桌（記憶搜尋）'}],
+'c-emb':[{sl:'p95',name:'EMB p95 反應時間',get:()=>series('emb').p95_ms,lim:LIM.emb_p95_ms,fmt:MS,svc:embSvc}],
+'c-primary':[{sl:'主節點接住',name:'主節點接住比例',get:()=>series('emb').primary_share,lim:LIM.primary_share_min,low:true,fmt:PCT,svc:embSvc}]};
+const RNAME=()=>({'24h':'近 24 小時','7d':'近 7 天','30d':'近 30 天'}[(data&&data.range)||range]||'這段時間');
+const over=(r,v)=>v!=null&&!isNaN(v)&&(r.low?v<r.lim:v>r.lim);
+let EVENTS=[];
+// 非百分比的圖：最高點有門檻一半以上就把門檻線也框進來；差太遠就不拉高（不然線都擠在底下），改在右上角寫一行
+function yTop(cfg,mx){let h=(mx==null||mx<=0)?1:mx*1.1;const lim=Math.max(0,...(RULES[cfg.id]||[]).filter(r=>!r.low).map(r=>r.lim));if(lim&&mx!=null&&mx>=lim*0.5)h=Math.max(h,lim*1.12);return h}
+// 2.16.2 門檻（使用者標註「字都糊在一起了」）：字不再畫在圖裡，改寫在圖外單位那行右邊（淡紅底）；
+// 門檻線改成紅色點線，跟 p95 的虛線、中位數的實線分得開；超線紅點縮小，只標看得到的範圍裡最高的 8 個
+const limitKey=(cfg)=>RULES[cfg.id]?'<span class="lim" data-lim></span>':'';
+const LIM_DOTS=8;
+function limitHook(cfg){return u=>{const rs=RULES[cfg.id]||[],ctx=u.ctx,b=u.bbox,k=devicePixelRatio||1,sy=u.scales.y,done=new Set(),keys=[];ctx.save();
+for(const r of rs){if(done.has(r.lim))continue;done.add(r.lim);const same=rs.filter(x=>x.lim===r.lim).map(x=>x.sl).join('、'),inR=r.lim>=sy.min&&r.lim<=sy.max;
+keys.push({inR,tx:'門檻 '+r.fmt(r.lim)+(rs.length>1?'（'+same+'）':'')+(inR?'':r.low?'，目前都高於門檻':'，目前都遠低於門檻')});
+if(inR){const y=Math.round(u.valToPos(r.lim,'y',true))+.5;ctx.strokeStyle=C.bad;ctx.lineWidth=1.5*k;ctx.lineCap='round';ctx.setLineDash([1.5*k,4*k]);ctx.beginPath();ctx.moveTo(b.left,y);ctx.lineTo(b.left+b.width,y);ctx.stroke();ctx.setLineDash([]);ctx.lineCap='butt'}}
+const el=u.root.parentNode&&u.root.parentNode.parentNode.querySelector('.yu [data-lim]');
+if(el){const all=keys.every(x=>x.inR),h=(all?'<i></i>':'')+esc(keys.map(x=>x.tx).join('；'));if(el.dataset.h!==h){el.dataset.h=h;el.innerHTML=h;el.className='lim'+(all?'':' far')}}
+const xs=u.data[0],i0=Math.max(0,u.valToIdx(u.scales.x.min)-1),i1=Math.min(xs.length-1,u.valToIdx(u.scales.x.max)+1);
+for(const r of rs){const si=u.series.findIndex(s=>s.label===r.sl);if(si<1||!u.series[si].show)continue;const ys=u.data[si],hit=[];
+for(let i=i0;i<=i1;i++)if(over(r,ys[i]))hit.push(i);
+hit.sort((p,q)=>r.low?ys[p]-ys[q]:ys[q]-ys[p]).slice(0,LIM_DOTS).forEach(i=>{const x=u.valToPos(xs[i],'x',true),y=u.valToPos(ys[i],'y',true);ctx.beginPath();ctx.arc(x,y,3*k,0,2*Math.PI);ctx.fillStyle=C.bad;ctx.fill();ctx.lineWidth=1.25*k;ctx.strokeStyle=C.card;ctx.stroke()})}
+ctx.restore()}}
+// 連續超線的點併成一筆；中間沒資料（null）算斷開
+function computeEvents(){const t=(data.series&&data.series.t)||[],st=data.step_sec||300,ev=[];
+for(const id in RULES)for(const r of RULES[id]){const a=r.get()||[];let s=-1;
+for(let i=0;i<=t.length;i++){const o=i<t.length&&over(r,a[i]);if(o&&s<0)s=i;if(!o&&s>=0){const vs=a.slice(s,i),peak=r.low?Math.min(...vs):Math.max(...vs);
+ev.push({id,r,i0:s,i1:i-1,t0:t[s],t1:t[i-1]+st,n:i-s,peak,svc:r.svc(),cause:causeOf(r,s,i-1)});s=-1}}}
+return ev.sort((x,y)=>y.t1-x.t1||y.t0-x.t0)}
+const med=a=>{const v=a.filter(x=>x!=null&&!isNaN(x)).sort((p,q)=>p-q);return v.length?v[Math.floor(v.length/2)]:null};
+// 可能原因：看同一段時間的其他圖推一句，最多三句
+function causeOf(r,i0,i1){const t=data.series.t,c=series('calls'),e=series('emb'),er=series('errors'),out=[],rng=f=>{const v=[];for(let i=i0;i<=i1;i++)v.push(f(i));return v};
+const tot=i=>((c.human||[])[i]||0)+((c.poll||[])[i]||0),base=med(t.map((_,i)=>tot(i)).filter(v=>v>0)),peak=Math.max(...rng(tot));
+if(base&&peak>=base*2&&peak-base>=10)out.push('同時段調用暴增（最多 '+N(peak)+' 次／'+PER()+'，平常約 '+N(base)+' 次）');
+const ps=rng(i=>(e.primary_share||[])[i]).filter(v=>v!=null),pmin=ps.length?Math.min(...ps):null;
+if(r.sl==='主節點接住')out.push('EMB 主節點沒接住、落到備援'+(pmin!=null?'（最低只接住 '+PCT(pmin)+'）':''));
+else if(pmin!=null&&pmin<LIM.primary_share_min)out.push('EMB 主節點沒接住、落到備援（接住比例最低 '+PCT(pmin)+'），備援比較慢');
+if(r.sl!=='p95'){const ep=rng(i=>(e.p95_ms||[])[i]).filter(v=>v!=null),em=ep.length?Math.max(...ep):null;if(em!=null&&em>LIM.emb_p95_ms)out.push('EMB 反應變慢（p95 最高 '+MS(em)+'），連帶拖慢搜尋')}
+const es=k=>rng(i=>(er[k]||[])[i]||0).reduce((p,q)=>p+q,0),em=es('mcp'),et=es('tool'),ee=es('emb');if(em+et+ee>0)out.push('同時段有錯誤 '+N(em+et+ee)+' 次（MCP '+N(em)+'・工具 '+N(et)+'・EMB '+N(ee)+'）');
+const st=data.step_sec||300,endT=t[i1]+st;for(const n of data.nodes||[])if(n.up===false){const since=n.since?Date.parse(n.since)/1000:null;if(since==null||since<=endT)out.push(host(n.label||n.key).name+' 連不上'+(since?'（從 '+FULL(since)+' 起）':''))}
+if(!out.length)out.push(r.sl==='主節點接住'?'主節點短暫沒回應，請求改由備援處理':r.sl==='p95'?'同時段調用量正常，可能是 EMB 主機本身忙（例如同一台在跑別的模型）':'同時段其他圖沒有明顯異狀，可能是單次慢查詢或網路抖動');
+return out.slice(0,3).join('；')}
+const span2=(a,z)=>{const d0=dt(a),d1=dt(z);return TS(a)+' – '+(d0.toDateString()===d1.toDateString()?TONLY(z):TS(z))};
+// 複製給 AI 診斷用的純文字：上面的欄位＋前後 30 分鐘的相關數值
+function evText(x){const t=data.series.t,st=data.step_sec||300,a=series('tool_ms'),s2=series('search_ms'),e=series('emb'),c=series('calls'),er=series('errors');
+const f=(arr,i,fm)=>{const v=(arr||[])[i];return v==null?'—':fm(v)},rows=[];
+for(let i=0;i<t.length;i++){if(t[i]<x.t0-1800||t[i]>=x.t1+1800)continue;const mark=i>=x.i0&&i<=x.i1?' ←超線':'';
+rows.push(FULL(t[i])+' | '+f(a.p95,i,MS)+' | '+f(s2.p95,i,MS)+' | '+f(e.p95_ms,i,MS)+' | '+f(e.primary_share,i,PCT)+' | '+N(((c.human||[])[i]||0)+((c.poll||[])[i]||0))+' | '+N(((er.mcp||[])[i]||0)+((er.tool||[])[i]||0)+((er.emb||[])[i]||0))+mark)}
+return ['【圓桌監控異常】','時間：'+span2(x.t0,x.t1)+'（連續 '+x.n+' 點，'+PER()+'一點）','機器／服務：'+x.svc,
+'指標：'+x.r.name+(x.r.low?' 最低 ':' 最高 ')+x.r.fmt(x.peak)+'，門檻 '+x.r.fmt(x.lim||x.r.lim)+'（'+(x.r.low?'低於':'超過')+'門檻）','可能原因：'+x.cause,
+'前後 30 分鐘的相關數值（'+PER()+'一點）：','時間 | 工具 p95 | 搜尋 p95 | EMB p95 | 主節點接住 | 調用次數 | 錯誤數'].concat(rows,['資料來源：圓桌監控頁（'+location.pathname+'，範圍：'+RNAME()+'）']).join('\n')}
+// 使用者自己按「複製」才放進剪貼簿；navigator.clipboard 不能用時（例如不是 https）改用選取文字再複製的老方法
+async function copyText(btn,txt){const old=btn.dataset.lb||(btn.dataset.lb=btn.textContent);let ok=false;try{await navigator.clipboard.writeText(txt);ok=true}catch(e){
+try{const ta=document.createElement('textarea');ta.value=txt;ta.setAttribute('readonly','');ta.style.cssText='position:fixed;top:0;left:0;opacity:0';document.body.appendChild(ta);ta.select();ok=document.execCommand('copy');ta.remove()}catch(e2){}}
+btn.textContent=ok?'已複製':'複製失敗';setTimeout(()=>{btn.textContent=old},1600)}
+function renderAnoms(){for(const id in RULES){const h=$(id)&&$(id).querySelector('[data-over]');if(!h)continue;const n=EVENTS.filter(x=>x.id===id).length;h.textContent=n?'⚑ '+RNAME()+'超線 '+n+' 次':''}
+const box=$('anomList');$('anomSub').textContent=RNAME()+'超過門檻的時段；同一種併成一列，點開看每次';$('anomAll').hidden=!EVENTS.length;
+if(!EVENTS.length){box.innerHTML='<p class="none2">✓ '+RNAME()+'沒有超過門檻的時段</p>';return}
+// 2.17.0（M09）：同一個指標的超線併成一列「× N 次」，列上只放最近一次；點開看每次的時間
+const ol=document.createElement('ol');anomGroups().forEach(g=>{const x=g.list[0],li=document.createElement('li');li.className='ag';li.tabIndex=0;li.setAttribute('role','button');li.setAttribute('aria-haspopup','dialog');
+const worst=g.list.reduce((p,q)=>x.r.low?(q.peak<p.peak?q:p):(q.peak>p.peak?q:p));
+li.innerHTML='<div class="at"><span class="tag">⚑ '+esc(x.r.name)+'</span><span class="times">× '+g.list.length+' 次</span>'+(g.list.length>1?'<span class="more">點開看每次</span>':'')+'</div>'+
+'<div class="kv">最近一次 '+esc(span2(x.t0,x.t1))+'・'+esc(x.svc)+'・<span class="bad">'+(x.r.low?'最低 ':'最高 ')+esc(x.r.fmt(worst.peak))+'</span>，門檻 '+esc(x.r.fmt(x.r.lim))+'</div>'+
+'<div class="kv">可能原因：<b>'+esc(x.cause)+'</b></div><button type="button" class="cp">複製</button>';
+li.querySelector('.cp').addEventListener('click',e=>{e.stopPropagation();copyText(e.currentTarget,g.list.map(evText).join('\n\n────────\n\n'))});
+li.addEventListener('click',()=>openAnom(g,li));li.addEventListener('keydown',e=>{if(e.target===li&&(e.key==='Enter'||e.key===' ')){e.preventDefault();openAnom(g,li)}});ol.appendChild(li)});box.innerHTML='';box.appendChild(ol)}
+function anomGroups(){const m=new Map();for(const x of EVENTS){const k=x.id+'|'+x.r.sl;if(!m.has(k))m.set(k,{key:k,list:[]});m.get(k).list.push(x)}return [...m.values()].sort((a,b)=>b.list[0].t1-a.list[0].t1)}
+function openAnom(g,from){const x0=g.list[0];const ol=document.createElement('ol');
+g.list.forEach(x=>{const li=document.createElement('li');li.innerHTML='<div class="at">'+esc(span2(x.t0,x.t1))+'</div><div class="kv"><b>'+(x.r.low?'最低 ':'最高 ')+esc(x.r.fmt(x.peak))+'</b>・'+(x.n>1?'連續 '+x.n+' 點・':'')+esc(x.cause)+'</div><button type="button" class="cp">複製</button>';
+li.querySelector('.cp').addEventListener('click',e=>copyText(e.currentTarget,evText(x)));ol.appendChild(li)});
+showDtl(x0.r.name+' × '+g.list.length+' 次',x0.svc+'・門檻 '+x0.r.fmt(x0.r.lim)+'・'+RNAME()+'・新的在上',ol,from)}
+$('anomAll').addEventListener('click',e=>copyText(e.currentTarget,EVENTS.map(evText).join('\n\n────────\n\n')));
+// ---- 2.17.0 細節覆蓋層 ----
+let dtlFrom=null;
+function showDtl(title,sub,node,from){const d=$('dtl');$('dtlT').textContent=title;$('dtlS').textContent=sub||'';const b=$('dtlB');b.innerHTML='';if(typeof node==='string')b.innerHTML=node;else b.appendChild(node);dtlFrom=from||null;if(!d.open)d.showModal();$('dtlX').focus()}
+
+// ---- 2.17.0 跟 7 天平均比（T1） ----
+// 近 7 天的每小時資料切成 7 段「24 小時」（第 0 段＝到現在的近 24 小時、第 1 段＝再往前 24 小時…），每段算一個值，平均就是這 7 段的平均
+const DAY=86400;
+function weekDays(){if(!wk||!wk.series||!(wk.series.t||[]).length)return null;const S=wk.series,t=S.t,st=wk.step_sec||3600,end=t[t.length-1]+st;
+const g=k=>((S[k.split('.')[0]]||{})[k.split('.')[1]]||[]),days=[];for(let b=0;b<7;b++)days.push({b,idx:[]});
+t.forEach((x,i)=>{const b=Math.floor((end-1-x)/DAY);if(b>=0&&b<7)days[b].idx.push(i)});
+const sum=(i,ks)=>ks.reduce((p,k)=>p+(+g(k)[i]||0),0),has=(i,ks)=>ks.some(k=>g(k)[i]!=null);
+for(const d of days){const I=d.idx,live=I.filter(i=>has(i,['calls.human','calls.poll','writes.add']));d.live=live.length;
+d.writes=live.length?live.reduce((p,i)=>p+sum(i,['writes.add','writes.update','writes.delete']),0):null;
+d.calls=live.length?live.reduce((p,i)=>p+sum(i,['calls.human','calls.poll']),0):null;
+d.errors=live.length?live.reduce((p,i)=>p+sum(i,['errors.mcp','errors.tool','errors.emb']),0):null;
+// EMB 中位數：後端沒給每天的中位數，用每小時中位數照調用次數加權平均估算
+let w=0,a=0,pc=0,pp=0;for(const i of I){const c=+g('emb.calls')[i]||0,m=g('emb.p50_ms')[i],s=g('emb.primary_share')[i];if(m!=null&&c>0){w+=c;a+=m*c}if(s!=null&&c>0){pc+=c;pp+=s*c}}
+d.emb=w?a/w:null;d.primary=pc?pp/pc:null;
+const e0=t[I[I.length-1]]!=null?end-d.b*DAY:null;d.end=e0}
+return days}
+function evalDays(){const ev=(wk&&wk.eval_daily&&wk.eval_daily.t&&wk.eval_daily.t.length?wk.eval_daily:(data&&data.eval_daily))||{},t=ev.t||[],h=ev.hit5||[];const out=[];
+for(let i=t.length-1;i>=0&&out.length<7;i--)if(h[i]!=null)out.push({t:t[i],v:h[i]});return out}
+const DAYNAME=b=>b===0?'今天（近 24 小時）':DAYSHORT(b);
+const DAYSHORT=b=>b===0?'今天':b===1?'昨天':b===2?'前天':b+' 天前';
+// 每張卡的設定：怎麼取值、什麼方向算變好（better：up／down／null＝沒有好壞）、比的是百分比還是百分點
+const TM={writes:{name:'24 小時寫入',unit:'筆',better:null,fmt:N},calls:{name:'24 小時調用',unit:'次',better:null,fmt:N},
+emb:{name:'EMB 反應時間中位數',unit:'ms',better:'down',fmt:v=>v==null?'—':(v<10?v.toFixed(1):N(v))},
+primary:{name:'主節點接住比例',unit:'',better:'up',fmt:PCT,pts:true},eval:{name:'每晚考題 hit@5',unit:'',better:'up',fmt:PCT,pts:true},
+errors:{name:'24 小時錯誤',unit:'次',better:'down',fmt:N}};
+// 回傳 {vals:[{lb,v,today}], avg, cur, n}；n＝有資料的天數
+function weekOf(k){if(k==='eval'){const e=evalDays();if(!e.length)return {vals:[],n:0};const vals=e.slice().reverse().map((x,i,a)=>({lb:MD(dt(x.t)),full:MD(dt(x.t))+' 那晚',v:x.v,today:i===a.length-1}));
+return {vals,n:vals.length,cur:vals[vals.length-1].v,avg:vals.reduce((p,q)=>p+q.v,0)/vals.length}}
+const D=weekDays();if(!D)return {vals:[],n:0};const vals=D.slice().reverse().map(d=>({lb:DAYSHORT(d.b),full:DAYNAME(d.b),v:d.live?d[k]:null,today:d.b===0}));
+const ok=vals.filter(x=>x.v!=null);if(!ok.length||vals[vals.length-1].v==null)return {vals,n:ok.length};
+return {vals,n:ok.length,cur:vals[vals.length-1].v,avg:ok.reduce((p,q)=>p+q.v,0)/ok.length}}
+// 算箭頭：▲▼ 加顏色（變好綠、變差紅、沒有好壞的用一般字色），差不多就寫「持平」
+function cmpOf(k,w){const m=TM[k];if(!w||w.n<2||w.cur==null||w.avg==null)return {cls:'na',html:'還沒有 7 天資料',plain:'還沒有 7 天資料'};
+const d=w.cur-w.avg,up=d>0;let amt,flat;
+if(m.pts){const p=Math.abs(d)*100;flat=p<0.1;amt=(Math.round(p*10)/10).toLocaleString('zh-TW')+' 個百分點'}
+else if(w.avg<1){flat=Math.abs(d)<0.5;amt=(up?'多 ':'少 ')+N(Math.abs(d))+(m.unit?' '+m.unit:'')}
+else{const r=Math.abs(d)/w.avg;flat=r<0.03;amt=Math.round(r*100)+'%'}
+const span=w.n>=7?'7 天':w.n+' 天';
+if(flat)return {cls:'flat',html:'<b class="flat">＝ 持平</b> 跟 '+span+'平均比',plain:'跟 '+span+'平均差不多'};
+const good=m.better==null?null:(m.better==='up')===up,cls=good==null?'neu':good?'good':'bad';
+return {cls,html:'<b class="'+cls+'">'+(up?'▲':'▼')+' '+amt+'</b> <span class="cs">跟 '+span+'平均比</span>',plain:(up?'比平均高 ':'比平均低 ')+amt+(good==null?'':good?'（變好）':'（變差）')}}
+function renderCmp(){for(const k in TM){const el=$('t-'+k+'-c');if(!el)continue;const c=cmpOf(k,weekOf(k));el.innerHTML=c.cls==='na'?'<span class="na">'+c.html+'</span>':c.html;el.title=c.plain}}
+// 7 天柱狀圖（單一數列不放圖例，標題就是名字）：今天那根實色、其他淡一點；平均畫一條虛線；滑過或 Tab 到柱子顯示數值
+function barsSVG(k,w){const nar=innerWidth<760,m=TM[k],W=nar?340:640,H=nar?220:240,L=nar?40:52,R=14,T=16,B=34,iw=W-L-R,ih=H-T-B,n=w.vals.length||7,vs=w.vals.map(x=>x.v).filter(v=>v!=null);
+let top=Math.max(...vs,w.avg||0,m.pts?0:1),ticks=4;if(m.pts){top=1}else{const nt=niceTop(top);top=nt.top;ticks=nt.n}const lo=m.pts?Math.max(0,Math.floor((Math.min(...vs,w.avg)-0.05)*20)/20):0;
+const y=v=>T+ih-(v-lo)/(top-lo)*ih,bw=Math.min(56,iw/n*0.62),cx=i=>L+iw/n*(i+0.5);let g='';
+for(let i=0;i<=ticks;i++){const v=lo+(top-lo)*i/ticks,yy=Math.round(y(v))+.5;g+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+yy+'" y2="'+yy+'" stroke="var(--grid)"/><text x="'+(L-8)+'" y="'+(yy+4)+'" text-anchor="end" font-size="12" fill="var(--mut)">'+esc(m.pts?Math.round(v*100)+'%':N(v))+'</text>'}
+w.vals.forEach((x,i)=>{const X=cx(i)-bw/2;g+='<text x="'+cx(i)+'" y="'+(H-12)+'" text-anchor="middle" font-size="12" fill="'+(x.today?'var(--tx)':'var(--mut)')+'"'+(x.today?' font-weight="600"':'')+'>'+esc(x.lb)+'</text>';
+if(x.v==null){g+='<text x="'+cx(i)+'" y="'+(T+ih-6)+'" text-anchor="middle" font-size="12" fill="var(--mut)">沒資料</text>';return}
+const y0=y(lo),y1=Math.min(y(x.v),y0-2),r=Math.min(4,bw/2,(y0-y1));
+g+='<path class="bar" tabindex="0" data-i="'+i+'" d="M'+X+' '+y0+'V'+(y1+r)+'Q'+X+' '+y1+' '+(X+r)+' '+y1+'H'+(X+bw-r)+'Q'+(X+bw)+' '+y1+' '+(X+bw)+' '+(y1+r)+'V'+y0+'Z" fill="var(--ac)" opacity="'+(x.today?1:.5)+'"><title>'+esc(x.full+'：'+m.fmt(x.v)+(m.unit?' '+m.unit:''))+'</title></path>';
+if(x.today)g+='<text x="'+cx(i)+'" y="'+(y1-6)+'" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--tx)">'+esc(m.fmt(x.v))+'</text>'});
+if(w.avg!=null){const ya=Math.round(y(w.avg))+.5;g+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+ya+'" y2="'+ya+'" stroke="var(--tx)" stroke-width="1.5" stroke-dasharray="5 4"/><text x="'+(L+6)+'" y="'+(ya-6)+'" text-anchor="start" font-size="12.5" fill="var(--tx)" paint-order="stroke" stroke="var(--card)" stroke-width="4">平均 '+esc(m.fmt(w.avg))+'</text>'}
+return '<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+esc(m.name)+'近 7 天柱狀圖">'+g+'</svg>'}
+// 直軸頂端：找一個好讀的間距（1、2、2.5、5 的十的次方倍），切 3～5 格
+function niceTop(v){if(v<=0)return {top:1,n:4};const p=Math.pow(10,Math.floor(Math.log10(v))-1);for(const m of [1,2,2.5,5,10,20,25,50,100]){const st=m*p,n=Math.ceil(v*1.08/st);if(n<=5)return {top:st*Math.max(n,3),n:Math.max(n,3)}}return {top:v*1.1,n:4}}
+function openTile(k,from){const m=TM[k],w=weekOf(k),c=cmpOf(k,w),box=document.createElement('div'),bigv=$('t-'+k).innerHTML;
+box.innerHTML='<div class="big"><span class="v">'+bigv+'</span><span class="cmp">'+(c.cls==='na'?'<span class="na">'+c.html+'</span>':c.html)+'</span></div>';
+if(!w.vals.length||w.n<2){box.insertAdjacentHTML('beforeend','<p class="note">還沒有 7 天資料：近 7 天的資料'+(wk?'只有 '+w.n+' 天':'抓不到')+'，滿兩天以上才畫得出比較。</p>');showDtl(m.name,'近 7 天',box,from);return}
+const bars=document.createElement('div');bars.className='bars';bars.innerHTML=barsSVG(k,w)+'<div class="tip" hidden></div>';box.appendChild(bars);
+const tip=bars.querySelector('.tip'),svg=bars.querySelector('svg'),show=p=>{const x=w.vals[+p.dataset.i],r=p.getBoundingClientRect(),o=bars.getBoundingClientRect();tip.textContent=x.full+'：'+m.fmt(x.v)+(m.unit?' '+m.unit:'');tip.style.left=(r.left+r.width/2-o.left)+'px';tip.style.top=(r.top-o.top-6)+'px';tip.hidden=false};
+svg.querySelectorAll('.bar').forEach(p=>{p.addEventListener('mouseenter',()=>show(p));p.addEventListener('focus',()=>show(p));p.addEventListener('mouseleave',()=>tip.hidden=true);p.addEventListener('blur',()=>tip.hidden=true)});
+// 表格版（看不清顏色或要抄數字時用）
+const rows=w.vals.slice().reverse().map(x=>'<tr><td>'+esc(x.full)+'</td><td>'+(x.v==null?'沒資料':esc(m.fmt(x.v))+(m.unit?' '+m.unit:''))+'</td></tr>').join('');
+box.insertAdjacentHTML('beforeend','<table><thead><tr><th>哪一天</th><th>數值</th></tr></thead><tbody>'+rows+'<tr><td><b>平均</b></td><td><b>'+esc(m.fmt(w.avg))+(m.unit?' '+m.unit:'')+'</b></td></tr></tbody></table>'+
+'<p class="note">'+(k==='eval'?'每晚考一次，一根是一晚；平均是這幾晚的平均。':'一根是一段 24 小時（從現在往回推），用近 7 天每小時的資料加總'+(k==='emb'?'；中位數是用每小時中位數照次數加權估算，跟卡上伺服器算的會差一點':k==='primary'?'；比例照 EMB 次數加權':'')+'。卡上的大數字是伺服器直接算的近 24 小時。')+'</p>');
+const sub=$('t-'+k+'-s');if(sub&&sub.textContent)box.insertAdjacentHTML('afterbegin','<p class="dsub" style="margin-top:-4px">'+esc(sub.textContent)+'</p>');
+showDtl(m.name,'近 7 天，跟平均比',box,from);plainTerms()}
+
+// ---- 2.17.0 總狀態燈 ----
+function setHealth(lv,ic,tx,sub,go){const h=$('health');h.className='health '+lv;h.querySelector('.hic').textContent=ic;$('hlTx').textContent=tx;$('hlSub').textContent=sub||'';const a=$('hlGo');a.hidden=!go;if(go)a.setAttribute('href',go)}
+function renderHealthFail(msg){setHealth('unk','?','讀不到監控資料',autoRefresh?'每 15 秒會再試一次':'自動重抓已暫停，可按更新重試',null)}
+function renderHealth(){const s=data.summary||{},bad=[],warn=[];for(const n of data.nodes||[])if(nodeState(n)==='down')bad.push(host(n.label||n.key).name+' 離線');for(const n of data.nodes||[])if(nodeState(n)==='slow')warn.push((n.key==='laya'?'Laya':host(n.label||n.key).name)+' 變慢');
+const since=Date.now()/1000-DAY;for(const g of anomGroups()){const r=g.list.filter(x=>x.t1>=since);if(r.length)warn.push(g.list[0].r.name+' 超線 '+r.length+' 次')}
+const ps=(s.emb_24h||{}).primary_share;if(ps!=null&&ps<LIM.primary_share_min&&!warn.some(x=>x.indexOf('主節點')===0))warn.push('主節點只接住 '+PCT(ps));
+const er=s.errors_24h||{},ne=(er.mcp||0)+(er.tool||0)+(er.emb||0);if(ne>0)warn.push('24 小時錯誤 '+N(ne)+' 次');
+if(bad.length)setHealth('bad','✕',bad.join('、'),warn.length?'另外 '+warn.length+' 項要注意：'+warn.slice(0,2).join('、'):'其他正常','#s-nodes');
+else if(warn.length)setHealth('warn','!','要注意：'+warn.slice(0,2).join('、')+(warn.length>2?' 等 '+warn.length+' 項':''),'已回報的節點狀態請見節點列','#s-anom');
+else setHealth((data.nodes||[]).some(n=>nodeState(n)==='unknown')?'unk':'ok',(data.nodes||[]).some(n=>nodeState(n)==='unknown')?'?':'✓',(data.nodes||[]).some(n=>nodeState(n)==='unknown')?'有節點狀態不明':'一切正常',(data.nodes||[]).some(n=>nodeState(n)==='unknown')?'有節點還沒回報；近 24 小時沒有超線':'近 24 小時沒有超線',null)}
+
+function xValues(u,splits,ax,space,incr){const span=u.scales.x.max-u.scales.x.min;return splits.map(s=>{const d=dt(s);if(incr>=86400||range==='30d')return MD(d);if(span>2*86400)return (d.getHours()===0&&d.getMinutes()===0)?MD(d):HM12(d);return HM12(d)})}
+function plotHeight(el){return innerWidth<760?190:220}
+// 2.22.2 w＝render() 先一次量好的寬度；沒給（單張重畫）才自己量
+function draw(cfg,w){const sec=$(cfg.id),box=sec.querySelector('.plot');if(charts[cfg.id]){charts[cfg.id].destroy();delete charts[cfg.id]}box.innerHTML='';
+let yu=sec.querySelector('.yu');if(!yu){yu=document.createElement('div');yu.className='yu';box.before(yu)}yu.innerHTML='<span>單位：'+esc(UNIT[cfg.id]())+'</span>';yu.hidden=false;
+const t=cfg.t()||[],ss=cfg.build().filter(s=>Array.isArray(s.data));const n=t.length;
+// 2.16.2 線條補完整（使用者標註「線條做完整，除非是斷線」）：伺服器那一格有取樣（calls 有值＝那 5 分鐘的彙總存在）但這條是空的——
+// 次數類（寫入、調用、錯誤）補 0；耗時、比例、總數那格沒有可算的值，給 undefined 讓線直接接過去。只有沒取樣（服務掛了、還沒彙總）的格子維持 null＝斷線
+const smp=cfg.gap?(series('calls').human||[]):[],fillv=cfg.gap==='zero'?0:undefined;
+const cp=pref(cfg.id),log=cp.scale==='log',scatter=cp.mode==='scatter';
+const rows=ss.map(s=>{const a=new Array(n);for(let i=0;i<n;i++){const v=s.data[i];a[i]=(v==null||isNaN(v))?(cfg.gap&&smp[i]!=null?fillv:null):Number(v)}return log?a.map(v=>v!=null&&v<=0?null:v):a});
+if(!n||!ss.length||rows.every(r=>r.every(v=>v==null))){yu.hidden=true;box.innerHTML='<div class="none">'+(cfg.daily?'還沒有考題結果':'這段時間沒有資料')+'</div>';return}
+const lk=limitKey(cfg,rows);if(lk)yu.insertAdjacentHTML('beforeend',lk);
+const pct=!!cfg.pct,fmt=cfg.fmt;
+// 2.16.5 圖例平常顯示最後一點的數值（游標離開圖時原本整排「—」，像壞掉）
+const LEG=u=>{if(u.cursor.idx!=null)return;const n=u.data[0].length;let i=n-1;while(i>0&&u.data.slice(1).every(d=>d[i]==null))i--;if(i>=0&&n)u.setLegend({idx:i})};
+const opts={width:w||box.clientWidth||600,height:plotHeight(box),cursor:{points:{size:7,width:2},drag:cfg.daily?{x:true,y:false}:{x:true,y:false,setScale:false},y:false},legend:{live:true},hooks:Object.assign({ready:[LEG],setCursor:[LEG]},cfg.daily?{}:{setSelect:[onSel]},RULES[cfg.id]?{draw:[limitHook(cfg)]}:ss.some(x=>x.shape)?{draw:[spotHook(ss)]}:{}),
+tzDate:ts=>dt(ts),
+scales:{x:{time:true},y:log?{distr:3,range:(u,mn,mx)=>{const vals=rows.flat().filter(v=>v>0),lo=vals.length?Math.min(...vals):1,hi=vals.length?Math.max(...vals):10;return [lo/1.2,Math.max(hi*1.2,lo*2)]}}:{range:pct?(u,mn,mx)=>[Math.max(0,Math.min(mn==null?1:mn,0.9)-0.02),1.001]:(u,mn,mx)=>[0,yTop(cfg,mx)]}},
+axes:[{stroke:C.mut,font:'12px system-ui, sans-serif',grid:{stroke:C.grid,width:1},ticks:{stroke:C.grid,width:1},values:xValues,space:innerWidth<760?74:84,gap:6},
+{stroke:C.mut,font:'12px system-ui, sans-serif',grid:{stroke:C.grid,width:1},ticks:{show:false},size:innerWidth<760?46:56,gap:6,incrs:pct?[0.01,0.02,0.05,0.1,0.2,0.25,0.5]:[1,2,5,10,20,50,100,200,500,1e3,2e3,5e3,1e4,2e4,5e4,1e5,2e5,5e5,1e6],values:(u,vals)=>vals.map(v=>pct?Math.round(v*100)+'%':(fmt===MS?N(v):N(v)))}],
+series:[{label:'時間',value:(u,v)=>v==null?'—':TS(v)}].concat(ss.map((s,i)=>({label:s.label,stroke:s.color,width:scatter?0:2,paths:scatter?()=>null:undefined,dash:s.dash||undefined,spanGaps:false,points:{show:scatter||!!s.points||cfg.daily||n<=2,size:6,fill:C.card,stroke:s.color,width:2},value:(u,v)=>v==null?'—':fmt(v)})))};
+if(log){delete opts.axes[1].incrs;opts.axes[1].values=(u,vals)=>vals.map(v=>v==null?'':pct?Number((v*100).toPrecision(3))+'%':Number(v.toPrecision(3)).toLocaleString('zh-TW'));yu.insertAdjacentHTML('beforeend','<span>對數刻度・零值不畫</span>')}
+if(cfg.daily)opts.axes[0].values=(u,sp)=>sp.map(s=>MD(dt(s)));
+ss.forEach((x,i)=>{const o=opts.series[i+1];if(x.span)o.spanGaps=true;if(x.shape){o.width=0;o.paths=()=>null;o.points={show:false}}});
+if(cfg.id==='c-eval'){const spot=ss.some(x=>x.shape),sub=sec.querySelector('[data-sub]');if(sub)sub.textContent=spot?'第一名／前 5 名找得到的比例（hit@1／hit@5）；線是每晚那次，散點是白天抽考':'第一名／前 5 名找得到的比例（hit@1／hit@5），每天一點';
+let key=sec.querySelector('.evkey');if(!key){key=document.createElement('div');key.className='evkey';box.after(key)}
+key.innerHTML=spot?'<span><i class="c"></i>每晚固定一次（連線）</span><span><i></i>白天隨機抽考</span><span><i class="t"></i>空閒時抽考</span><br>白天抽考每次 20 題，單點誤差約 ±8%，看趨勢':''}
+const u=charts[cfg.id]=new uPlot(opts,[t].concat(rows),box);
+// 圖例小樣：虛線的那條（p95）畫成一段一段，跟實線（中位數）一眼分得出來
+ss.forEach((x,i)=>{if(!x.dash)return;const m=u.root.querySelectorAll('.u-legend .u-series')[i+1],mk=m&&m.querySelector('.u-marker');if(mk)mk.style.cssText='border:0;width:16px;background:repeating-linear-gradient(90deg,'+x.color+' 0 5px,transparent 5px 8px)'});
+ss.forEach((x,i)=>{if(!x.shape)return;const m=u.root.querySelectorAll('.u-legend .u-series')[i+1];const mk=m&&m.querySelector('.u-marker');if(mk){mk.style.cssText='border:0;background:'+x.color+';width:9px;height:9px;'+(x.shape==='tri'?'clip-path:polygon(50% 0,100% 100%,0 100%)':'')}});if(!cfg.daily)u.over.addEventListener('dblclick',()=>{view={p:preset,min:null,max:null};queueMicrotask(applyView)})}
+function plainTerms(){
+const roots=document.querySelectorAll('.tile,.chart header,.u-legend,.anom,.dtl,.summary,.nodes');
+const names=[['EMB','搜尋用的向量服務'],['p95','最慢那 5% 要多久'],['hit@5','前 5 名裡找得到的比例'],['hit@1','第一名就找得到的比例'],['MCP','圓桌連線'],['輪詢','自動查詢'],['中位數','通常要多久']];
+for(const root of roots){const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT),nodes=[];while(walker.nextNode())nodes.push(walker.currentNode);for(const n of nodes){if(n.parentElement.closest('.term,script,style,select,option'))continue;let s=n.textContent;if(!names.some(([word])=>s.includes(word)))continue;const frag=document.createDocumentFragment(),re=/(EMB|p95|hit@5|hit@1|MCP|輪詢|中位數)/g;let pos=0,m;while((m=re.exec(s))){frag.append(document.createTextNode(s.slice(pos,m.index)));const desc=names.find(([word])=>word===m[0])[1],before=s.slice(Math.max(0,m.index-24),m.index);if(!before.includes(desc)&&!before.match(/最慢那 5%|通常耗時|向量服務|自動查詢|第一名|前 5 名/))frag.append(document.createTextNode(desc));const tag=document.createElement('small');tag.className='term';tag.textContent=m[0];frag.append(tag);pos=m.index+m[0].length}frag.append(document.createTextNode(s.slice(pos)));n.replaceWith(frag)}}
+}
+function render(){if(!data||!data.series){return}readColors();try{EVENTS=computeEvents()}catch(e){EVENTS=[];console.error('超線計算失敗',e)}renderSummary();renderNodes();drawn=range;
+// 2.22.2 先把 9 張圖和範圍條的寬度一次讀完再畫（讀寫交錯＝每張都逼瀏覽器重排版一次）
+const W={};for(const c of CHARTS)W[c.id]=$(c.id).querySelector('.plot').clientWidth;W.ov=$('ovBox').clientWidth;
+for(const c of CHARTS){try{draw(c,W[c.id])}catch(e){console.error('畫圖失敗',c.id,e);$(c.id).querySelector('.plot').innerHTML='<div class="none">這張圖畫不出來：'+esc(e.message)+'</div>'}}
+try{renderAnoms()}catch(e){console.error('異常紀錄算不出來',e)}
+try{renderHealth()}catch(e){console.error('總狀態燈算不出來',e)}
+try{renderCmp()}catch(e){console.error('跟 7 天平均比算不出來',e)}
+try{drawBar(W.ov)}catch(e){console.error('範圍條畫不出來',e);$('rstrip').hidden=true}
+// uPlot 剛建好時刻度要等它自己的下一個微任務才算好，排在它後面再套時間窗，不然會被蓋回整段
+plainTerms();queueMicrotask(applyView)}
+
+// ---- 調整大小與深淺色 ----
+// 2.22.2 藏在別頁後面（寬度多半是 0）不動；先把每張的寬度讀完再逐張 setSize；尺寸沒變的不重畫，都沒變就不套時間窗
+function sizeAll(){if(window.rtPageHidden())return;const jobs=[];for(const id in charts){const u=charts[id],box=$(id).querySelector('.plot'),w=box.clientWidth,h=plotHeight(box);if(w&&(w!==u.width||h!==u.height))jobs.push([u,w,h])}
+const ow=OV?Math.max(120,$('ovBox').clientWidth):0,oh=innerWidth<760?48:40,ovNeed=!!OV&&(ow!==OV.width||oh!==OV.height);
+for(const [u,w,h] of jobs)u.setSize({width:w,height:h});if(ovNeed)OV.setSize({width:ow,height:oh});if(jobs.length||ovNeed)queueMicrotask(applyView)}
+let rsz=null;new ResizeObserver(()=>{clearTimeout(rsz);rsz=setTimeout(sizeAll,80)}).observe(document.querySelector('main'));
+{/* 2.22.3 預載的頁藏著時系統切深淺色不整頁重畫，記下來，顯示時補一次 */let thDirty=false;matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{if(window.rtPageHidden()){thDirty=true;return}render()});document.addEventListener('visibilitychange',()=>{if(thDirty&&!window.rtPageHidden()){thDirty=false;render()}})}
+
+// ---- 按鈕 ----
+document.querySelectorAll('.rstrip .range button').forEach(b=>b.addEventListener('click',()=>{preset=b.dataset.range;$('settingRange').value=preset;LSset('monitor:range',preset);view={p:preset,min:null,max:null};
+const need=PRE[preset].load;if(need!==range){range=need;document.querySelectorAll('.rstrip .range button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));load()}else applyView()}));
+$('rrst').addEventListener('click',()=>{view={p:preset,min:null,max:null};applyView()});
+document.querySelectorAll('#c-calls .seg button').forEach(b=>b.addEventListener('click',()=>{callMode=b.dataset.mode;LSset('monitor:calls',callMode);
+document.querySelectorAll('#c-calls .seg button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));if(data){draw(CHARTS[1]);plainTerms();queueMicrotask(applyView)}}));
+document.querySelectorAll('.rstrip .range button').forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.range===preset)));
+document.querySelectorAll('#c-calls .seg button').forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.mode===callMode)));
+$('retry').addEventListener('click',()=>{if(!busy)load()});
+$('rfBtn').addEventListener('click',()=>{if(!busy)load(true)});
+// 數字卡：點一下或 Enter／空白鍵 → 近 7 天細節
+document.querySelectorAll('#s-stats .tile').forEach(el=>{el.addEventListener('click',()=>openTile(el.dataset.k,el));el.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openTile(el.dataset.k,el)}})});
+// 細節覆蓋層：✕、點覆蓋層外的暗處、Esc（dialog 內建）都關；關了把焦點還給原本那張卡
+{const d=$('dtl');$('dtlX').addEventListener('click',()=>d.close());d.addEventListener('click',e=>{if(e.target!==d)return;const r=d.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)d.close()});
+d.addEventListener('close',()=>{if(dtlFrom&&dtlFrom.focus)dtlFrom.focus({preventScroll:true});dtlFrom=null})}
+setupMonitor();load();
+})();</script><!-- 採用／回滾：每一頁都能按。行為、後端呼叫、確認框照公告欄 board.html 的做法搬過來；4 頁一起換 -->
+<style>:root{--rl-danger:#b91c1c}@media(prefers-color-scheme:dark){:root{--rl-danger:#fca5a5}}
+.releasebar .rlgo{margin-left:auto;display:inline-flex;align-items:center;min-height:30px;padding:0 12px;border:1px solid var(--ac);border-radius:6px;background:var(--ac);color:var(--on-ac);font:inherit;font-size:13px;font-weight:600;line-height:1.2;white-space:nowrap;cursor:pointer}
+.releasebar .rlgo:disabled{opacity:.55;cursor:default}.releasebar .rlgo:not([hidden])~.vswitch{margin-left:0}
+.releasebar .rlback{display:inline-flex;align-items:center;min-height:30px;margin-left:14px;padding:0 10px;border:0;border-radius:6px;background:transparent;color:var(--rl-danger);font:inherit;font-size:13px;font-weight:600;white-space:nowrap;cursor:pointer}
+.releasebar .rlback:hover{background:color-mix(in srgb,var(--rl-danger) 12%,transparent)}.releasebar .rlback:disabled{opacity:.5;cursor:default}
+.releasebar .rlgo[hidden],.releasebar .rlback[hidden],.releasebar .rlmsg:empty{display:none}.releasebar .rlmsg{color:var(--warn);font-size:12.5px}
+.releasebar .rlgo:focus-visible,.releasebar .rlback:focus-visible,#rlAsk button:focus-visible,#rlNotice button:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+div.preview.same{background:transparent;color:var(--mut);font-size:12.5px;padding:3px 14px;border-bottom:1px solid var(--bd)}
+@media(max-width:760px){.releasebar .rlgo,.releasebar .rlback{min-height:36px}.releasebar .rlback{margin-left:6px}}
+#rlAsk,#rlNotice{box-sizing:border-box;background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:12px;padding:20px 22px 16px;position:relative}
+#rlAsk{width:min(560px,92vw)}#rlNotice{width:min(420px,90vw)}#rlAsk::backdrop,#rlNotice::backdrop{background:rgba(0,0,0,.4)}
+#rlAsk h2,#rlNotice h2{font-size:17px;margin:0 28px 8px 0}#rlAsk p{margin:6px 0;line-height:1.7}#rlNotice p{margin:0 0 16px;line-height:1.7}
+#rlAsk button{font:inherit;cursor:pointer;border:1px solid var(--bd);border-radius:6px;padding:8px 16px;background:var(--side);color:var(--tx)}
+#rlAsk button.go{background:var(--ac);border-color:var(--ac);color:var(--on-ac);font-weight:700}#rlAsk button.danger{background:#b91c1c;color:#fff;border-color:#b91c1c}#rlAsk button:disabled{opacity:.45;cursor:default}
+#rlAsk .rlw{color:var(--rl-danger);font-weight:700;border:2px solid currentColor;border-radius:10px;padding:2px 12px;margin:10px 0;background:rgba(220,38,38,.08)}
+#rlAsk .rlf{color:var(--warn);font-weight:600}#rlAsk .rll{display:flex;gap:8px;align-items:flex-start;font-weight:700;margin:10px 0}#rlAsk .rll input{margin-top:6px}
+#rlAsk .rlbtn{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px}
+#rlNotice .nx{position:absolute;top:10px;right:10px;border:0;background:none;color:var(--mut);font-size:16px;cursor:pointer;border-radius:8px;padding:2px 8px}#rlNotice .nx:hover{background:var(--hover);color:var(--tx)}
+#rlNotice .nok{display:block;margin-left:auto;font:inherit;cursor:pointer;background:var(--ac);color:var(--on-ac);border:1px solid var(--ac);border-radius:6px;padding:6px 18px}</style>
+<dialog id="rlAsk" aria-labelledby="rlAskT"><h2 id="rlAskT"></h2><div id="rlAskB"></div><div id="rlAskW" class="rlw" hidden></div><div id="rlAskF" class="rlf" hidden></div><label id="rlAskL" class="rll" hidden><input type="checkbox" id="rlAskC"><span id="rlAskLt"></span></label><div class="rlbtn"><button type="button" id="rlAskNo">取消</button><button type="button" id="rlAskYes"></button></div></dialog>
+<dialog id="rlNotice" aria-labelledby="rlNoticeT"><button type="button" class="nx" aria-label="關閉">✕</button><h2 id="rlNoticeT"></h2><p id="rlNoticeB"></p><button type="button" class="nok">知道了</button></dialog>
+<script>(()=>{const $=id=>document.getElementById(id),bar=document.querySelector('.releasebar');if(!bar)return;
+const isPreview=/^\/board\/preview(\/|$)/.test(location.pathname),versionsUrl=isPreview?'/board/preview/versions':'/board/versions';
+const el=(t,c,x)=>{const n=document.createElement(t);if(c)n.className=c;if(x!=null)n.textContent=x;return n};
+// 按鈕放進版本條：採用（實心）在「看正式版」左邊，回滾（紅字、無框）放最右邊、隔開，不緊貼採用（UX #6）
+const pg=el('button','rlgo','確認版本中…'),rb=el('button','rlback','正式版回滾上一版'),msg=el('span','rlmsg');pg.type=rb.type='button';pg.disabled=rb.disabled=true;pg.hidden=true;rb.hidden=true;msg.setAttribute('role','status');
+// 紫色預覽橫條：正式網址一律不出；預覽網址上，預覽跟正式版號一樣就改成灰色小字
+const pvb=document.querySelector('div.preview'),pvHTML=pvb?pvb.innerHTML:'';if(pvb&&!isPreview)pvb.hidden=true;
+const menu=$('rbMenu'),pop=$('rbPop');if(menu&&pop){bar.insertBefore(msg,menu);bar.insertBefore(pg,menu);pop.append(rb)}else bar.append(msg,pg,rb);
+const get=u=>fetch(u,{cache:'no-store'}).then(r=>r.ok?r.text():'').catch(()=>'');
+const revOf=t=>+((/<meta name="board-revision" content="(\d+)"/.exec(t||'')||[])[1]||0),verOf=t=>{const v=(/<meta name="board-version" content="([^"]+)"/.exec(t||'')||[])[1];return v?v.replace(/-rc\.\d+$/,''):''},vName=v=>v?'v'+v:'舊版';
+let uiBusy=false,uiState=null,uiAction='',revStable=0,revPreview=0,verS='',verP='';
+// 版號跟公告欄一樣讀 /board 和 /board/preview 開頭的 meta；狀態跟公告欄一樣讀 /board/api/feed 帶的 can_promote 等欄位
+async function refreshVersionLabels(){const [s,p]=await Promise.all([get('/board'),get('/board/preview')]);revStable=revOf(s);revPreview=revOf(p);verS=verOf(s);verP=verOf(p);syncUIActions()}
+async function load(){try{const r=await fetch('/board/api/feed?multi_to=1&limit=1',{headers:{Accept:'application/json'},cache:'no-store'});if(!r.ok)return;const j=await r.json();if(j&&!j.error&&typeof j.can_promote==='boolean'&&!uiBusy)syncUIActions(j)}catch(e){}}
+function syncUIActions(state){if(state!==undefined)uiState=state;
+// 不能採用不一定是「已是正式版」：server 會分開回 current（內容相同）和 blocked（為什麼擋）
+const known=uiState&&typeof uiState.can_promote==='boolean',current=known&&(typeof uiState.current==='boolean'?uiState.current:!uiState.can_promote&&uiState.has_stable),blocked=known&&!current&&uiState.blocked||'';
+pg.disabled=uiBusy||!known||!uiState.can_promote;rb.disabled=uiBusy||!known||!uiState.can_rollback;
+pg.textContent=uiBusy&&uiAction==='/board/promote'?'正在採用…':current?'已是正式版':blocked?'暫時不能採用':known?'採用成正式版':'確認版本中…';
+// 採用鈕只在「預覽網址」而且「預覽版號跟正式版號不同」時出現；只看 can_promote 會在版號一樣、只是檔案有差時也冒出來
+const diffVer=Boolean(verP&&verS&&verP!==verS),sameVer=Boolean(verP&&verS&&verP===verS);
+msg.textContent=uiBusy?'正在處理，請稍候':blocked&&isPreview&&diffVer?'⚠ '+blocked:'';
+// 跟公告欄一樣：採用只在預覽頁、有還沒採用的修改時才出現；回滾只要有上一版可退就留著（預覽頁、正式版頁都有）
+pg.hidden=!isPreview||!diffVer;rb.hidden=!known||!uiState.can_rollback;
+if(pvb&&isPreview){pvb.classList.toggle('same',sameVer);if(sameVer)pvb.textContent='預覽和正式版一樣（v'+verS+'）';else if(pvb.innerHTML!==pvHTML)pvb.innerHTML=pvHTML}}
+function notify(title,body){const d=$('rlNotice');$('rlNoticeT').textContent=title;$('rlNoticeB').textContent=body;if(!d.open)d.showModal();d.querySelector('.nok').focus()}
+{const d=$('rlNotice');d.querySelector('.nx').onclick=d.querySelector('.nok').onclick=()=>d.close();d.addEventListener('click',e=>{if(e.target===d)d.close()});
+try{const s=sessionStorage.getItem('boardNotice');if(s){sessionStorage.removeItem('boardNotice');const n=JSON.parse(s);notify(n.title,n.body)}}catch(e){}}
+// 回滾到指定的一版、採用前的確認視窗：列出會跨過哪幾版；動到後端、資料庫、依賴、架構的版本要特別警告
+const IMPACT={backend:'後端程式',db:'資料庫或資料格式',deps:'依賴套件',arch:'架構'},PAGES='公告欄、記憶、監控、額度 4 頁';
+async function releaseDoc(){const t=await get(versionsUrl);return t?new DOMParser().parseFromString(t,'text/html'):null}
+async function relList(){const doc=await releaseDoc();return doc?[...doc.querySelectorAll('section.rel[data-rev]')].map(s=>{const h=s.querySelector('h3'),p=s.querySelector('p');return{rev:+s.dataset.rev,v:h&&h.childNodes[0]?h.childNodes[0].textContent.trim():'',when:((p&&p.textContent||'').match(/\d{4}-\d\d-\d\d \d\d:\d\d/)||[''])[0],impact:(s.dataset.impact||'').split(',').filter(k=>IMPACT[k])}}):[]}
+function askBox(o){return new Promise(res=>{const d=$('rlAsk'),y=$('rlAskYes'),c=$('rlAskC');$('rlAskT').textContent=o.title;const fill=(box,lines)=>{box.textContent='';lines.forEach(t=>box.append(el('p','',t)));box.hidden=!lines.length};fill($('rlAskB'),o.lines);fill($('rlAskW'),o.warn);fill($('rlAskF'),o.fast);$('rlAskL').hidden=!o.need;$('rlAskLt').textContent=o.need;c.checked=false;y.textContent=o.yes;y.className=o.warn.length?'danger':'go';y.disabled=Boolean(o.need);c.onchange=()=>{y.disabled=Boolean(o.need)&&!c.checked};let done=false;const end=v=>{if(done)return;done=true;if(d.open)d.close();res(v)};y.onclick=()=>end(true);$('rlAskNo').onclick=()=>end(false);d.onclose=()=>end(false);d.showModal();$('rlAskNo').focus()})}
+async function askRelease(kind,from,to){const all=await relList(),find=r=>all.find(x=>x.rev===r),nm=r=>r?r.v+(r.when?'（'+r.when.slice(5)+'）':''):'讀不到版號的那一版';
+const span=all.filter(r=>kind==='rollback'?r.rev>to&&r.rev<=from:r.rev>from&&r.rev<=to),a=find(from),b=find(to),list=span.map(nm).join('、'),bv=b&&b.v||'讀不到版號的那一版';
+const hit=span.filter(r=>r.impact.length),what=[...new Set(hit.flatMap(r=>r.impact))].map(k=>IMPACT[k]).join('、'),hitTx=hit.map(r=>r.v+'（'+(r.when?r.when.slice(5)+'，':'')+r.impact.map(k=>IMPACT[k]).join('、')+'）').join('、');
+const fresh=span.filter(r=>r.when&&Date.now()-Date.parse(r.when.replace(' ','T')+':00'+window.RT_TZS)<48*3600e3);
+if(kind==='rollback')return askBox({title:'回滾到 '+nm(b)+'？',
+ lines:[PAGES+'會一起換回 '+bv+'。','正式版會從 '+nm(a)+' 換回 '+nm(b)+'。',span.length?'會撤掉這 '+span.length+' 次修改：'+list+'。':'','現在這一版會先留備份，換錯了可以再從「版本紀錄」換回來。'].filter(Boolean),
+ warn:hit.length?['⚠ 特別注意：'+hitTx+' 有動到'+what+'。','這個按鈕只換回網頁，伺服器程式、資料庫、套件都不會跟著退回。舊網頁配上新的後端，可能有按鈕沒反應、欄位顯示不出來，或資料看起來對不上。','後端要一起退，得另外請 AI 處理，不能只靠這裡。']:[],
+ fast:fresh.length>=2?['最近改得很快：要撤掉的版本裡有 '+fresh.length+' 版是兩天內才放的，前後可能互相依賴。建議一次只退一版，確認沒問題再退下一版。']:[],
+ need:hit.length?'我知道後端、資料庫不會跟著退回':'',yes:hit.length?'我了解，仍要回滾':'確定回滾'});
+return askBox({title:'採用 '+nm(b)+' 成正式版？',
+ lines:[PAGES+'會一起換成 '+bv+'。','正式版會從 '+nm(a)+' 換成 '+nm(b)+'。',span.length>1?'這次一起帶上 '+span.length+' 次修改：'+list+'。':'','舊的正式版會先備份，有問題可以從「版本紀錄」回滾。'].filter(Boolean),
+ warn:hit.length?['⚠ 特別注意：'+hitTx+' 有動到'+what+'。','後端已經先上線，採用只換網頁。之後如果回滾，網頁退得回去，後端不會跟著退。']:[],
+ fast:fresh.length>=3?['最近改得很快：兩天內放了 '+fresh.length+' 版，採用後請先用一下，確認沒問題。']:[],need:'',yes:'採用成正式版'})}
+async function act(path,ask,payload){if(uiBusy||!uiState||(path==='/board/promote'&&!uiState.can_promote))return;await refreshVersionLabels();if(!await ask())return;
+uiBusy=true;uiAction=path;syncUIActions();let reloadPage=false,title='',body='';const before=verS,target=verP;
+try{const r=await fetch(path,{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify(payload||{})});const j=await r.json();if(!r.ok)throw new Error(j.error||r.status);
+if(path==='/board/promote'){if(j.changed===false){title='沒有變動';body='這個版本本來就是正式版，沒有重複採用。'}else{title='已採用成正式版';body='正式版從 '+vName(before)+' 換成 '+vName(target)+'。'+PAGES+'一起換了。'}}
+else if(j.changed===false){title='沒有變動';body='正式版本來就是這一版，或剛剛已經回滾過，這次沒有再換。'}
+else{const after=verOf(await get('/board'));title='已回滾';body='正式版從 '+vName(before)+' 換回 '+vName(after)+'。'+PAGES+'一起換了。'}
+reloadPage=!isPreview&&j.changed!==false}catch(e){title='沒有成功';body=String(e.message||e)}
+finally{if(reloadPage){try{sessionStorage.setItem('boardNotice',JSON.stringify({title,body}))}catch(e){}location.reload();return}notify(title,body);uiState=null;syncUIActions();await load();await refreshVersionLabels();uiBusy=false;uiAction='';syncUIActions()}}
+pg.onclick=()=>act('/board/promote',()=>askRelease('promote',revStable,revPreview));
+function rollbackTo(rev){if(!uiState||!rev)return;const cur=uiState.stable_rev||revStable;if(rev===cur)return;act('/board/rollback',()=>askRelease('rollback',revStable||cur,rev),{rev})}
+function rollbackPrev(){const cur=uiState&&(uiState.stable_rev||revStable),older=(uiState&&uiState.rollback_to||[]).map(x=>x.rev).filter(r=>r<cur);if(older.length)rollbackTo(Math.max(...older))}
+rb.onclick=rollbackPrev;
+load().then(refreshVersionLabels);setInterval(()=>{if(!window.rtPageHidden()&&!uiBusy)load()},30000)})();</script></body></html>

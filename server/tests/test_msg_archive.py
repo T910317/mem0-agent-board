@@ -44,7 +44,8 @@ for k in [k for k in os.environ if k.startswith("MCP_TOKEN_")]:
     del os.environ[k]
 os.environ.pop("MSG_ARCHIVE", None)
 os.environ.update({"RT_STORE": "mem0", "MEM0_API_KEY": "fake", "MEM0_URL": "http://fake", "MCP_ALIASES": "claude,claude-laptop", "PERSONA_WRITERS": "hermes-gamma,claude", "PERSONA_NAMES": "alpha,beta,gamma",
-                   "MCP_TOKEN_CLAUDE_LAPTOP": "t1", "MCP_TOKEN_CODEX_LAPTOP": "t2"})
+                   "MCP_TOKEN_CLAUDE_LAPTOP": "t1", "MCP_TOKEN_CODEX_LAPTOP": "t2",
+                   "RT_LIST_CACHE_S": "0"})  # 這個測試直接改假 Mem0 的資料（DB[...]）再讀，要關掉 _list_all 的短快取
 
 NOW = dt.datetime.now(dt.timezone.utc)
 DB = {}            # 假的 Mem0：id → 紀錄
@@ -242,7 +243,7 @@ S.MSG_ARCHIVE_BATCH = 25
 OLD, OLD2, NOTE = "c80c80c8-0000-4000-8000-000000000080", "d82d82d8-0000-4000-8000-000000000082", "b81b81b8-0000-4000-8000-000000000081"
 msg(OLD, days=30, to="codex-laptop", frm="claude-laptop", from_session="mcp", subject="很舊的 VM119 問題", project="mem0")
 msg(OLD2, days=30, to="claude-laptop:mcp", frm="codex-laptop", subject="很舊的通知", read_by="", project="mem0")
-put(NOTE, "[筆記] VM119 的現況筆記，" + "很長的內容" * 40 + "，最後提到 10.0.0.93", type="note", project="mem0", days=2)
+put(NOTE, "[筆記] VM119 的現況筆記，" + "很長的內容" * 40 + "，最後提到 192.0.2.93", type="note", project="mem0", days=2)
 S._archive_old_messages(now=NOW)
 # 封存後才有人回覆那則舊信（原信已不在共用區）
 S.current_agent.set("codex-laptop")
@@ -272,13 +273,13 @@ rf = S.memory_search("VM119", archived=True, full=True)
 check("archived=true 帶 full 給全文和原時間", bool(rf) and rf[0]["created"] == ago(30) and rf[0]["text"].startswith("[訊息]"))
 
 # ── 8. 精簡版 ──
-r = S.memory_search("10.0.0.93")
+r = S.memory_search("192.0.2.93")
 b = next(x for x in r if x["id"] == NOTE)
 check("精簡版欄位", set(b) == {"id", "type", "project", "agent", "date", "text", "chars", "score"})
 check("精簡版去掉 [筆記] 標籤", not b["text"].startswith("["))
 check("精簡版截短並註明全文字數", b["text"].startswith("VM119 的現況筆記") and b["chars"] == len(DB[NOTE]["memory"]))
-check("關鍵字在後面時補上那一段", "10.0.0.93" in b["text"] and len(b["text"]) < 200)
-f = next(x for x in S.memory_search("10.0.0.93", full=True) if x["id"] == NOTE)
+check("關鍵字在後面時補上那一段", "192.0.2.93" in b["text"] and len(b["text"]) < 200)
+f = next(x for x in S.memory_search("192.0.2.93", full=True) if x["id"] == NOTE)
 check("full=true 給全文和 version", f["text"] == DB[NOTE]["memory"] and f["version"] == S._version(f["text"]))
 check("短的內文整段給", S._snip("[決策] 短短一句", []) == "短短一句")
 

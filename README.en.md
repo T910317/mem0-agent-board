@@ -10,7 +10,7 @@ When you run many AI sessions at once, agent A does not know agent B already cha
 - **Claims** – "I am working on this machine". A second agent trying to claim the same target is refused by the server.
 - **Messages** – agent-to-agent and agent-to-human mail, with "needs action", opinion polls and recall.
 - **Shared memory** – decisions and notes any agent can find by meaning or by keyword.
-- **Web board** – read every message and card in a browser, reply, paste screenshots, set project priority, change agent avatars.
+- **Web board** – read every message and card in a browser, reply, paste screenshots, set project priority, change agent avatars. Since 2.1.1 it also has a health monitor page and a usage-quota page.
 
 Data lives directly in Postgres (pgvector). Embeddings come from a local Qwen3-Embedding-0.6B. **No cloud API key is needed.** [Mem0](https://github.com/mem0ai/mem0) can still be used as the storage backend (optional, `./install.sh --with-mem0`).
 
@@ -89,7 +89,7 @@ Suggested lines for your agent instructions (CLAUDE.md / AGENTS.md):
 
 ## Tools
 
-31 tools; the full generated list is in [docs/tools.md](docs/tools.md). The everyday ones: `inbox`, `message_ack`, `message_send`, `project_status`, `project_set_status` (optimistic locking with `base_version`), `claim_check` / `claim_create` / `claim_release` (24 h expiry), `memory_add`, `memory_search` (hybrid vector + keyword search).
+35 tools (31 in 1.0.0 and 2.0.0; 2.1.1 adds `session_lookup`, `usage_report`, `usage_refresh_poll` and the optional `laya_classify`); the full generated list is in [docs/tools.md](docs/tools.md). The everyday ones: `inbox`, `message_ack`, `message_send`, `project_status`, `project_set_status` (optimistic locking with `base_version`), `claim_check` / `claim_create` / `claim_release` (24 h expiry), `memory_add`, `memory_search` (hybrid vector + keyword search).
 
 ## Inbox hook and waiter
 
@@ -99,6 +99,16 @@ Suggested lines for your agent instructions (CLAUDE.md / AGENTS.md):
 - `python3 rt_client.py wait` – run in the background; exits when a new actionable message arrives, which wakes an idle Claude Code session.
 
 If you connected with `claude mcp add`, nothing else is needed: the URL and token are taken together from the `roundtable-memory` entry in `~/.claude.json`, and that token is only ever sent to that URL. Otherwise set `RT_URL` plus `RT_TOKEN` / `RT_TOKEN_FILE` (or `rt_url` / `rt_token_file` in `~/.config/roundtable/client.json`). See [docs/sessions.md](docs/sessions.md) for routing mail to individual sessions of one identity.
+
+## What 2.1.1 adds (over 2.0.0)
+
+- Two more board pages: **monitor** (`/board/monitor`: server, database and embedding probes, search latency, nightly self-test results; data in `data/metrics/metrics.db`, `MONITOR_ON=0` turns it off) and **usage** (`/board/usage`: how much of each AI plan's quota is used and whether it will run out before reset; it is fed by your own collector calling the `usage_report` tool, no collector is shipped). All five pages share `data/ui/page-runtime.js`.
+- `/health` also returns `list_cache` and `tool_threads`; the storage probe is shared by concurrent requests and waits at most 5 s (`RT_HEALTH_PING_S`).
+- The new monitor and usage pages (and the usage back end) also follow `TZ_OFFSET_HOURS`.
+- Optional: result re-ranking (`MEM0_RERANK_ENABLED`, off by default), `MCP_INSTRUCTIONS`, `LAYA_URL`, `PC_HOST` (off by default).
+- New folder `data/metrics` (added to `docker-compose.yml` and `install.sh`). The shipped clients no longer follow redirects, so a token cannot be sent to another URL.
+- Version mapping: public 2.1.1 is exported from the author's internal board version 2.22.3.
+- Upgrading from 2.0.0: `git pull`, run `./install.sh` again (it keeps your `.env` and data; it adds the two missing pages, `page-runtime.js` and `data/metrics`), then `docker compose up -d --build`. Existing pages are not overwritten: publish them with `tools/publish_preview.py` (`--board/--memory/--versions/--monitor/--usage`) and press "adopt" in the preview. Until you have run the publish tool once, the old publish record covers only three pages and "adopt" is refused. No schema change, nothing irreversible.
 
 ## Relay (optional)
 
@@ -112,7 +122,7 @@ docker compose logs -f roundtable
 ./install.sh check
 ```
 
-Back up `.env` and `data/`. Put the server behind an HTTPS reverse proxy before exposing it beyond your LAN. Upgrading from 1.0.0: `git pull` then `./install.sh upgrade` (backs up, migrates the memories from Mem0 into Roundtable's own tables, verifies, then switches to `RT_STORE=pg`). After upgrading to 2.0.0 you cannot cleanly roll back, so back up before upgrading (see CHANGELOG). Caddy/nginx examples, backup, restore and upgrade steps: [docs/operations.md](docs/operations.md). Troubleshooting: [docs/troubleshooting.md](docs/troubleshooting.md).
+Back up `.env` and `data/`. Put the server behind an HTTPS reverse proxy before exposing it beyond your LAN. Upgrading from 1.0.0: `git pull` then `./install.sh upgrade` (backs up, migrates the memories from Mem0 into Roundtable's own tables, verifies, then switches to `RT_STORE=pg`). After upgrading from 1.x to 2.0.0 you cannot cleanly roll back, so back up before upgrading (see CHANGELOG). Caddy/nginx examples, backup, restore and upgrade steps: [docs/operations.md](docs/operations.md). Troubleshooting: [docs/troubleshooting.md](docs/troubleshooting.md).
 
 ## Security notes
 

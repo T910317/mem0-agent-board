@@ -4,7 +4,7 @@
 在伺服器上（安裝資料夾）：
   python3 tools/publish_preview.py --by claude \
       --note "給使用者看的白話說明" --note "第二點" \
-      [--board 新的board.html] [--memory 新的memory.html] [--versions 新的versions.html] [--version X.Y.Z] [--dry-run]
+      [--board 新的board.html] [--memory 新的memory.html] [--versions 新的versions.html] [--monitor 新的monitor.html] [--usage 新的usage.html] [--version X.Y.Z] [--dry-run]
 
 - 每執行一次就是一個新版號：只是修正就不給 --version，自動把最後一碼加一（1.5.0 → 1.5.1）；
   加了新功能就用 --version 把中間那碼加一（1.4.0 → 1.5.0）；要跳第一碼先問使用者。
@@ -35,7 +35,7 @@ ROOT = os.environ.get("MEM0_MCP_ROOT", os.path.normpath(os.path.join(os.path.dir
 PREVIEW = os.path.join(ROOT, "ui", "preview")
 HISTORY = os.path.join(ROOT, "preview-history")
 RECORD = os.path.join(PREVIEW, "publish-record.json")
-PAGES = (("board.html", "board"), ("memory.html", "memory"), ("versions.html", "release"))
+PAGES = (("board.html", "board"), ("memory.html", "memory"), ("versions.html", "release"), ("monitor.html", "monitor"), ("usage.html", "usage"))  # 10/23 加監控頁、10/25 加額度頁
 MARK = "<!-- releases -->"
 IMPACT = {"backend": "後端程式", "db": "資料庫或資料格式", "deps": "依賴套件", "arch": "架構"}
 def _tz_hours():
@@ -113,6 +113,8 @@ def main():
     ap.add_argument("--board", help="新的 board.html（不給就沿用預覽現有的）")
     ap.add_argument("--memory", help="新的 memory.html")
     ap.add_argument("--versions", help="新的 versions.html（只有改版本頁版面時才需要）")
+    ap.add_argument("--monitor", help="新的 monitor.html（監控頁）")
+    ap.add_argument("--usage", help="新的 usage.html（額度頁）")
     ap.add_argument("--version", help="指定版號 X.Y.Z（要比現在的預覽版大）。加新功能升中間那碼；跳第一碼先問使用者。不給就把最後一碼加一（只是修正）")
     ap.add_argument("--impact", action="append", default=[], choices=sorted(IMPACT),
                     help="這版動到哪裡：backend 後端程式、db 資料庫或資料格式、deps 依賴套件、arch 架構（可多個）")
@@ -135,20 +137,26 @@ def main():
         lock = open(os.path.join(HISTORY, ".lock"), "a")  # 用 a 開，不截斷既有內容
         fcntl.flock(lock, fcntl.LOCK_EX)
 
-    old = {}
+    given = {"board.html": a.board, "memory.html": a.memory, "versions.html": a.versions, "monitor.html": a.monitor, "usage.html": a.usage}
+    old, missing = {}, set()
     for name, _ in PAGES:
-        with open(os.path.join(PREVIEW, name), "rb") as f:
+        p = os.path.join(PREVIEW, name)
+        if not os.path.isfile(p) and given[name]:  # 第一次放這一頁（例如 10/23 新加的監控頁）：舊檔不存在也可以
+            old[name] = b""
+            missing.add(name)
+            continue
+        with open(p, "rb") as f:
             old[name] = f.read()
 
     if os.path.isfile(RECORD):
         with open(RECORD, encoding="utf-8") as f:
             rec = json.load(f)
-        drift = [n for n, _ in PAGES if rec.get("sha256", {}).get(n) != sha(old[n])]
+        drift = [n for n, _ in PAGES if n not in missing and rec.get("sha256", {}).get(n) != sha(old[n])]
         if drift:
             print("注意：上次登記後，預覽的 %s 被直接改過；這次的 --note 要把那些改動也寫進去。" % "、".join(drift))
 
     new = dict(old)
-    for name, src in (("board.html", a.board), ("memory.html", a.memory), ("versions.html", a.versions)):
+    for name, src in given.items():
         if src:
             with open(src, "rb") as f:
                 new[name] = f.read()
@@ -212,7 +220,8 @@ def main():
     backup = os.path.join(HISTORY, "%s-r%d" % (now.strftime("%Y%m%d-%H%M%S-%f"), max(revs)))
     os.makedirs(backup)
     for name, _ in PAGES:
-        shutil.copy2(os.path.join(PREVIEW, name), os.path.join(backup, name))
+        if name not in missing:
+            shutil.copy2(os.path.join(PREVIEW, name), os.path.join(backup, name))
     with open(os.path.join(backup, "publish.json"), "w", encoding="utf-8") as f:
         json.dump({"by": a.by, "at": now.isoformat(), "from": revs, "to": target, "notes": notes}, f, ensure_ascii=False, indent=1)
 
@@ -228,7 +237,7 @@ def main():
         if sha(back) != record["sha256"][name] or head_meta(back.decode("utf-8"), kind, "revision") != str(target):
             fail("%s 讀回不符，請用備份 %s 還原" % (name, backup))
     print("完成：預覽版現在是 v%s（內部流水號 %d）。備份在 %s" % (version, target, backup))
-    print("還原：cp %s/{board,memory,versions}.html %s/ 之後再跑一次本工具登記" % (backup, PREVIEW))
+    print("還原：cp %s/{board,memory,versions,monitor}.html %s/ 之後再跑一次本工具登記" % (backup, PREVIEW))
     print("提醒：到 /board/preview 確認畫面，再請使用者決定要不要按「採用成正式版」。")
 
 

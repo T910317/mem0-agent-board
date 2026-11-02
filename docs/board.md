@@ -20,13 +20,19 @@
 
 `/board/memory`：依專案、類型瀏覽共用記憶，可以搜尋、替某一則補一行「使用者補充」（註腳）；刪掉的記憶進回收桶，可以還原。另有「我的記憶」分頁放經歷區（`experience_*` 工具寫的個人資料）。
 
+## 運作監控與額度頁（2.1.1 起）
+
+- `/board/monitor` 運作監控：伺服器、資料庫、embedding（和選配的重排序、Laya）探測是否正常，搜尋與工具呼叫的延遲，以及每晚自動考題的成績。資料存在 `data/metrics/metrics.db`（SQLite）。沒有題庫檔 `eval/questions.json` 時不考題，其餘照常。`MONITOR_ON=0` 可整個關掉。
+- `/board/usage` 額度頁：各家 AI 的額度用了幾成、照目前速度會不會在重置前用完。資料靠電腦上的收集程式用 `usage_report` 工具定時送進來（公開版不附收集程式，自己寫一支即可，欄位見 `docs/tools.md`）；沒人送資料時頁面是空的。資料存在 `data/metrics/usage.db`。
+- 五個網頁共用 `data/ui/page-runtime.js`（預載與換頁），`install.sh` 每次都會換成最新版。
+
 ## 預覽版與正式版
 
-公告欄的三個網頁（公告欄、記憶頁、版本紀錄）各有兩份：`data/ui/stable`（正式版，`/board`）和 `data/ui/preview`（預覽版，`/board/preview`）。
+公告欄的五個網頁（公告欄、記憶頁、版本紀錄、運作監控、額度頁）各有兩份：`data/ui/stable`（正式版，`/board`）和 `data/ui/preview`（預覽版，`/board/preview`）。
 
 改網頁的流程：
 
-1. 改好新的 `board.html`（或 `memory.html`）。
+1. 改好新的 `board.html`（或 `memory.html`、`monitor.html`、`usage.html`）。
 2. 用發布工具放上預覽，它會換版號、三頁同步、寫一筆白話的版本紀錄、備份舊的預覽：
 
    ```bash

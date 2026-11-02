@@ -1,25 +1,29 @@
-<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="board-version" content="2.3.0"><meta name="board-revision" content="1"><meta name="viewport" content="width=device-width,initial-scale=1">
+<!doctype html><html lang="zh-Hant"><head><script src="/board/api/ui-runtime?v=2.22.3"></script><script>window.rtPageHidden=window.rtPageHidden||(()=>document.hidden)</script><meta charset="utf-8"><script>window.RT_TZO=+((document.querySelector('meta[name="rt-tz-offset"]')||{}).content)||0;window.RT_TZMS=window.RT_TZO*36e5;window.RT_TZS=(()=>{const o=window.RT_TZO,a=Math.abs(o);return(o<0?'-':'+')+String(Math.floor(a)).padStart(2,'0')+':'+String(Math.round(a%1*60)).padStart(2,'0')})();window.RT_TZ=(()=>{const o=window.RT_TZO;return Number.isInteger(o)&&o?'Etc/GMT'+(o>0?'-':'+')+Math.abs(o):'UTC'})()</script><meta name="ui-build" content="3a8e001"><meta name="rt-preload" content="monitor,usage"><meta name="board-version" content="2.22.3"><meta name="board-revision" content="2"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>圓桌公告欄</title><style>
-:root{color-scheme:light dark;--bg:#f2f3f5;--side:#e3e5e8;--card:#fff;--tx:#161b26;--mut:#5b6577;--bd:#d4d8df;--hov:rgba(0,0,0,.04);--ac:#2456d6;--hot:#c2410c;--hotbg:#fff3ea;
---c-claude:#2456d6;--c-codex:#0f7a4b;--c-hermes:#7a3fc4;--c-user:#b45309;--c-other:#5b6577;--c-ping:#0e7490}
-@media(prefers-color-scheme:dark){:root{--bg:#1e2128;--side:#16181d;--card:#262a33;--tx:#e8ebf1;--mut:#a0a9ba;--bd:#343a46;--hov:rgba(255,255,255,.04);--ac:#7aa2ff;--hot:#ff9a5c;--hotbg:#3a2418;
---c-claude:#7aa2ff;--c-codex:#4fd39b;--c-hermes:#c39bff;--c-user:#ffb454;--c-other:#a0a9ba;--c-ping:#5ad1e6}}
+/* 2.17.0 深淺色可以在「顯示設定」選：跟系統／淺色／深色（data-theme）；淺色次要字加深一階（側欄人名 4.31→5.97） */
+:root{color-scheme:light;--bg:#f2f3f5;--side:#e3e5e8;--card:#fff;--tx:#161b26;--mut:#4b5565;--bd:#d4d8df;--hov:rgba(0,0,0,.04);--ac:#2456d6;--hot:#c2410c;--hotbg:#fff3ea;
+--c-claude:#2456d6;--c-codex:#0f7a4b;--c-hermes:#7a3fc4;--c-user:#b45309;--c-other:#5b6577;--c-ping:#be185d}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){color-scheme:dark;--bg:#1e2128;--side:#16181d;--card:#262a33;--tx:#e8ebf1;--mut:#a0a9ba;--bd:#343a46;--hov:rgba(255,255,255,.04);--ac:#7aa2ff;--hot:#ff9a5c;--hotbg:#3a2418;
+--c-claude:#7aa2ff;--c-codex:#4fd39b;--c-hermes:#c39bff;--c-user:#ffb454;--c-other:#a0a9ba;--c-ping:#f472b6}}
+:root[data-theme=dark]{color-scheme:dark;--bg:#1e2128;--side:#16181d;--card:#262a33;--tx:#e8ebf1;--mut:#a0a9ba;--bd:#343a46;--hov:rgba(255,255,255,.04);--ac:#7aa2ff;--hot:#ff9a5c;--hotbg:#3a2418;
+--c-claude:#7aa2ff;--c-codex:#4fd39b;--c-hermes:#c39bff;--c-user:#ffb454;--c-other:#a0a9ba;--c-ping:#f472b6}
 *{box-sizing:border-box}html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--tx);font:15.5px/1.6 system-ui,-apple-system,"Segoe UI","Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;display:flex;flex-direction:column}
 button,select,input,textarea{font:inherit;color:inherit}
-.pv{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:6px 14px;background:#7a3fc4;color:#fff;font-size:14px}
-.pv b{margin-right:auto}.pv button,.pv a{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.5);border-radius:8px;color:#fff;padding:3px 12px;cursor:pointer;text-decoration:none;font-size:14px}
+.pv{display:flex;flex-wrap:wrap;align-items:center;gap:8px 24px;padding:6px 14px;background:#7a3fc4;color:#fff;font-size:14px}
+.pv b{margin-right:auto}.pv button,.pv a{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.5);border-radius:6px;color:#fff;padding:3px 12px;cursor:pointer;text-decoration:none;font-size:14px}
 .pv .go{background:#fff;color:#5b2aa0;font-weight:700}
+.pv.same{background:transparent;color:var(--mut);font-size:12.5px;padding:3px 14px;border-bottom:1px solid var(--bd)}.pv.same b{font-weight:400}.pv.same>:not(#pvTitle){display:none}
 :root{--wbwa:clamp(320px,24vw,480px)}
-.app{flex:1;min-height:0;display:grid;grid-template-columns:230px 1fr var(--wbw,var(--wbwa));position:relative}
+.app{flex:1;min-height:0;display:grid;grid-template-columns:252px 1fr var(--wbw,var(--wbwa));grid-template-rows:minmax(0,1fr);position:relative}/* 列高直接等於一屏：不寫的話每打一個字都要把三欄（含留言欄）的內容高先量一遍 */
 .wbgrip{position:absolute;top:0;bottom:0;right:calc(var(--wbw,var(--wbwa)) - 4px);width:8px;cursor:col-resize;z-index:3;touch-action:none}
 .wbgrip:after{content:"";position:absolute;top:0;bottom:0;left:3px;width:2px;background:transparent;transition:background .15s}
 .wbgrip:hover:after,.wbgrip.drag:after,.wbgrip:focus-visible:after{background:var(--ac)}.wbgrip:focus-visible{outline:none}
 body.wbdrag{cursor:col-resize;user-select:none}
-.side{background:var(--side);padding:12px 8px;overflow-y:auto}
+.side{background:var(--side);padding:12px 8px;overflow-y:auto;border-right:1px solid var(--bd)}
 .side h4{font-size:12px;letter-spacing:.1em;color:var(--mut);margin:14px 8px 6px}
-nav.top{display:flex;gap:4px;margin:0 4px 6px}nav.top a{flex:1;text-align:center;padding:5px 0;border-radius:8px;color:var(--tx);text-decoration:none;font-size:14px;border:1px solid var(--bd)}
-nav.top a.on{background:var(--ac);border-color:var(--ac);color:#fff}
+nav.top{display:flex;gap:4px;margin:0 4px 6px}nav.top a{flex:1 1 0;min-width:0;white-space:nowrap;text-align:center;padding:6px 0;border-radius:6px;color:var(--tx);text-decoration:none;font-size:14px;border:1px solid var(--bd)}
+nav.top a.on{background:var(--ac);border-color:var(--ac);color:var(--on-ac)}
 .ch{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:0;border-radius:8px;padding:7px 10px;cursor:pointer;color:var(--mut)}
 .ch:hover{background:var(--hov);color:var(--tx)}.ch.on{background:var(--card);color:var(--tx);font-weight:700}
 .ch .n{margin-left:auto;font-size:12px;font-weight:700;border-radius:99px;padding:0 7px;background:var(--bd);color:var(--tx)}
@@ -27,7 +31,7 @@ nav.top a.on{background:var(--ac);border-color:var(--ac);color:#fff}
 .main{display:flex;flex-direction:column;min-width:0;min-height:0}
 .hd{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--bd);background:var(--bg)}
 .hd h2{font-size:17px;margin:0}.hd .cnt{color:var(--mut);font-size:13px}.hd .sp{margin-left:auto;display:flex;flex-wrap:wrap;max-width:100%;gap:8px;align-items:center}.hd form{margin:0}
-.hd select,.hd button{padding:4px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--card);cursor:pointer}
+.hd select,.hd button{padding:4px 8px;border-radius:6px;border:1px solid var(--bd);background:var(--card);cursor:pointer}
 #claimsBtn{display:none}
 .feed{flex:1;overflow-y:auto;padding:8px 0 16px}
 .day{display:flex;align-items:center;gap:10px;color:var(--mut);font-size:12.5px;margin:18px 16px 6px}.day:before,.day:after{content:"";flex:1;height:1px;background:var(--bd)}
@@ -45,21 +49,24 @@ nav.top a.on{background:var(--ac);border-color:var(--ac);color:#fff}
 .m.recalled{opacity:.92}.rcl{margin-top:2px}.rcl summary{list-style:none;cursor:pointer;display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px;color:var(--mut);font-size:13.5px;padding:2px 0}.rcl summary::-webkit-details-marker{display:none}
 .rcl .rt{overflow-wrap:anywhere}.rcl .rt b{color:var(--tx);font-weight:600}.rcl .rx{color:var(--ac);font-size:12.5px;white-space:nowrap}.rcl .rx:before{content:"▸ 看原文"}.rcl[open] .rx:before{content:"▾ 收起原文"}
 .rcl .rbody{margin:6px 0 2px;padding:4px 0 4px 12px;border-left:3px dashed var(--bd);opacity:.8}
-.quote .qrc,.ogone{font-size:11.5px;font-weight:700;color:var(--hot);border:1px solid currentColor;border-radius:99px;padding:0 7px;margin-right:6px}.quote.gone{border-left-color:var(--bd)}.ogone{display:inline-block;margin:0 0 8px}
+.quote .qrc,.ogone{font-size:12px;font-weight:700;color:var(--hot);border:1px solid currentColor;border-radius:99px;padding:0 7px;margin-right:6px}.quote.gone{border-left-color:var(--bd)}.ogone{display:inline-block;margin:0 0 8px}
 #closeDlg .chint{margin:-4px 0 12px;font-size:13px;line-height:1.6;color:var(--mut);overflow-wrap:anywhere}#closeDlg.recall .nok{background:var(--tag-urgent);border-color:var(--tag-urgent)}
 dialog{background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:12px;width:min(650px,90vw);max-height:80vh;overflow:auto}dialog::backdrop{background:rgba(0,0,0,.4)}
-.av{flex:none;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font-weight:800;color:#fff;background:currentColor}
-.av span{color:#fff}.av.agv{background:var(--a)}
-.agv{--a:#5b6577}.a-claude{--a:#2456d6}.a-codex{--a:#0f7a4b}[class*=" a-claude-"]{--a:#2456d6}[class*=" a-codex-"]{--a:#0f7a4b}.a-hermes,[class*=" a-hermes-"]{--a:#7a3fc4}.a-user{--a:#b45309}
-.agv.sm{flex:none;display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--a);color:#fff;font:800 9.5px/1 system-ui,sans-serif;letter-spacing:-.02em}.agv.sm.zh{font-size:11px}
-@media(prefers-color-scheme:dark){.av.agv,.agv.sm,.pp i{box-shadow:0 0 0 1px rgba(255,255,255,.14)}}.gap{flex:none;width:40px;font-size:11px;color:var(--mut);text-align:right;padding-top:3px;font-variant-numeric:tabular-nums}
+.av{flex:none;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font-weight:800;color:var(--af);background:currentColor}
+.av span{color:var(--af)}.av.agv{background:var(--a)}
+/* 2.18.0 B04 每台機器固定一種顏色（四頁同一張）：Claude 橘、Codex 主機淺灰、DESK 灰藍、Max 青綠、Mini 深青、PC 藍、Gemini／Atri 灰紫、Hermes 紫、你 赭橘 */
+.agv,.pp{--a:#5b6170;--af:#fff}.a-claude{--a:#d97757;--af:#fff}.a-codex,.a-xd{--a:#c9ced8;--af:#1e2128}.a-desk{--a:#8b93a1;--af:#0d1117}.a-max{--a:#2aa198;--af:#0d1117}.a-mini{--a:#2f6f6f;--af:#fff}.a-pc{--a:#1f6f8b;--af:#fff}
+.a-hermes,.a-alpha,.a-beta,.a-gamma{--a:#a371f7;--af:#0d1117}.a-ag,.a-atri{--a:#5b6170;--af:#fff}.a-user{--a:#b4561e;--af:#fff}
+.av.a-xd,.agv.sm.a-xd,.av.a-codex,.agv.sm.a-codex,.pp.a-xd i,.pp.a-codex i{box-shadow:inset 0 0 0 1px rgba(0,0,0,.14)}
+.agv.sm{flex:none;display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--a);color:var(--af);font:800 12px/1 system-ui,sans-serif;letter-spacing:-.02em}.agv.sm.zh{font-size:12px}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) :is(.av.agv,.agv.sm,.pp i){box-shadow:0 0 0 1px rgba(255,255,255,.14)}}:root[data-theme=dark] :is(.av.agv,.agv.sm,.pp i){box-shadow:0 0 0 1px rgba(255,255,255,.14)}.gap{flex:none;width:40px;font-size:12px;color:var(--mut);text-align:right;padding-top:3px;font-variant-numeric:tabular-nums}
 .mc{min-width:0;flex:1}.ln{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px}
 .nm{font-weight:800}.to{color:var(--mut);font-size:13.5px}.tm{color:var(--mut);font-size:12px}
 .w-claude{color:var(--c-claude)}.w-codex{color:var(--c-codex)}.w-hermes{color:var(--c-hermes)}.w-user{color:var(--c-user)}.w-other{color:var(--c-other)}
 .sj{font-weight:600;overflow-wrap:anywhere}.bd{white-space:pre-wrap;overflow-wrap:anywhere;opacity:.9;line-height:1.75}
 .rf{font-size:13px;color:var(--mut);overflow-wrap:anywhere}
 :root{--tag-urgent:#dc2626;--tag-wait:#b45309;--tag-wait-bg:rgba(245,158,11,.16);--tag-wait-bd:rgba(245,158,11,.45);--tag-read:#047857;--tag-read-bg:rgba(16,185,129,.14);--tag-read-bd:rgba(16,185,129,.4);--tag-mute:#64748b}
-@media(prefers-color-scheme:dark){:root{--tag-wait:#fcd34d;--tag-read:#6ee7b7;--tag-mute:#94a3b8}}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--tag-wait:#fcd34d;--tag-read:#6ee7b7;--tag-mute:#94a3b8}}:root[data-theme=dark]{--tag-wait:#fcd34d;--tag-read:#6ee7b7;--tag-mute:#94a3b8}
 .tg{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;align-items:center}
 .t{display:inline-flex;align-items:center;gap:4px;min-height:22px;font-size:12px;font-weight:600;line-height:16px;color:var(--tag-mute);background:color-mix(in srgb,var(--tx) 5%,transparent);border:1px solid transparent;border-radius:999px;padding:2px 8px;max-width:100%;overflow-wrap:anywhere}
 .t.hot{color:#fff;background:var(--tag-urgent);border-color:var(--tag-urgent)}.t.act{color:var(--tag-wait);background:var(--tag-wait-bg);border-color:var(--tag-wait-bd)}
@@ -76,10 +83,10 @@ pre.blk{margin:6px 0;padding:8px 10px;background:var(--card);border:1px solid va
 textarea{width:100%;border:0;background:none;resize:none;outline:none;min-height:44px;max-height:40vh}
 .row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:6px;font-size:14px}
 .row select{padding:4px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--bg)}
-.tobox{position:relative;flex:0 1 440px;min-width:min(240px,100%);display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:3px 6px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);cursor:text}.tobox:focus-within{border-color:var(--ac)}.tobox .tol{color:var(--mut);font-size:13px;margin-right:2px}.tochip{display:inline-flex;align-items:center;gap:4px;max-width:100%;padding:2px 2px 2px 3px;border-radius:99px;background:color-mix(in srgb,var(--ac) 13%,transparent);font-size:13px;line-height:20px}.tochip>b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tochip button{border:0;background:none;color:var(--mut);cursor:pointer;padding:0 5px;font-size:15px;line-height:1;border-radius:99px}.tochip button:hover{color:var(--tx);background:color-mix(in srgb,var(--tx) 10%,transparent)}#toIn{flex:1;min-width:96px;border:0;outline:0;background:transparent;color:var(--tx);font:inherit;padding:3px 2px}#toSug{position:absolute;left:-1px;bottom:calc(100% + 4px);z-index:20;width:max(100%,280px);max-width:calc(100vw - 24px);max-height:300px;overflow:auto;margin:0;padding:4px;list-style:none;background:var(--card);border:1px solid var(--bd);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.22)}#toSug li{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;font-size:14px}#toSug li.on{background:color-mix(in srgb,var(--ac) 15%,transparent)}#toSug li small{margin-left:auto;padding-left:10px;color:var(--mut);font-size:12px;white-space:nowrap}#toSug li.none{color:var(--mut);cursor:default}
-.row label{display:flex;align-items:center;gap:4px;color:var(--mut);cursor:pointer}
+.tobox{position:relative;flex:0 1 440px;min-width:min(240px,100%);display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:3px 6px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);cursor:text}.tobox:focus-within{border-color:var(--ac)}.tobox .tol{color:var(--mut);font-size:13px;margin-right:2px}.tochip{display:inline-flex;align-items:center;gap:4px;max-width:100%;padding:2px 2px 2px 3px;border-radius:99px;background:color-mix(in srgb,var(--ac) 13%,transparent);font-size:13px;line-height:20px}.tochip>b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tochip button{border:0;background:none;color:var(--mut);cursor:pointer;padding:0;font-size:15px;line-height:1;border-radius:6px;display:inline-grid;place-items:center;min-width:24px;min-height:24px;margin:-2px 0}@media(pointer:coarse){.tochip button{min-width:44px;min-height:44px;margin:-10px -8px -10px -6px}}.tochip button:hover{color:var(--tx);background:color-mix(in srgb,var(--tx) 10%,transparent)}#toIn{flex:1;min-width:96px;border:0;outline:0;background:transparent;color:var(--tx);font:inherit;padding:3px 2px}#toSug{position:absolute;left:-1px;bottom:calc(100% + 4px);z-index:20;width:max(100%,280px);max-width:calc(100vw - 24px);max-height:300px;overflow:auto;margin:0;padding:4px;list-style:none;background:var(--card);border:1px solid var(--bd);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.22)}#toSug li{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;font-size:14px}#toSug li.on{background:color-mix(in srgb,var(--ac) 15%,transparent)}#toSug li small{margin-left:auto;padding-left:10px;color:var(--mut);font-size:12px;white-space:nowrap}#toSug li.none{color:var(--mut);cursor:default}
+.row label{display:flex;align-items:center;gap:6px;min-height:32px;padding:0 4px;color:var(--mut);cursor:pointer}.row label input[type=checkbox]{width:18px;height:18px;margin:0;flex:none}@media(pointer:coarse){.row label{min-height:44px}.pc .l1{min-height:44px;align-items:center}}
 .ib{border:1px solid var(--bd);background:var(--bg);border-radius:8px;padding:4px 10px;cursor:pointer}
-.send{margin-left:auto;background:var(--ac);border:0;color:#fff;font-weight:700;border-radius:8px;padding:6px 18px;cursor:pointer}.send:disabled{opacity:.5;cursor:default}
+.send{margin-left:auto;background:var(--ac);border:0;color:var(--on-ac);font-weight:700;border-radius:6px;padding:6px 18px;cursor:pointer}.send:disabled{opacity:.5;cursor:default}
 .hint{color:var(--mut);font-size:12px;margin-top:4px}.err{color:var(--hot);font-size:13px;margin-top:4px}
 .claims{background:var(--side);padding:12px;overflow-y:auto;border-left:1px solid var(--bd)}
 .claims h4{font-size:12px;letter-spacing:.1em;color:var(--mut);margin:2px 0 10px}
@@ -87,14 +94,14 @@ textarea{width:100%;border:0;background:none;resize:none;outline:none;min-height
 .pfl{display:flex;gap:2px;margin:0 0 8px;flex-wrap:wrap}
 .pfl button{border:1px solid transparent;background:none;border-radius:6px;padding:2px 9px;font-size:12.5px;color:var(--mut);cursor:pointer}
 .pfl button:hover{color:var(--tx);background:var(--hov)}.pfl button[aria-pressed=true]{background:var(--card);border-color:var(--bd);color:var(--tx);font-weight:700}
-.pfl small{font-variant-numeric:tabular-nums;margin-left:3px;opacity:.75}
+.pfl small{font-size:12px;font-variant-numeric:tabular-nums;margin-left:3px;opacity:.75}
 #projLabel b{color:var(--ac);font-weight:700}#pcMenu .pgx{display:block;font-size:12px;color:var(--mut);font-weight:400;white-space:normal;max-width:240px;line-height:1.45;margin-top:2px}#pcWarn{display:none;padding:4px 8px 2px;max-width:280px}#pcMenu.warn>button{display:none}#pcMenu.warn #pcWarn{display:block}#pcWarn p{margin:0 4px 8px;font-size:13px;line-height:1.55;color:var(--tx);white-space:normal}#pcWarn p b{color:var(--c-ping)}#pcWarn .wb{display:flex;gap:6px}#pcMenu #pcWarn button{width:auto;flex:1;text-align:center;border:1px solid var(--bd)}#pcMenu #pcWarnNo{font-weight:600}
 #pcMenu .mh{padding:4px 12px 6px;font-size:12px;color:var(--mut);border-bottom:1px solid var(--bd);margin-bottom:4px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #pcTip{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);z-index:30;background:var(--tx);color:var(--card);padding:6px 14px;border-radius:8px;font-size:13px;pointer-events:none}
 .pc{-webkit-touch-callout:none;background:var(--card);border:1px solid var(--bd);border-radius:8px;margin-bottom:8px;font-size:13.5px;transition:border-color .15s,box-shadow .15s}
 .pc:hover{border-color:color-mix(in srgb,var(--mut) 45%,var(--bd))}.pc.done{opacity:.6}
 .pch{padding:9px 11px 8px;cursor:pointer}
-.pc .l1{display:flex;align-items:flex-start;gap:7px;min-width:0;width:100%;border:0;background:none;color:inherit;font:inherit;padding:0;text-align:left;cursor:pointer;border-radius:4px}
+.pc .l1{display:flex;align-items:flex-start;gap:7px;min-width:0;width:100%;min-height:24px;border:0;background:none;color:inherit;font:inherit;padding:0;text-align:left;cursor:pointer;border-radius:4px}
 .pc .pcode,.pc .pmore{flex:none;font-size:12px;color:var(--mut)}.pc .ring{flex:none;display:inline-flex;margin-top:2px}
 .pc .pn{flex:1;font-weight:800;font-size:14.5px;min-width:0;line-height:1.4;overflow-wrap:anywhere}
 .pc .pn small{font-weight:400;margin-left:6px;white-space:nowrap}.pc .pn.mono{font-family:ui-monospace,Consolas,monospace}.st-old{color:var(--mut)}
@@ -104,7 +111,7 @@ textarea{width:100%;border:0;background:none;resize:none;outline:none;min-height
 .pc .ppl{display:flex;flex-wrap:wrap;align-items:center;gap:4px 5px;margin-top:6px;font-size:12.5px;color:var(--mut)}
 .pc .ppl .k{margin-right:1px}.pc .ppl .psep{color:var(--bd);margin:0 2px}
 .pp{display:inline-flex;align-items:center;gap:4px;color:var(--tx);font-weight:600;max-width:100%;min-width:0}
-.pp i{flex:none;display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;font:800 9.5px/1 system-ui,sans-serif;font-style:normal;letter-spacing:-.02em;color:#fff;background:var(--a,#5b6577)}.pp i.zh{font-size:11px}
+.pp i{flex:none;display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;font:800 12px/1 system-ui,sans-serif;font-style:normal;letter-spacing:-.02em;color:var(--af,#fff);background:var(--a,#5b6577)}.pp i.zh{font-size:12px}
 .pp b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .k-claude{--k:var(--c-claude)}.k-codex{--k:var(--c-codex)}.k-hermes{--k:var(--c-hermes)}.k-user{--k:var(--c-user)}.k-other{--k:var(--c-other)}
 .pc .pl{display:flex;gap:8px;align-items:baseline;margin-top:7px;line-height:1.5}.pc .pl .k{flex:none;font-size:12px;color:var(--mut)}
@@ -126,23 +133,33 @@ textarea{width:100%;border:0;background:none;resize:none;outline:none;min-height
 .wi{background:var(--card);border:1px solid var(--bd);border-radius:10px;margin-bottom:6px;font-size:13.5px}.wi.done{opacity:.55}
 .wi>summary{list-style:none;cursor:pointer;padding:7px 10px;display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline}.wi summary::-webkit-details-marker{display:none}
 .wi>summary:before{content:"▸";color:var(--mut)}.wi[open]>summary:before{content:"▾"}.wi .pj{font-weight:800;font-family:ui-monospace,Consolas,monospace}
-.wi .pn{font-weight:800;font-size:14.5px}.wi .pjs{font-family:ui-monospace,Consolas,monospace;font-size:11.5px;color:var(--mut)}
+.wi .pn{font-weight:800;font-size:14.5px}.wi .pjs{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--mut)}
 .wi .pr,.wi .pm,.wi .pnow,.wi .pg,.wi .pnx,.wi .pmiss{flex-basis:100%;font-size:12.5px;overflow-wrap:anywhere;line-height:1.55}
-.wi .pr,.wi .pm,.wi .pnx,.wi .pmiss{color:var(--mut)}.wi .pr b{color:var(--tx);font-weight:700}.wi .pnow{font-weight:600}.wi .pmiss{font-size:11.5px}
+.wi .pr,.wi .pm,.wi .pnx,.wi .pmiss{color:var(--mut)}.wi .pr b{color:var(--tx);font-weight:700}.wi .pnow{font-weight:600}.wi .pmiss{font-size:12px}
 .wi .pg{display:flex;align-items:center;gap:8px}.wi .pg b{white-space:nowrap}.wi .pg .bar{flex:1;max-width:160px;height:6px;border-radius:99px;background:var(--hov);border:1px solid var(--bd);overflow:hidden}.wi .pg .bar i{display:block;height:100%;background:#16a34a}
 .wd .chk{list-style:none;margin:0;padding:0;white-space:normal}.wd .chk li{padding:1px 0 1px 20px;text-indent:-20px}.wd .chk li:before{display:inline-block;width:20px;text-indent:0;font-weight:800}
 .wd .chk .ok:before{content:"✓";color:#16a34a}.wd .chk .no{color:var(--mut)}.wd .chk .no:before{content:"✗"}
 .wd .tech{margin-top:8px;padding-top:6px;border-top:1px dashed var(--bd);white-space:normal}.wd .tech summary{cursor:pointer;color:var(--mut);font-size:12.5px;list-style:none}.wd .tech summary:before{content:"▸ "}.wd .tech[open] summary:before{content:"▾ "}.wd .tech>div{white-space:pre-wrap;margin-top:4px;font-size:12.5px}
-.wi .st{font-size:11.5px;border-radius:99px;padding:0 8px;border:1px solid currentColor}.st-planning{color:#b45309}.st-implementing{color:var(--ac)}.st-verifying{color:#7a3fc4}.st-done{color:#0f7a4b}
+.wi .st{font-size:12px;border-radius:99px;padding:0 8px;border:1px solid currentColor}.st-planning{color:#b45309}.st-implementing{color:var(--ac)}.st-verifying{color:#7a3fc4}.st-done{color:#0f7a4b}
 .wi .sm{flex-basis:100%;color:var(--mut);font-size:12.5px;overflow-wrap:anywhere}.wi .wd{padding:7px 10px 9px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;font-size:13px;border-top:1px dashed var(--bd)}
 .cl b{font-family:ui-monospace,Consolas,monospace;font-size:14.5px}.cl .cs{color:var(--mut);overflow-wrap:anywhere;margin-top:2px}
 .seg{display:inline-flex;border:1px solid var(--bd);border-radius:8px;overflow:hidden}.seg a{padding:4px 12px;color:var(--mut);text-decoration:none;font-size:13.5px;background:var(--card)}
-.seg a.on{background:var(--ac);color:#fff;font-weight:700}.seg a small{font-weight:500;opacity:.8;margin-left:4px;font-variant-numeric:tabular-nums}.seg a.diff:not(.on){color:var(--ac);font-weight:700}
+.seg a.on{background:var(--ac);color:var(--on-ac);font-weight:700}.seg a small{font-weight:500;opacity:.8;margin-left:4px;font-variant-numeric:tabular-nums}.seg a.diff:not(.on){color:var(--ac);font-weight:700}
 .live{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--mut);white-space:nowrap}.live i{width:10px;height:10px;border-radius:50%;background:#9aa3b2}
 .live.ok i{background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.25)}.live.warn i{background:#eab308}.live.bad i{background:#ef4444;box-shadow:0 0 0 3px rgba(239,68,68,.25)}
 .ch .on-dot{width:8px;height:8px;border-radius:50%;background:#22c55e;margin-left:auto;flex:none}
+/* 2.15.0 左側頻道跟額度頁目錄同一套：卡片裡的項目左對齊、選中的淡藍底加左邊藍線、長名稱不斷行 */
+.side .tocc .ch{color:var(--tx);border-left:3px solid transparent;border-radius:6px;padding:6px 10px;margin:0;white-space:nowrap;min-width:0;font-size:13px;line-height:1.35}
+.side .tocc .ch:hover{background:var(--hov)}.side .tocc .ch.on{background:color-mix(in srgb,var(--ac) 14%,transparent);border-left-color:var(--ac);font-weight:600}
+.ch .t{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;line-height:1.25}.side .tocc .ch{gap:6px}.ch .sdot{margin-left:0}.cd{font-size:12px;font-weight:400;color:var(--mut)}.ch .cd{display:block;overflow:hidden;text-overflow:ellipsis;font-size:11.5px}
+.nm .cd,.pp .cd,.pf .nm .cd{margin-left:6px}.pp .cd{flex:none;margin-left:2px}
+.sw.s-all{--sw:var(--mut)}.sw.s-todo{--sw:var(--hot)}.sw.s-op{--sw:#8b5cd6}.sw.s-me{--sw:var(--ac)}.sw.s-run{--sw:var(--ac)}.sw.s-wait{--sw:#db6d28}.sw.s-done{--sw:#16a34a}.sw.s-old{--sw:var(--mut)}
+@media(max-width:760px){.ch .cd{display:none}.ch .t{flex:none;max-width:14em}}#agents{display:flex;flex-direction:column;gap:1px}
+aside.side .rptBtn{position:sticky;bottom:0;margin:0;box-shadow:0 -8px 0 var(--side)}
+@media(max-width:760px){.side .tocc .ch{border-left:0;padding:5px 10px;background:var(--card)}.side .tocc .ch.on{background:color-mix(in srgb,var(--ac) 18%,var(--card));font-weight:700}
+#agents{display:contents}nav.top{order:-2}aside.side .rptBtn{position:static;order:-1;flex:none;width:auto;margin:0;box-shadow:none}}
 :focus-visible{outline:2px solid var(--ac);outline-offset:2px}[hidden]{display:none!important}
-@media(max-width:1100px){.app{grid-template-columns:220px 1fr}.claims{position:fixed;top:0;right:0;bottom:0;width:min(var(--wbw,340px),92vw);z-index:5;box-shadow:-8px 0 28px rgba(0,0,0,.3)}
+@media(max-width:1100px){.app{grid-template-columns:252px 1fr}.claims{position:fixed;top:0;right:0;bottom:0;width:min(var(--wbw,340px),92vw);z-index:5;box-shadow:-8px 0 28px rgba(0,0,0,.3)}
 .claims:not(.open){display:none}#claimsBtn{display:inline-block}.wbgrip{position:fixed;right:calc(min(var(--wbw,340px),92vw) - 4px);z-index:6}.claims:not(.open)+.wbgrip{display:none}}
 @media(max-width:760px){.wbgrip{display:none}}
 @media(max-width:760px){.app{grid-template-columns:1fr;grid-template-rows:auto 1fr}
@@ -150,65 +167,279 @@ textarea{width:100%;border:0;background:none;resize:none;outline:none;min-height
 nav.top{flex:none;margin:0}nav.top a{padding:5px 10px}.side .grp{display:contents}.ch{width:auto;flex:none;padding:5px 10px;background:var(--card)}
 .m{padding:3px 10px;gap:10px}.av,.gap{width:32px}.av{height:32px}.comp{padding:0 8px 8px}.hd{padding:8px 10px}}
 .op{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;margin-top:6px;padding:6px 10px;border:1px dashed var(--bd);border-radius:8px;font-size:13px}.op .ok{color:var(--c-codex)}.op .wait{color:var(--hot);font-weight:700}
-.releasebar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:8px 14px;background:var(--side);border-bottom:1px solid var(--bd);font-size:13px}.releasebar button{font:inherit;cursor:pointer;background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:8px;padding:4px 10px}#closeDlg{box-sizing:border-box;background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:12px;width:min(420px,92vw);padding:20px 22px 16px;position:relative}#closeDlg::backdrop{background:rgba(0,0,0,.4)}#closeDlg h2{font-size:17px;margin:0 28px 6px 0}#closeDlg .csub{margin:0 0 12px;color:var(--mut);font-size:13.5px;overflow-wrap:anywhere}#closeDlg .nx{position:absolute;top:10px;right:10px;border:0;background:none;color:var(--mut);font-size:16px;cursor:pointer;border-radius:8px;padding:2px 8px}#closeDlg .nx:hover{background:var(--hov);color:var(--tx)}#closeDlg .cquick{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}#closeDlg .cquick button,#closeDlg .ccancel{font:inherit;font-size:13.5px;cursor:pointer;background:var(--side);color:var(--tx);border:1px solid var(--bd);border-radius:99px;padding:4px 12px}#closeDlg .cquick button[aria-pressed=true]{border-color:var(--ac);color:var(--ac)}#closeDlg .ccancel{border-radius:8px;padding:6px 16px}#closeDlg .creason{display:grid;gap:4px;font-size:13px;color:var(--mut);margin-bottom:14px}#closeDlg input{font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:7px 10px;width:100%;box-sizing:border-box}#closeDlg .cbtns{display:flex;justify-content:flex-end;gap:8px}#closeDlg .nok{font:inherit;cursor:pointer;background:var(--ac);color:#fff;border:1px solid var(--ac);border-radius:8px;padding:6px 18px}#closeDlg .nok:disabled{opacity:.5;cursor:default}#closeDlg button:focus-visible,#closeDlg input:focus-visible{outline:2px solid var(--ac);outline-offset:2px}.tdbar{display:flex;flex-wrap:wrap;gap:6px;padding:8px 16px 6px;margin-top:-8px;position:sticky;top:-8px;z-index:2;background:var(--bg);border-bottom:1px solid var(--bd)}.tdbar button{font:inherit;font-size:13px;cursor:pointer;background:var(--card);color:var(--mut);border:1px solid var(--bd);border-radius:99px;padding:3px 12px}.tdbar button.on{background:var(--ac);border-color:var(--ac);color:#fff}.op .off{color:var(--mut)}.op .done{color:var(--c-codex);font-weight:700}
-#notice{box-sizing:border-box;background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:12px;width:min(420px,90vw);padding:20px 22px 16px;position:relative}#notice::backdrop{background:rgba(0,0,0,.4)}#notice h2{font-size:17px;margin:0 28px 8px 0}#notice p{margin:0 0 16px;line-height:1.7}#notice .nx{position:absolute;top:10px;right:10px;border:0;background:none;color:var(--mut);font-size:16px;cursor:pointer;border-radius:8px;padding:2px 8px}#notice .nx:hover{background:var(--hov);color:var(--tx)}#notice .nok{display:block;margin-left:auto;font:inherit;cursor:pointer;background:var(--ac);color:#fff;border:1px solid var(--ac);border-radius:8px;padding:6px 18px}#notice button:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+.releasebar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:8px 14px;background:var(--side);border-bottom:1px solid var(--bd);font-size:13px}.releasebar button{font:inherit;cursor:pointer;background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:6px;padding:4px 10px}#closeDlg{box-sizing:border-box;background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:12px;width:min(420px,92vw);padding:20px 22px 16px;position:relative}#closeDlg::backdrop{background:rgba(0,0,0,.4)}#closeDlg h2{font-size:17px;margin:0 28px 6px 0}#closeDlg .csub{margin:0 0 12px;color:var(--mut);font-size:13.5px;overflow-wrap:anywhere}#closeDlg .nx{position:absolute;top:10px;right:10px;border:0;background:none;color:var(--mut);font-size:16px;cursor:pointer;border-radius:8px;padding:2px 8px}#closeDlg .nx:hover{background:var(--hov);color:var(--tx)}#closeDlg .cquick{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}#closeDlg .cquick button,#closeDlg .ccancel{font:inherit;font-size:13.5px;cursor:pointer;background:var(--side);color:var(--tx);border:1px solid var(--bd);border-radius:6px;padding:4px 12px}#closeDlg .cquick button[aria-pressed=true]{border-color:var(--ac);color:var(--ac)}#closeDlg .ccancel{border-radius:8px;padding:6px 16px}#closeDlg .creason{display:grid;gap:4px;font-size:13px;color:var(--mut);margin-bottom:14px}#closeDlg input{font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:7px 10px;width:100%;box-sizing:border-box}#closeDlg .cbtns{display:flex;justify-content:flex-end;gap:8px}#closeDlg .nok{font:inherit;cursor:pointer;background:var(--ac);color:var(--on-ac);border:1px solid var(--ac);border-radius:6px;padding:6px 18px}#closeDlg .nok:disabled{opacity:.5;cursor:default}#closeDlg button:focus-visible,#closeDlg input:focus-visible{outline:2px solid var(--ac);outline-offset:2px}.tdbar{display:flex;flex-wrap:wrap;gap:6px;padding:8px 16px 6px;margin-top:-8px;position:sticky;top:-8px;z-index:2;background:var(--bg);border-bottom:1px solid var(--bd)}.tdbar button{font:inherit;font-size:13px;cursor:pointer;background:var(--card);color:var(--mut);border:1px solid var(--bd);border-radius:6px;padding:3px 12px}.tdbar button.on{background:var(--ac);border-color:var(--ac);color:var(--on-ac)}.op .off{color:var(--mut)}.op .done{color:var(--c-codex);font-weight:700}
+#notice{box-sizing:border-box;background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:12px;width:min(420px,90vw);padding:20px 22px 16px;position:relative}#notice::backdrop{background:rgba(0,0,0,.4)}#notice h2{font-size:17px;margin:0 28px 8px 0}#notice p{margin:0 0 16px;line-height:1.7}#notice .nx{position:absolute;top:10px;right:10px;border:0;background:none;color:var(--mut);font-size:16px;cursor:pointer;border-radius:8px;padding:2px 8px}#notice .nx:hover{background:var(--hov);color:var(--tx)}#notice .nok{display:block;margin-left:auto;font:inherit;cursor:pointer;background:var(--ac);color:var(--on-ac);border:1px solid var(--ac);border-radius:6px;padding:6px 18px}#notice button:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
 #releaseHistory{box-sizing:border-box;background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:12px;width:min(650px,90vw);max-height:80vh;overflow:auto}#releaseHistory::backdrop{background:rgba(0,0,0,.4)}#releaseHistory section{border-bottom:1px solid var(--bd);padding:8px 0}#releaseHistory h3{margin:8px 0}#releaseHistory p{color:var(--mut);font-size:13px}#releaseHistory li{overflow-wrap:anywhere}
 #releaseHistory .badge{display:inline-block;font-size:12px;font-weight:700;border-radius:99px;padding:0 9px;border:1px solid currentColor;margin-left:8px;vertical-align:2px}#releaseHistory .badge:empty{display:none}
 #releaseHistory .badge.on{color:var(--c-codex)}#releaseHistory .badge.pv{color:var(--c-hermes)}#releaseHistory .badge.no{color:var(--mut)}#releaseHistory .tbc{color:var(--hot);font-weight:700}#releaseHistory h4{margin:10px 0 2px}
 .rbwarn{color:var(--hot);font-weight:700}
 #releaseHistory a{color:var(--ac)}#releaseHistory summary{cursor:pointer;color:var(--ac)}
-#releaseHistory button{font:inherit;cursor:pointer;background:var(--side);color:var(--tx);border:1px solid var(--bd);border-radius:8px;padding:6px 16px}
+#releaseHistory button{font:inherit;cursor:pointer;background:var(--side);color:var(--tx);border:1px solid var(--bd);border-radius:6px;padding:6px 16px}
 #releaseHistory button:hover:not(:disabled){border-color:var(--ac)}#releaseHistory button:disabled{opacity:.5;cursor:default}
 #releaseHistory [data-close-versions]{display:block;margin:12px 0 0 auto}
 #releaseHistory a:focus-visible,#releaseHistory button:focus-visible,#releaseHistory summary:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
 /* r14（UX 檢查）：手機版省空間、白板可關、待採用提示、已讀標籤、外觀切換 */
 .rbver{color:var(--mut);font-size:12px}
-.pending{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:8px 14px;background:var(--hotbg);border-bottom:1px solid var(--hot);font-size:14px}.pending b{color:var(--hot)}.pending a.go{background:var(--hot);color:#fff;border-radius:8px;padding:3px 12px;text-decoration:none;font-weight:700}.pending button{font:inherit;cursor:pointer;background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:8px;padding:3px 10px}
+.pending{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:8px 14px;background:var(--hotbg);border-bottom:1px solid var(--hot);font-size:14px}.pending b{color:var(--hot)}.pending a.go{background:var(--hot);color:#fff;border-radius:6px;padding:3px 12px;text-decoration:none;font-weight:700}.pending button{font:inherit;cursor:pointer;background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:6px;padding:3px 10px}
 .pvnotes{background:#5b2aa0;color:#fff;padding:4px 14px 6px;font-size:13.5px}.pvnotes summary{cursor:pointer;font-weight:700}.pvnotes ul{margin:2px 0 6px;padding-left:22px}.pvnotes li{overflow-wrap:anywhere}.pvnotes .pvb{max-height:34vh;overflow:auto}.pvnotes .pvn{margin:2px 0}.pvnotes .pvn summary{font-weight:700;cursor:pointer}
-.sess{display:inline-block;font-size:11.5px;line-height:18px;color:var(--mut);background:color-mix(in srgb,var(--tx) 6%,transparent);border-radius:4px;padding:0 6px;vertical-align:1px;white-space:nowrap}
+.sess{display:inline-block;font-size:12px;line-height:18px;color:var(--mut);background:color-mix(in srgb,var(--tx) 6%,transparent);border-radius:4px;padding:0 6px;vertical-align:1px;white-space:nowrap}
 .t.rd{color:var(--tag-read);background:var(--tag-read-bg);border-color:var(--tag-read-bd)}.t.rd b{font-weight:600}.t.rd.none{color:var(--tag-mute);background:transparent;border:1px dashed color-mix(in srgb,var(--tag-mute) 60%,transparent)}
 #releaseHistory .xclose{position:sticky;top:0;float:right;margin:0 0 0 8px;width:34px;height:34px;padding:0;display:grid;place-items:center;font-size:16px;line-height:1;z-index:1}
 #claimsBack{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:4}.claimsClose{display:none;width:100%;margin:0 0 10px;font:inherit;cursor:pointer;background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:8px;padding:6px 10px}
 @media(max-width:1100px){.claimsClose{display:block}}
+.releasebar .vswitch{margin-left:auto;display:inline-flex;align-items:center;min-height:30px;padding:0 12px;border:1px solid var(--ac);border-radius:6px;background:transparent;color:var(--ac);font-size:13px;font-weight:600;line-height:1.2;text-decoration:none;white-space:nowrap;cursor:pointer}.releasebar .vswitch:hover{background:color-mix(in srgb,var(--ac) 14%,transparent)}.releasebar .vswitch:focus-visible{outline:2px solid var(--ac);outline-offset:2px}.releasebar .vswitch[hidden]{display:none}@media(max-width:760px){.releasebar .vswitch{min-height:36px;padding:0 14px}}
 @media(max-width:760px){.releasebar{padding:5px 10px;gap:6px 8px}.rbver,.releasebar [data-release-state],.releasebar .rblink{display:none}
 .hd{padding:6px 10px;gap:6px 8px}.hd h2{font-size:15px}.hd .cnt,.hd #lim{display:none}#liveTx{display:none}.main>.hint.topnote{display:none}
 .comp .hint{display:none}.row{margin-top:4px}textarea{min-height:36px}.pending{padding:6px 10px;font-size:13px}.pvnotes{font-size:13px}}
 
 #releaseHistory .impact,.rbaskw{color:#b91c1c;font-weight:700}
-@media(prefers-color-scheme:dark){#releaseHistory .impact,.rbaskw{color:#fca5a5}}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) :is(#releaseHistory .impact,.rbaskw){color:#fca5a5}}:root[data-theme=dark] :is(#releaseHistory .impact,.rbaskw){color:#fca5a5}
 .rbaskw{border:2px solid currentColor;border-radius:10px;padding:2px 12px;margin:10px 0;background:rgba(220,38,38,.08)}
 .rbaskf{color:var(--hot);font-weight:600}.rbaskl{display:flex;gap:8px;align-items:flex-start;font-weight:700;margin:10px 0}.rbaskl input{margin-top:6px}
 .rbaskbtn{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px}#rbAsk{width:min(560px,92vw)}#rbAsk p{margin:6px 0;line-height:1.7}
-#rbAsk button{font:inherit;cursor:pointer;border:1px solid var(--bd);border-radius:8px;padding:8px 16px;background:var(--side);color:var(--tx)}
+#rbAsk button{font:inherit;cursor:pointer;border:1px solid var(--bd);border-radius:6px;padding:8px 16px;background:var(--side);color:var(--tx)}
 #rbAsk button.danger{background:#b91c1c;color:#fff;border-color:#b91c1c}#rbAsk button:disabled{opacity:.45;cursor:default}
 #releaseHistory .rbto{margin-top:8px}#releaseHistory .rbnow{color:var(--c-codex);font-weight:700}
-.prio{font:700 11px/1 system-ui,sans-serif;padding:3px 6px;border-radius:99px;white-space:nowrap;color:#fff}.prio.p1{background:#dc2626}.prio.p2{background:#ea580c}.prio.p3{background:#b7791f}.prio.p4{background:#64748b}.prio.p5{background:transparent;color:var(--mut);box-shadow:inset 0 0 0 1px var(--bd)}.pc.paused{opacity:.6}.pc.paused:hover,.pc.paused.open,.pc.paused:focus-within{opacity:1}.pcsep{display:flex;align-items:center;gap:8px;margin:14px 2px 8px;font-size:12px;color:var(--mut)}.pcsep:after{content:"";flex:1;border-top:1px dashed var(--bd)}#pcPrio{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:6px 8px 4px;margin-top:4px;border-top:1px solid var(--bd);max-width:260px}#pcPrio[hidden]{display:none}#pcPrio .pk{width:100%;font-size:12px;color:var(--mut);margin-bottom:2px}#pcMenu #pcPrio button{display:inline-block;width:auto;min-height:30px;padding:4px 9px;border:1px solid var(--bd);border-radius:99px;font-size:12.5px;font-weight:600;text-align:center}#pcMenu #pcPrio button.on{background:var(--ac);border-color:var(--ac);color:#fff}#pcMenu.warn>#pcPrio{display:none}#avMenu{position:fixed;z-index:20;min-width:200px;max-width:280px;background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:5px;box-shadow:0 4px 20px rgba(0,0,0,.2)}#avMenu:focus{outline:none}#avMenu button{display:block;width:100%;min-height:34px;padding:6px 12px;border:0;border-radius:6px;background:none;color:var(--tx);font:inherit;font-size:13.5px;text-align:left;white-space:nowrap;cursor:pointer}#avMenu button:hover,#avMenu button:focus-visible{outline:none;background:var(--hov)}#avMenu button[disabled]{opacity:.45;cursor:default;background:none}#avMenu .mh{display:flex;align-items:center;gap:6px;padding:4px 12px 6px;margin-bottom:4px;border-bottom:1px solid var(--bd);font-size:12px;color:var(--mut);overflow:hidden;white-space:nowrap}#avNote{margin:4px 12px 2px;font-size:12px;line-height:1.45;color:var(--mut)}#avNote:empty{display:none}#agents .ch{-webkit-touch-callout:none}
-</style><script>/* 預覽跟正式版一樣（沒有待採用的修改）就直接回正式版頁，不讓使用者看到預覽 */(()=>{const m=/^\/board\/preview(\/memory|\/versions)?\/?$/.exec(location.pathname);if(!m)return;const d=document.documentElement,show=()=>{d.style.visibility=''};d.style.visibility='hidden';setTimeout(show,2500);const own=(document.querySelector('meta[name$="-revision"]')||{}).content;fetch('/board',{cache:'no-store'}).then(r=>r.ok?r.text():'').then(t=>{const s=(/board-revision" content="(\d+)/.exec(t)||[])[1];if(own&&s===own)location.replace('/board'+(m[1]||'')+location.search+location.hash);else show()}).catch(show)})()</script><style id="avCss"></style></head><body>
-<div class="pv" id="pvbar" hidden><b id="pvTitle">這是預覽版：正式的公告欄不受影響</b>
-<button type="button" class="go" id="promote" disabled>確認版本中…</button><button type="button" id="rollback" disabled hidden>正式版回滾上一版</button><span id="publishState" role="status"></span><a href="/board">回正式版</a><a href="/board/legacy">看最舊版</a></div>
+.prio{font:700 12px/1 system-ui,sans-serif;padding:3px 6px;border-radius:99px;white-space:nowrap;color:#fff}.prio.p1{background:#dc2626}.prio.p2{background:#ea580c}.prio.p3{background:#b7791f}.prio.p4{background:#64748b}.prio.p5{background:transparent;color:var(--mut);box-shadow:inset 0 0 0 1px var(--bd)}.pc.paused{opacity:.6}.pc.paused:hover,.pc.paused.open,.pc.paused:focus-within{opacity:1}.pcsep{display:flex;align-items:center;gap:8px;margin:14px 2px 8px;font-size:12px;color:var(--mut)}.pcsep:after{content:"";flex:1;border-top:1px dashed var(--bd)}#pcPrio{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:6px 8px 4px;margin-top:4px;border-top:1px solid var(--bd);max-width:260px}#pcPrio[hidden]{display:none}#pcPrio .pk{width:100%;font-size:12px;color:var(--mut);margin-bottom:2px}#pcMenu #pcPrio button{display:inline-block;width:auto;min-height:30px;padding:4px 9px;border:1px solid var(--bd);border-radius:6px;font-size:12.5px;font-weight:600;text-align:center}#pcMenu #pcPrio button.on{background:var(--ac);border-color:var(--ac);color:var(--on-ac)}#pcMenu.warn>#pcPrio{display:none}#avMenu{position:fixed;z-index:20;min-width:200px;max-width:280px;background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:5px;box-shadow:0 4px 20px rgba(0,0,0,.2)}#avMenu:focus{outline:none}#avMenu button{display:block;width:100%;min-height:34px;padding:6px 12px;border:0;border-radius:6px;background:none;color:var(--tx);font:inherit;font-size:13.5px;text-align:left;white-space:nowrap;cursor:pointer}#avMenu button:hover,#avMenu button:focus-visible{outline:none;background:var(--hov)}#avMenu button[disabled]{opacity:.45;cursor:default;background:none}#avMenu .mh{display:flex;align-items:center;gap:6px;padding:4px 12px 6px;margin-bottom:4px;border-bottom:1px solid var(--bd);font-size:12px;color:var(--mut);overflow:hidden;white-space:nowrap}#avNote{margin:4px 12px 2px;font-size:12px;line-height:1.45;color:var(--mut)}#avNote:empty{display:none}#agents .ch{-webkit-touch-callout:none}
+/* ===== 2.17.0 圖像化===== */
+/* 色階：好／注意／警告／壞／不明。深色照規格，淺色加深到白底對比 4.5 以上 */
+:root{--s-ok:#1a7f37;--s-warn:#9a6700;--s-orange:#bc4c00;--s-bad:#cf222e;--s-unk:#57606a;
+--n-claude:#b4531c;--n-codex:var(--tx);--n-desk:#0f7f86;--n-mini:#57606a;--n-hermes:#8250df;--n-ag:#0969da;--n-user:#1a7f37;--n-other:var(--mut)}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--s-ok:#3fb950;--s-warn:#d29922;--s-orange:#db6d28;--s-bad:#f85149;--s-unk:#8b949e;
+--n-claude:#f0883e;--n-desk:#39c5cf;--n-mini:#8b949e;--n-hermes:#bc8cff;--n-ag:#58a6ff;--n-user:#3fb950}}
+:root[data-theme=dark]{--s-ok:#3fb950;--s-warn:#d29922;--s-orange:#db6d28;--s-bad:#f85149;--s-unk:#8b949e;--n-claude:#f0883e;--n-desk:#39c5cf;--n-mini:#8b949e;--n-hermes:#bc8cff;--n-ag:#58a6ff;--n-user:#3fb950}
+.n-claude{color:var(--n-claude)}.n-codex,.n-xd,.n-pc,.n-max{color:var(--n-codex)}.n-desk{color:var(--n-desk)}.n-mini{color:var(--n-mini)}.n-hermes,.n-alpha,.n-beta,.n-gamma{color:var(--n-hermes)}.n-ag{color:var(--n-ag)}.n-user{color:var(--n-user)}.n-other{color:var(--n-other)}
+.sj,.pc .pl .v,.pc .psm,.sumbar,.gearpop{word-break:keep-all;overflow-wrap:anywhere}
+/* T2 左側欄：220px、13px、目前段落左邊 3px 色條＋淡底；B01 和留言區之間一條分隔線 */
+nav.top a{font-size:13px}.side .tocc h4{font-size:12px}
+@media(max-width:760px){.side{border-right:0;border-bottom:1px solid var(--bd)}}
+/* T3 狀態點三種：開著＝綠實心、離線＝紅空心＋字、不明＝灰虛線＋字（色弱也分得出） */
+.sdot{flex:none;width:9px;height:9px;border-radius:50%;box-sizing:border-box;margin-left:auto}
+.sdot.s-on{background:var(--s-ok)}.sdot.s-down{background:var(--s-unk)}.sdot.s-stuck{background:var(--s-warn)}.sdot.s-unk{border:1.5px dashed var(--s-unk)}
+.sdl{flex:none;font-size:12px;font-weight:600;line-height:1}.sdl.s-down{color:var(--s-unk)}.sdl.s-stuck{color:var(--s-warn)}.sdl.s-unk{color:var(--mut);font-weight:400}
+.ch .sdot+.sdl{margin-left:4px}
+/* 總狀態燈：一句話＋形狀（● 正常、▲ 有事等你、✕ 連不上） */
+.sumbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:7px 16px;border-bottom:1px solid var(--bd);background:var(--card);font-size:14px;line-height:1.5}
+.sumbar .si{flex:none;font-size:13px;width:18px;text-align:center;font-weight:800}.sumbar.ok .si{color:var(--s-ok)}.sumbar.warn .si{color:var(--s-orange)}.sumbar.bad .si{color:var(--s-bad)}
+.sumbar.bad{background:color-mix(in srgb,var(--s-bad) 10%,var(--card))}.sumbar b{font-weight:700}
+.sumbar .sacts{display:flex;flex-wrap:wrap;gap:8px}
+/* B03 「等我決定 N」醒目徽章：≥1 時橘底大字 */
+.wbadge{display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:2px 12px;border-radius:6px;border:0;background:#db6d28;color:#0d1117;font:inherit;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap}
+.wbadge b{font-size:17px;font-weight:800;font-variant-numeric:tabular-nums}.wbadge:hover{filter:brightness(1.08)}.wbadge.sub{background:color-mix(in srgb,#db6d28 18%,transparent);color:var(--tx)}
+.pfl button small.wn{display:inline-block;min-width:22px;margin-left:5px;padding:0 6px;border-radius:99px;background:#db6d28;color:#0d1117;font-size:13px;font-weight:800;opacity:1;text-align:center}
+/* 更新列：最後更新時間（12 小時制帶秒）＋「更新」鈕＋環形倒數；失敗變紅 */
+.rfr{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--mut);white-space:nowrap;font-variant-numeric:tabular-nums}
+.rfr .rt{transition:background .3s;border-radius:4px;padding:0 3px}.rfr .rt.flash{background:color-mix(in srgb,var(--s-ok) 25%,transparent);color:var(--tx)}.rfr.bad .rt{color:var(--s-bad);font-weight:600}
+.hd .rfr button{display:inline-flex;align-items:center;gap:5px;min-height:28px;padding:2px 10px}
+.rfr svg{width:16px;height:16px;flex:none}.rfr .rg0{fill:none;stroke:var(--bd);stroke-width:2}.rfr .rg1{fill:none;stroke:var(--ac);stroke-width:2;stroke-linecap:round;transform:rotate(-90deg);transform-origin:8px 8px}
+.rfr button.spin svg{animation:rfrSpin .8s linear infinite}@keyframes rfrSpin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.rfr button.spin svg{animation:none}.rfr .rt{transition:none}}
+/* B11 顯示設定收進右上齒輪 */
+.gearw{position:relative}#gearBtn{display:inline-grid;place-items:center;width:32px;height:30px;padding:0}#gearBtn svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.gearpop{position:absolute;right:0;top:calc(100% + 6px);z-index:15;width:min(300px,calc(100vw - 24px));background:var(--card);border:1px solid var(--bd);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.22);padding:12px;font-size:13.5px;display:grid;gap:12px}
+.gearpop .gk{font-size:12px;color:var(--mut);margin:0 0 5px;font-weight:600}.gearpop select{width:100%}
+.gearpop .thm{display:flex;border:1px solid var(--bd);border-radius:6px;overflow:hidden}.gearpop .thm button{flex:1;border:0;border-radius:0;background:var(--card);padding:5px 0}.gearpop .thm button+button{border-left:1px solid var(--bd)}.gearpop .thm button[aria-checked=true]{background:var(--ac);color:var(--on-ac);font-weight:700}
+.gearpop .gacc{display:flex;gap:8px;align-items:center;border-top:1px solid var(--bd);padding-top:10px}.gearpop .gacc .ib{text-decoration:none;color:var(--tx)}
+.gearpop .gnote{font-size:12.5px;color:var(--mut);line-height:1.6;margin:0}
+/* T5 頁首右上只放「版本紀錄」；切換正式／預覽、看最舊版、回滾收進版本紀錄視窗 */
+.releasebar [data-open-versions]{margin-left:auto}
+/* 2.17.0 規格「fmtTime 定版」：採用鈕只在有待採用版本時出現，放在「版本紀錄」左邊；看正式版、回滾、最舊版收進版本紀錄 */.releasebar #promote{margin-left:auto;margin-right:16px;background:var(--ac);border-color:var(--ac);color:var(--bg);font-weight:700}.releasebar #promote[hidden]{display:none}.releasebar #promote:not([hidden])+[data-open-versions]{margin-left:0}.releasebar #promote:disabled{opacity:.6;cursor:default}
+#releaseHistory .rhx{display:flex;flex-wrap:wrap;gap:8px 24px;align-items:center;margin:12px 0}#releaseHistory .rhx .vswitch{display:inline-flex;align-items:center;min-height:30px;padding:0 12px;border:1px solid var(--ac);border-radius:6px;color:var(--ac);font-weight:600;text-decoration:none}
+#releaseHistory #rbStable{margin-top:20px;padding-top:12px;border-top:1px dashed var(--bd)}
+/* U03 等你篩選列右側小字 */
+.tdbar .tdnote{margin-left:auto;align-self:center;font-size:12px;color:var(--mut);white-space:nowrap}
+/* B07 長留言超過 4 行收合 */
+.rpl{margin:8px 0 2px;padding-left:12px;border-left:2px solid var(--bd);display:flex;flex-direction:column;gap:8px}.rpi .rh{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;font-size:13px;color:var(--mut)}.rpi .rh b{font-weight:700;color:var(--tx)}.rpi.me .rh b{color:var(--c-user)}.rpi .rt{overflow-wrap:anywhere;font-weight:600}.rpi .rb{white-space:pre-wrap;overflow-wrap:anywhere;opacity:.9;line-height:1.7}.rpi.tmp{opacity:.75}
+.m.answered .mc>*:not(.rpl):not(.actions){opacity:.6}
+.bd.clamp{max-height:calc(1.75em * 4);overflow:hidden;-webkit-mask-image:linear-gradient(#000 72%,transparent);mask-image:linear-gradient(#000 72%,transparent)}
+.wf.clamp{max-height:var(--mh);overflow:hidden;-webkit-mask-image:linear-gradient(#000 60%,transparent);mask-image:linear-gradient(#000 60%,transparent)}.pc .bdx{margin:2px 0 0 -6px}
+.bdx{display:inline-flex;align-items:center;min-height:28px;margin:2px 0 0 -6px;padding:0 6px;border:0;border-radius:6px;background:none;color:var(--ac);font:inherit;font-size:13px;font-weight:600;cursor:pointer}.bdx:hover{background:var(--hov)}
+/* 白板：小目標進度條（一格一個小目標）、卡片可點提示、太舊的卡變淡 */
+.pc .pg .pbar{flex:1;display:flex;gap:3px;height:8px;max-width:none}.pc .pg .pbar i{flex:1;border-radius:2px;background:color-mix(in srgb,var(--mut) 28%,transparent)}
+.pc .pg .pbar i.ok{background:var(--s-ok)}.pc .pg .pbar i.cur{background:color-mix(in srgb,var(--ac) 60%,transparent)}.pc .pg .pbar.cont{background:color-mix(in srgb,var(--mut) 28%,transparent);border-radius:2px;overflow:hidden}.pc .pg .pbar.cont b{display:block;height:100%;background:var(--s-ok)}
+.pc .pg .pgn{flex:none;font-size:12.5px;color:var(--mut)}.pc .pg .pgn b{color:var(--tx);font-size:13.5px}.pc .pg .pgn.all{color:var(--s-ok);font-weight:700}
+.pc:hover{border-color:color-mix(in srgb,var(--ac) 55%,var(--bd))}.pc.stale:not(:hover):not(.open):not(:focus-within){opacity:.6}
+.pc .ppl .pp{flex:none}
+/* 手機：輸入框平常收成一行，點了才展開；白板卡收起時只留標題、下一步、進度 */
+.box.mini{padding:4px 10px}.box.mini textarea{min-height:0;height:36px!important;padding:7px 0;white-space:nowrap;overflow:hidden}.box.mini>:not(textarea){display:none}
+@media(max-width:760px){.pc:not(.open) .ppl,.pc:not(.open) .pf{display:none}.sumbar{padding:6px 10px;font-size:13.5px}.rfr .rk{display:none}.wbadge{min-height:34px}.hd .gearpop #lim{display:block}}
+/* ===== 2.19.0 按下回饋===== */
+/* 剛送出的留言先插進 feed，右上角小字「送出中…」→「✓ 已送到」；伺服器資料回來就換成正式那則 */
+.m.pend .mc>:not(.actions){opacity:.78}.pst{display:inline-flex;align-items:center;gap:4px;min-height:22px;font-size:12px;font-weight:600;color:var(--mut)}.pst.ok{color:var(--s-ok)}.pst.bad{color:var(--s-bad)}
+.rpi .pst{margin-left:auto}
+/* 送出失敗：錯誤那行附一顆「重送」 */
+.err button{margin-left:8px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;border:1px solid var(--hot);border-radius:6px;background:transparent;color:var(--hot);padding:1px 10px}.err button:hover{background:var(--hotbg)}
+/* 白板「等我決定」：答過的卡變淡、沉到最下面、標「已答，等 AI 更新」；按「還沒答」可取消 */
+.pc .ansr{display:flex;flex-wrap:wrap;align-items:center;gap:6px;flex-basis:100%}
+.pc .ansb{display:inline-flex;align-items:center;min-height:26px;padding:0 10px;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--tx);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer}.pc .ansb:hover{border-color:var(--ac);color:var(--ac)}
+.pc .anst{display:inline-flex;align-items:center;gap:4px;min-height:22px;padding:0 8px;border-radius:99px;font-size:12px;font-weight:600;color:var(--s-ok);background:color-mix(in srgb,var(--s-ok) 12%,transparent)}
+.pc.ans{opacity:.5}.pc.ans:hover,.pc.ans.open,.pc.ans:focus-within{opacity:1}
+/* 讀資料某一段壞了，只那一段顯示一行，其他段照出 */
+.segbad{color:var(--s-bad);font-size:13px;padding:10px 12px;border:1px dashed var(--s-bad);border-radius:8px;margin:8px}
+/* 純切換類（頻道、篩選）按下去也要有感：aria-pressed 的底色、按下縮一點（全站規則在共用段） */
+.ch[aria-pressed=true]{background:var(--card)}.tdbar button[aria-pressed=true]{background:var(--ac);border-color:var(--ac);color:var(--on-ac)}
+</style><script>/* 2.19.0 FRONT-1：另一版的整頁只抓一次，三個要比版號的地方共用（以前開一頁要抓 2–4 份 163KB）。rtPage(url) 回傳整頁文字的 Promise；rtPage(url,true) 強制重抓 */window.rtPage=(u,force)=>{const c=window.__rtPage=window.__rtPage||{};if(force||!c[u])c[u]=fetch(u,{cache:'no-store'}).then(r=>r.ok?r.text():'').catch(()=>'');return c[u]};
+/* 預覽跟正式版一樣（沒有待採用的修改）就直接回正式版頁，不讓使用者看到預覽 */(()=>{const m=/^\/board\/preview(\/memory|\/versions)?\/?$/.exec(location.pathname);if(!m)return;try{if(window.frameElement&&window.rtPageHidden())return}catch(e){}/* 2.22.3 外殼背景預載（藏著）的頁不自己轉正式版，由外殼管；正在看的頁照舊轉 */const d=document.documentElement,show=()=>{d.style.visibility=''};d.style.visibility='hidden';setTimeout(show,2500);const own=(document.querySelector('meta[name$="-revision"]')||{}).content;window.rtPage('/board').then(t=>{const s=(/board-revision" content="(\d+)/.exec(t)||[])[1];if(own&&s===own)location.replace('/board'+(m[1]||'')+location.search+location.hash);else show()}).catch(show)})()</script><style id="avCss"></style><script>/* 2.17.0 深淺色：顯示設定選過就照選的，沒選跟系統 */try{const t=localStorage.getItem('rt.theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script></head><body><!-- side-common:start 2.19.0 四頁共用：強調色上的字、版號收進版本紀錄、左側目錄樣式（跟額度頁 2.14.0 同一套）、捲動標亮、回報問題、內部版號；2.19.0 加全站按下態、按鈕忙碌中（window.rtUI.busy）、小提示（window.rtUI.toast）、回報視窗送出逾時。改這份再跑 mcp/ui/apply_side_common.py，四頁一起換 -->
+<style>
+/* 2.19.0 全站按鈕回饋：按下去縮一點；忙碌中（aria-busy）變淡、游標變等待 */
+button:not(:disabled):active,[role=button]:not([aria-disabled=true]):active{transform:scale(.96)}
+@media(prefers-reduced-motion:reduce){button:not(:disabled):active,[role=button]:active{transform:none;opacity:.8}}
+button[aria-busy=true]{opacity:.65;cursor:progress}
+/* 2.19.0 小提示（toast）：畫面下方浮一行，3 秒自己消失；綠＝做好了、紅＝沒成功 */
+#rtToast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);z-index:60;display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none;max-width:min(92vw,520px)}
+#rtToast .tt{background:var(--tx);color:var(--card,#fff);padding:7px 14px;border-radius:8px;font-size:13.5px;line-height:1.5;box-shadow:0 4px 16px rgba(0,0,0,.25);overflow-wrap:anywhere;animation:rtTtIn .18s ease-out}
+#rtToast .tt.ok{background:var(--s-ok,#1a7f37);color:#fff}#rtToast .tt.bad{background:var(--s-bad,#cf222e);color:#fff}
+@keyframes rtTtIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}@media(prefers-reduced-motion:reduce){#rtToast .tt{animation:none}}
+@media(max-width:760px){#rtToast{bottom:72px}}
+/* 2.16.5 強調色上的字（--on-ac）：淺色白字；深色強調色是淺藍，白字只有 2.49:1，改深字。四頁的選中鈕、送出鈕都用這個 */
+:root{--on-ac:#fff}@media(prefers-color-scheme:dark){:root{--on-ac:#0b1020}}
+:root[data-theme="dark"]{--on-ac:#0b1020}:root[data-theme="light"]{--on-ac:#fff}
+/* 2.16.5 版號收進「版本紀錄」：版本列平常只留小灰「正式版／預覽版」，版號和內部碼在版本紀錄視窗（或滑過「版本紀錄」）才看得到 */
+.releasebar [data-ui-version],.releasebar [data-ui-rev]{display:none}
+.releasebar [data-release-which],.releasebar .rbwhich{font-weight:400;font-size:12.5px;color:var(--mut)}
+.rbcur{margin:0 0 10px;font-size:13px;color:var(--mut)}
+.releasebar [data-open-versions],.releasebar a[href$="/versions"]{display:inline-flex;align-items:center;min-height:28px}
+html{scroll-behavior:smooth}@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+main section[id],main details[id],main div[id^="c-"]{scroll-margin-top:14px}
+/* 左側目錄：有底色的卡片、和側欄底色有對比、項目左對齊、目前所在段落高亮、跟著捲動常駐 */
+.side .toc{position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto;overscroll-behavior:contain}
+.side .tocc{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:8px;margin:0 0 12px;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.side .tocc h2,.side .tocc h4{margin:2px 8px 6px;font-size:12.5px;letter-spacing:0;font-weight:600;color:var(--mut)}
+.side .jump{display:flex;flex-direction:column;gap:1px}
+.side .jump a{display:block;flex:none;width:100%;box-sizing:border-box;text-align:left;padding:6px 10px;margin:0;border:0;border-radius:6px;border-left:3px solid transparent;font-size:14px;line-height:1.35;color:var(--tx);text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.side .jump a:hover{background:var(--hover,var(--hov))}
+.side .jump a.on{background:color-mix(in srgb,var(--ac) 14%,transparent);border-left-color:var(--ac);font-weight:600}
+.side .jump a:focus-visible{outline:2px solid var(--ac);outline-offset:-2px}
+/* 2.18.0 T2 篩選鈕前的小色塊：顏色跟卡片上同類的標籤同色，由各頁用 --sw 指定 */
+.sw{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:7px;flex:none;vertical-align:-1px;background:var(--sw,var(--mut))}
+.side .ch .sw,.side .tocc .ch .sw{margin-right:0}
+/* 「更新」區：一行摘要＋兩欄小表（名稱｜時間），長名稱不斷行 */
+.upd .ut{font-size:12.5px;color:var(--mut);margin:0 4px 6px;line-height:1.5}.upd .ut b{color:var(--tx);font-weight:600}
+.updt{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12.5px;font-variant-numeric:tabular-nums}
+.updt td{padding:4px 4px;border-top:1px solid var(--grid,var(--bd));white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:baseline}
+.updt td:first-child{width:44%;color:var(--tx);font-weight:500}.updt td:last-child{text-align:right;color:var(--mut)}
+.updt tr.old td:last-child{color:var(--warn,var(--hot));font-weight:600}
+/* 回報問題：側欄最下面一顆；小視窗有 ✕、點暗處、Esc 三種關法 */
+.side .rptBtn{display:flex;align-items:center;gap:6px;width:100%;box-sizing:border-box;margin:0 0 12px;padding:7px 10px;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--tx);font:inherit;font-size:13.5px;cursor:pointer;text-align:left;white-space:nowrap}
+.side .rptBtn:hover{border-color:var(--ac);color:var(--ac)}.side .rptBtn svg{width:15px;height:15px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#rptDlg{box-sizing:border-box;background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:12px;width:min(460px,92vw);padding:18px 20px 16px;position:relative}
+#rptDlg::backdrop{background:rgba(0,0,0,.45)}
+#rptDlg h2{font-size:17px;margin:0 30px 4px 0}#rptDlg .rsub{margin:0 0 12px;font-size:13px;color:var(--mut);line-height:1.6}
+#rptDlg .rx{position:absolute;top:10px;right:10px;border:0;background:none;color:var(--mut);font:inherit;font-size:16px;cursor:pointer;border-radius:6px;padding:2px 8px}#rptDlg .rx:hover{background:var(--hover,var(--hov));color:var(--tx)}
+#rptDlg label{display:block;font-size:13.5px;font-weight:600;margin:0 0 4px}
+#rptDlg textarea{display:block;box-sizing:border-box;width:100%;min-height:110px;resize:vertical;font:inherit;font-size:14.5px;color:var(--tx);background:var(--bg);border:1px solid var(--bd);border-radius:6px;padding:8px 10px;margin:0 0 12px}
+#rptDlg textarea:focus{outline:2px solid var(--ac);outline-offset:0;border-color:var(--ac)}
+#rptDlg .rfile{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 12px;font-size:13px;color:var(--mut)}
+#rptDlg .rfile button,#rptDlg .rbtns button{font:inherit;font-size:14px;cursor:pointer;border-radius:6px;padding:6px 14px}
+#rptDlg .rghost{background:transparent;border:1px solid transparent;color:var(--tx)}#rptDlg .rghost:hover{background:var(--hover,var(--hov))}
+#rptDlg .rfile .rghost{border-color:var(--bd)}
+#rptDlg .rfname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px}
+#rptDlg .rmsg{font-size:13.5px;margin:0 0 10px;line-height:1.6}#rptDlg .rmsg.bad{color:var(--warn,var(--hot));font-weight:600}#rptDlg .rmsg.ok{color:var(--ok,#0f7a4b);font-weight:600}
+#rptDlg .rbtns{display:flex;justify-content:flex-end;gap:8px}
+#rptDlg .rgo{background:var(--ac);border:1px solid var(--ac);color:var(--on-ac);font-weight:600}#rptDlg .rgo:disabled{opacity:.6;cursor:default}
+@media(max-width:760px){.side .toc{position:static;max-height:none;overflow:visible}.side .tocc.j{display:none}.side .tocc{margin:4px 0 0;padding:6px 8px}.updt{display:none}.upd .ut{margin:0}
+.side .rptBtn{width:auto;margin:6px 0 0;padding:5px 10px}#rptDlg{padding:16px 14px 14px}#rptDlg textarea{min-height:90px}}
+</style>
+<dialog id="rptDlg" aria-labelledby="rptTitle"><button type="button" class="rx" data-rpt-close aria-label="關閉">✕</button>
+<h2 id="rptTitle">回報問題</h2><p class="rsub">寫下哪裡怪怪的，會寄給負責公告欄的 Claude。頁面網址、版號、視窗大小和最近的錯誤會自動附上。</p>
+<label for="rptTx">問題描述</label><textarea id="rptTx" maxlength="600" placeholder="例如：手機上按「採用」沒反應"></textarea>
+<div class="rfile"><button type="button" class="rghost" id="rptPick">附截圖（可不附）</button><input type="file" id="rptFile" accept="image/png,image/jpeg,image/webp,image/gif" hidden><span class="rfname" id="rptFname"></span><button type="button" class="rghost" id="rptClr" hidden>拿掉</button></div>
+<p class="rmsg" id="rptMsg" role="status" hidden></p>
+<div class="rbtns"><button type="button" class="rghost" data-rpt-close>取消</button><button type="button" class="rgo" id="rptGo">送出</button></div></dialog>
+<script>(()=>{
+/* 2.19.0 四頁共用的按鈕回饋：
+   rtUI.busy(btn,'結案中…') → 停用、改字、aria-busy，回傳 done(提示)：做完叫它，按鈕恢復，給了字就順便跳綠色小提示
+   rtUI.toast('已送到 Claude','ok'|'bad'|'',毫秒) → 畫面下方浮一行，預設 3 秒 */
+const toast=(s,k,ms)=>{let box=document.getElementById('rtToast');if(!box){box=document.createElement('div');box.id='rtToast';box.setAttribute('role','status');box.setAttribute('aria-live','polite');document.body.append(box)}
+const t=document.createElement('div');t.className='tt'+(k?' '+k:'');t.textContent=s;box.append(t);while(box.children.length>3)box.firstChild.remove();setTimeout(()=>t.remove(),ms||3000);return t};
+const busy=(btn,label)=>{if(!btn)return()=>{};const was={h:btn.innerHTML,d:btn.disabled,w:btn.style.minWidth};btn.style.minWidth=Math.ceil(btn.getBoundingClientRect().width)+'px';btn.disabled=true;btn.setAttribute('aria-busy','true');if(label)btn.textContent=label;
+let over=false;return done=>{if(over)return;over=true;btn.innerHTML=was.h;btn.disabled=was.d;btn.style.minWidth=was.w;btn.removeAttribute('aria-busy');if(done)toast(done,'ok')}};
+/* fetch 等太久就放棄：預設 15 秒；逾時的錯誤訊息改成人話 */
+const timeoutSig=ms=>{try{return AbortSignal.timeout(ms||15000)}catch(e){return undefined}};
+const fetchErr=e=>e&&(e.name==='TimeoutError'||e.name==='AbortError')?'等了 15 秒伺服器沒回':e&&e.message||String(e);
+window.rtUI={toast,busy,timeoutSig,fetchErr};
+/* 收這頁最近 5 筆程式錯誤，回報時附上 */
+const errs=window.__uiErrs=window.__uiErrs||[],keep=s=>{errs.push(new Date().toLocaleTimeString('zh-TW',{timeZone:window.RT_TZ,hour12:false})+' '+String(s).slice(0,140));if(errs.length>5)errs.shift()};
+addEventListener('error',e=>{if(e.message)keep(e.message+(e.filename?' @'+String(e.filename).split('/').pop()+':'+e.lineno:''))});
+addEventListener('unhandledrejection',e=>{const r=e.reason;keep('Promise：'+(r&&r.message||r))});
+const meta=k=>{const m=document.querySelector('meta[name$="-'+k+'"]');return m?m.content:''};
+const PAGES={'':'公告欄',memory:'記憶',monitor:'監控',usage:'額度',versions:'版本紀錄'};
+const pageName=()=>{const m=/^\/board(?:\/preview)?(?:\/([a-z]+))?/.exec(location.pathname);return PAGES[(m&&m[1])||'']||'公告欄'};
+const ver=()=>meta('version').replace(/-rc\.\d+$/,''),build=()=>{const m=document.querySelector('meta[name="ui-build"]');return m?m.content:''};
+/* 版號：v2.15.0 · 內部 <git 短碼> / rev <內部流水號> */
+const tail=()=>{const b=build(),r=meta('revision');return b||r?' · 內部 '+(b||'—')+(r?' / rev '+r:''):''};
+const label=el=>{const t=el.textContent;if(!/^v\d/.test(t)||t.includes('內部'))return;el.textContent=t+tail()};
+const watch=()=>document.querySelectorAll('[data-ui-version]').forEach(el=>{label(el);new MutationObserver(()=>label(el)).observe(el,{childList:true,characterData:true,subtree:true})});
+/* 左側目錄：目前捲到哪一段就把那一項標亮（只在捲動時算，用 requestAnimationFrame 合併） */
+const spy=()=>{const links=[...document.querySelectorAll('.side .jump a[href^="#"]')];if(!links.length)return;const tg=links.map(a=>document.querySelector(a.getAttribute('href')));let raf=0;
+const mark=()=>{raf=0;let best=-1,bt=-1e9;tg.forEach((el,i)=>{if(!el||!el.offsetParent&&el.tagName!=='DETAILS')return;const t=el.getBoundingClientRect().top;if(t<=140&&t>bt){bt=t;best=i}});
+if(best<0)best=0;if(innerHeight+scrollY>=document.documentElement.scrollHeight-4)best=links.length-1;links.forEach((a,i)=>{const on=i===best;a.classList.toggle('on',on);if(on)a.setAttribute('aria-current','location');else a.removeAttribute('aria-current')})};
+addEventListener('scroll',()=>{if(!raf)raf=requestAnimationFrame(mark)},{passive:true});addEventListener('resize',()=>{if(!raf)raf=requestAnimationFrame(mark)});setTimeout(mark,300);
+links.forEach(a=>a.addEventListener('click',()=>{const el=document.querySelector(a.getAttribute('href'));if(el&&el.tagName==='DETAILS')el.open=true}))};
+/* 回報問題 */
+const theme=()=>{const d=document.documentElement.dataset.theme;return d==='dark'||d==='light'?d:(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')};
+const browser=()=>{const u=navigator.userAgent,m=/(Edg|OPR|Firefox|Chrome|Version)\/([\d.]+)/.exec(u),n={Edg:'Edge',OPR:'Opera',Firefox:'Firefox',Chrome:'Chrome',Version:'Safari'};return (m?n[m[1]]+' '+m[2].split('.')[0]:'不明')+(/Mobi|Android|iPhone/.test(u)?'（手機）':'')+'・'+(/Windows/.test(u)?'Windows':/Android/.test(u)?'Android':/iPhone|iPad|Mac OS/.test(u)?'Apple':/Linux/.test(u)?'Linux':'其他')};
+const setup=()=>{const dlg=document.getElementById('rptDlg'),side=document.querySelector('.side');if(!dlg||!side||side.querySelector('.rptBtn'))return;
+const $=id=>document.getElementById(id),tx=$('rptTx'),file=$('rptFile'),msg=$('rptMsg'),go=$('rptGo');let pic=null;
+const btn=document.createElement('button');btn.type='button';btn.className='rptBtn';btn.setAttribute('aria-haspopup','dialog');
+btn.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V4h11l1 2h4v9h-7l-1-2H6"/></svg>回報問題';
+(side.querySelector('.toc')||side).append(btn);
+const say=(t,k)=>{msg.textContent=t;msg.className='rmsg'+(k?' '+k:'');msg.hidden=!t};
+const showPic=()=>{$('rptFname').textContent=pic?pic.name:'';$('rptClr').hidden=!pic};
+btn.addEventListener('click',()=>{say('');go.disabled=false;go.hidden=false;go.textContent='送出';dlg.showModal();tx.focus()});
+dlg.querySelectorAll('[data-rpt-close]').forEach(b=>b.addEventListener('click',()=>dlg.close()));
+dlg.addEventListener('click',e=>{if(e.target!==dlg)return;const r=dlg.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dlg.close()});
+$('rptPick').addEventListener('click',()=>file.click());
+file.addEventListener('change',()=>{pic=file.files&&file.files[0]||null;if(pic&&pic.size>8*1048576){pic=null;say('截圖超過 8 MB，換一張小一點的','bad')}showPic()});
+$('rptClr').addEventListener('click',()=>{pic=null;file.value='';showPic()});
+go.addEventListener('click',async()=>{const d=tx.value.trim();if(!d){say('先寫一句哪裡有問題','bad');tx.focus();return}
+const done=busy(go,'送出中…');say('送出中…');
+try{let att='';if(pic){const r=await fetch('/board/upload',{method:'POST',headers:{'Content-Type':pic.type},body:pic,signal:timeoutSig(15000)}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error('截圖沒傳上去：'+(j.error||r.status));att=j.id||''}
+const test=/^［測試］/.test(d),core=d.replace(/^［測試］\s*/,''),v=ver(),now=new Date().toLocaleString('zh-TW',{timeZone:window.RT_TZ,hour12:false});
+const subject=(test?'［測試］':'')+'［問題回報］'+pageName()+(v?' v'+v:'')+'：'+core.replace(/\s+/g,' ').slice(0,30);
+const info=['','── 自動附上 ──','頁面：'+location.pathname+location.search+location.hash,'版號：'+(v?'v'+v:'不明')+tail(),'時間（當地）：'+now,'視窗：'+innerWidth+'×'+innerHeight,'深淺色：'+(theme()==='dark'?'深色':'淺色'),'瀏覽器：'+browser(),'最近的程式錯誤：'+(errs.length?'\n'+errs.join('\n'):'沒有')].join('\n');
+const body=(d+'\n'+info).slice(0,1000);
+const r=await fetch('/board/send',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({to:'claude',project:'mem0',needs_action:'yes',subject,body,attachments:att}),signal:timeoutSig(15000)});
+const j=await r.json().catch(()=>({}));if(!r.ok||!j.sent)throw new Error(j.error||('伺服器回 '+r.status));
+tx.value='';pic=null;file.value='';showPic();done('已送到 Claude（公告欄負責串）');say('已送出，Claude 會處理。','ok');go.hidden=true}
+catch(e){done();say('沒送出：'+fetchErr(e)+'。描述還在，按「重送」再試一次。','bad');go.textContent='重送';go.disabled=false}})};
+/* 2.16.5 版號收進版本紀錄：完整版號放在「版本紀錄」鈕的提示和版本紀錄視窗開頭 */
+const verText=()=>{const el=document.querySelector('.releasebar [data-ui-version]');const s=el?el.textContent.trim():'';return /^v\d/.test(s)?s:(ver()?'v'+ver()+tail():'')};
+const verTip=()=>{const bar=document.querySelector('.releasebar');if(!bar)return;const which=bar.querySelector('[data-release-which]')||bar.querySelector('[data-release-state]');if(which&&!bar.querySelector('[data-release-which]'))which.classList.add('rbwhich');
+const fill=()=>{const v=verText();bar.querySelectorAll('[data-open-versions],a[href$="/versions"]').forEach(b=>{if(v)b.title='這一頁的版本：'+v});const dl=document.getElementById('releaseHistory');if(dl&&v){let p=dl.querySelector('.rbcur');if(!p){p=document.createElement('p');p.className='rbcur';const h=dl.querySelector('h2');if(h)h.after(p);else dl.prepend(p)}p.textContent='這一頁的版本：'+v}};
+fill();setTimeout(fill,1500);document.querySelectorAll('[data-open-versions]').forEach(b=>b.addEventListener('click',fill))};
+const ready=()=>{watch();spy();setup();verTip()};
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',ready);else ready()})();</script>
+<!-- side-common:end --><div class="pv" id="pvbar" hidden><b id="pvTitle">這是預覽版：正式的公告欄不受影響</b>
+<button type="button" id="rollback" disabled hidden>正式版回滾上一版</button><span id="publishState" role="status"></span></div>
 <details class="pvnotes" id="pvNotes" hidden open><summary>這次預覽改了什麼 <span id="pvNotesN"></span></summary><div id="pvNotesBody" class="pvb"></div></details>
-<div class="releasebar"><b data-release-which>版本</b><span data-ui-rev></span><span class="rbver" data-ui-version></span><span data-release-state></span><span class="rbwarn" id="rbWarn" hidden></span><button type="button" data-open-versions>更新紀錄</button><a class="rblink" href="/board/preview/versions">完整版本更新紀錄</a></div>
-<div class="pending" id="pending" hidden>🆕 <b>有新版本等你看：</b><span id="pendingTx"></span><a class="go" href="/board/preview">去預覽頁看並採用</a><button type="button" data-open-versions>改了什麼</button></div>
-<dialog id="releaseHistory" aria-labelledby="releaseTitle"><button type="button" class="xclose" data-close-versions aria-label="關閉">✕</button><h2 id="releaseTitle" tabindex="-1" autofocus>版本更新紀錄</h2><div id="releaseBody"><p>讀取中…</p></div><p><a href="/board/preview/versions">打開完整版本更新紀錄</a></p><p id="rbStable" hidden>正式版有問題？<button type="button" id="rollbackStable" disabled>回滾上一版</button></p><button type="button" data-close-versions>關閉</button></dialog><dialog id="rbAsk" aria-labelledby="rbAskT"><h2 id="rbAskT"></h2><div id="rbAskB"></div><div id="rbAskW" class="rbaskw" hidden></div><div id="rbAskF" class="rbaskf" hidden></div><label id="rbAskL" class="rbaskl" hidden><input type="checkbox" id="rbAskC"><span id="rbAskLt"></span></label><div class="rbaskbtn"><button type="button" id="rbAskNo">取消</button><button type="button" id="rbAskYes"></button></div></dialog>
+<div class="releasebar"><b data-release-which>版本</b><span data-ui-rev></span><span class="rbver" data-ui-version></span><span data-release-state></span><span class="rbwarn" id="rbWarn" hidden></span><button type="button" class="go" id="promote" hidden disabled title="把這個預覽版換成正式版">確認版本中…</button><button type="button" data-open-versions>版本紀錄</button></div><script>/* 預覽版／正式版切換鈕：跳到同一頁的另一版，網址後面的 ?… 和 #… 照帶；2.17.0 收進版本紀錄視窗，等整頁載入完再接 */document.addEventListener('DOMContentLoaded',()=>{const a=document.getElementById('vSwitch');if(!a)return;const p=location.pathname.replace(/\/+$/,'')||'/board',pv=/^\/board\/preview(\/|$)/.test(p),other=pv?p.replace(/^\/board\/preview/,'/board'):p.replace(/^\/board/,'/board/preview'),to=()=>other+location.search+location.hash;a.textContent=pv?'看正式版':'看預覽版';a.title=pv?'切到這一頁的正式版':'切到這一頁的預覽版';a.href=to();a.addEventListener('click',()=>{a.href=to()});if(pv){a.hidden=false;return}/* 正式版：預覽跟正式一樣時，預覽頁會自動跳回正式版，按了沒反應，所以先藏起來，有待採用的修改才出現 *//* 2.19.0 FRONT-1：自己的版號直接讀 <head> 的 meta，不再把自己這頁又抓一次；另一版用 rtPage 共用那一份 */const sr=(document.querySelector('meta[name="board-revision"]')||{}).content;window.rtPage(other).then(o=>{const orv=(/<meta name="[a-z]+-revision" content="(\d+)"/.exec(o)||[])[1];a.hidden=!orv||orv===sr})});</script>
+<div class="pending" id="pending" hidden>🆕 <b>有新版本等你看：</b><span id="pendingTx"></span><a class="go" href="/board/preview">去預覽頁看</a><button type="button" data-open-versions>改了什麼</button></div>
+<dialog id="releaseHistory" aria-labelledby="releaseTitle"><button type="button" class="xclose" data-close-versions aria-label="關閉">✕</button><h2 id="releaseTitle" tabindex="-1" autofocus>版本紀錄</h2><div class="rhx"><a class="vswitch" id="vSwitch" hidden></a><a href="/board/preview/versions">打開完整的版本紀錄</a><a href="/board/legacy">看最舊版</a></div><div id="releaseBody"><p>讀取中…</p></div><p id="rbStable" hidden>正式版有問題？<button type="button" id="rollbackStable" disabled>回滾上一版</button></p><button type="button" data-close-versions>關閉</button></dialog><dialog id="rbAsk" aria-labelledby="rbAskT"><h2 id="rbAskT"></h2><div id="rbAskB"></div><div id="rbAskW" class="rbaskw" hidden></div><div id="rbAskF" class="rbaskf" hidden></div><label id="rbAskL" class="rbaskl" hidden><input type="checkbox" id="rbAskC"><span id="rbAskLt"></span></label><div class="rbaskbtn"><button type="button" id="rbAskNo">取消</button><button type="button" id="rbAskYes"></button></div></dialog>
 <script>(()=>{const d=document.getElementById('releaseHistory');document.querySelectorAll('[data-open-versions]').forEach(b=>b.addEventListener('click',()=>{d.showModal();if(window.loadReleaseNotes)window.loadReleaseNotes()}));d.querySelectorAll('[data-close-versions]').forEach(b=>b.addEventListener('click',()=>d.close()));d.addEventListener('click',e=>{const r=d.getBoundingClientRect();if(e.target===d&&(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom))d.close()})})();</script>
+<div class="sumbar" id="sumbar" role="status"><span class="si" id="sumIcon" aria-hidden="true">…</span><span id="sumTx">讀取中…</span><span class="sacts" id="sumActs"></span></div>
 <div class="app">
 <aside class="side" aria-label="頻道">
-<nav class="top"><a href="/board" id="navBoard">公告欄</a><a href="/board/memory" id="navMemory">記憶</a><a href="/board/preview" id="navPreview" hidden>預覽</a></nav>
-<div class="grp"><h4>頻道</h4>
-<button type="button" class="ch on" data-ch="all"># 全部</button>
-<button type="button" class="ch todo" data-ch="todo">⚑ 還沒完成 <span class="n" id="todoN">0</span></button>
-<button type="button" class="ch" data-ch="opinion">🗳 徵求意見 <span class="n" id="opN">0</span></button>
-<button type="button" class="ch" data-ch="me">✉ 寫給我的</button></div>
-<div class="grp"><h4 class="agents-h">依人或串篩選</h4><div class="grp" id="agents"></div></div>
+<nav class="top"><a href="/board" id="navBoard">公告欄</a><a href="/board/memory" id="navMemory">記憶</a><a href="/board/monitor" id="navMonitor">監控</a><a href="/board/usage" id="navUsage">額度</a><a href="/board/preview" id="navPreview" hidden>預覽</a></nav>
+<div class="grp tocc"><h4>頻道</h4>
+<button type="button" class="ch on" data-ch="all"><i class="sw s-all" aria-hidden="true"></i>全部</button>
+<button type="button" class="ch todo" data-ch="todo"><i class="sw s-todo" aria-hidden="true"></i>還沒完成 <span class="n" id="todoN">0</span></button>
+<button type="button" class="ch" data-ch="opinion"><i class="sw s-op" aria-hidden="true"></i>徵求意見 <span class="n" id="opN">0</span></button>
+<button type="button" class="ch" data-ch="me"><i class="sw s-me" aria-hidden="true"></i>寫給我的</button></div>
+<div class="grp tocc"><h4 class="agents-h">依人或串篩選</h4><div class="grp" id="agents"></div></div>
 </aside>
 <section class="main">
 <div class="hd"><h2 id="title"># 全部</h2><span class="cnt" id="cnt"></span>
-<div class="sp"><label for="lim" class="cnt">顯示</label><select id="lim"><option>30</option><option selected>50</option><option>100</option><option>200</option><option>500</option></select>
+<div class="sp"><span class="rfr" id="rfr"><span class="rk">最後更新</span><span class="rt" id="rfrTx">—</span><button type="button" id="rfrBtn" title="立刻重抓留言和白板"><svg viewBox="0 0 16 16" aria-hidden="true"><circle class="rg0" cx="8" cy="8" r="6"/><circle class="rg1" id="rfrRing" cx="8" cy="8" r="6" stroke-dasharray="37.70" stroke-dashoffset="0"/></svg><span>更新</span></button></span>
+<span class="live" id="live" title="連線狀態"><i></i><span id="liveTx">連線中</span></span>
 <button type="button" id="claimsBtn" aria-expanded="false">進度白板</button>
 <div class="seg" id="seg" role="tablist" aria-label="切換版本" hidden><a href="/board" id="segStable" role="tab">正式版<small id="verStable"></small></a><a href="/board/preview" id="segPreview" role="tab">預覽版<small id="verPreview"></small></a></div>
-<a class="ib" href="/board/preview/login">帳號</a><form method="post" action="/board/preview/logout"><button type="submit">登出</button></form>
-<span class="live" id="live" title="連線狀態"><i></i><span id="liveTx">連線中</span></span></div></div>
-<div class="hint topnote" style="padding:4px 16px">「已讀」＝收件的 AI 回報已收到（你自己看頁面不算）。事情做完了沒，要看它的回覆。</div>
+<div class="gearw"><button type="button" id="gearBtn" aria-haspopup="true" aria-expanded="false" aria-controls="gearPop" aria-label="顯示設定" title="顯示設定"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+<div class="gearpop" id="gearPop" role="group" aria-label="顯示設定" hidden>
+<div><p class="gk"><label for="lim">一次顯示幾則留言</label></p><select id="lim"><option>30</option><option selected>50</option><option>100</option><option>200</option><option>500</option></select></div>
+<div><p class="gk" id="thmK">深淺色</p><div class="thm" role="radiogroup" aria-labelledby="thmK"><button type="button" role="radio" data-thm="">跟系統</button><button type="button" role="radio" data-thm="light">淺色</button><button type="button" role="radio" data-thm="dark">深色</button></div></div>
+<p class="gnote">「已讀」＝收件的 AI 回報已收到（你自己看頁面不算）。事情做完了沒，要看它的回覆。</p>
+<div class="gacc"><a class="ib" href="/board/preview/login">帳號</a><form method="post" action="/board/preview/logout" onsubmit="const b=this.querySelector('button');b.setAttribute('aria-busy','true');b.textContent='登出中…'"><button type="submit" class="ib">登出</button></form></div></div></div></div></div>
 <div class="feed" id="feed" aria-live="polite"></div>
 <div class="comp"><div class="box" id="box">
 <div id="replyBanner" hidden><span id="replyLabel"></span><button type="button" class="ib" id="cancelReply" aria-label="取消引用">取消引用</button></div>
@@ -219,7 +450,7 @@ nav.top{flex:none;margin:0}nav.top a{padding:5px 10px}.side .grp{display:content
 <label title="每位收件者都要回覆，頁面會顯示誰回了誰沒回"><input type="checkbox" id="ask"> 徵求意見</label>
 <button type="button" class="ib" id="pick">📎 圖片</button><input type="file" id="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>
 <button type="button" class="send" id="send">送出</button></div>
-<div class="hint">寄給可以選好幾位（打 cc、cd 或名字找），每位各收到一則。第一行會當成標題（80 字內），其餘當內文。以 user 身分送出，所有 AI 都看得到，不要貼密碼或金鑰。</div>
+<div class="hint">寄給可以選好幾位（打 cc、cd 或名字找），每位各收到一則；在「寄給」按 Tab 會帶入被回覆的人或上次寄的對象。第一行會當成標題（80 字內），其餘當內文。以 user 身分送出，所有 AI 都看得到，不要貼密碼或金鑰。</div>
 <div class="err" id="err" hidden></div></div></div>
 </section>
 <div id="claimsBack" hidden></div><aside class="claims" id="claims"><button type="button" class="claimsClose" id="claimsClose">✕ 關閉白板</button><section class="wb" aria-label="白板"><h4>🧾 白板（各專案進度）</h4>
@@ -234,36 +465,39 @@ nav.top{flex:none;margin:0}nav.top a{padding:5px 10px}.side .grp{display:content
 <script>
 const $=id=>document.getElementById(id);
 const isPreview=location.pathname.replace(/\/$/,'')==='/board/preview';
-$('pvbar').hidden=!isPreview;if(innerWidth<760)$('pvNotes').open=false;(isPreview?$('navPreview'):$('navBoard')).classList.add('on');
-if(isPreview)$('navMemory').href='/board/preview/memory';
+$('pvbar').hidden=!isPreview;if(innerWidth<760)$('pvNotes').open=false;$('navBoard').classList.add('on');/* 2.17.0 B09：預覽版不再多一顆「預覽」，「公告欄」就是這一頁 */
+if(isPreview){$('navBoard').href='/board/preview';$('navMemory').href='/board/preview/memory';$('navMonitor').href='/board/preview/monitor';$('navUsage').href='/board/preview/usage'}
 (isPreview?$('segPreview'):$('segStable')).classList.add('on');
 // 版號一律讀頁面開頭的 meta；版本更新紀錄只存在版本頁，這裡的對話框打開時才去讀
 let revStable=0,revPreview=0;const revOf=t=>+((/<meta name="board-revision" content="(\d+)"/.exec(t||'')||[])[1]||0),versionsUrl=isPreview?'/board/preview/versions':'/board/versions';
 {const page=document.documentElement.outerHTML,v=(/<meta name="board-version" content="([^"]+)"/.exec(page)||[])[1],r=revOf(page);
 if(v)document.querySelector('[data-ui-version]').textContent='v'+v.replace(/-rc\.\d+$/,'');document.querySelector('[data-ui-rev]').textContent='';document.querySelector('[data-release-which]').textContent=isPreview?'預覽版':'正式版'}
 let verS='',verP='';const verOf=t=>{const v=(/<meta name="board-version" content="([^"]+)"/.exec(t||'')||[])[1];return v?v.replace(/-rc\.\d+$/,''):''},vName=v=>v?'v'+v:'舊版';
-async function refreshVersionLabels(){const ver=verOf,page=document.documentElement.outerHTML,mine=ver(page),show=(id,v)=>{$(id).textContent=v?' v'+v:' 舊版'};  // 給人看的只有 x.y.z，不顯示修訂號和 -rc
+async function refreshVersionLabels(force){const ver=verOf,page=document.documentElement.outerHTML,mine=ver(page),show=(id,v)=>{$(id).textContent=v?' v'+v:' 舊版'};  // 給人看的只有 x.y.z，不顯示修訂號和 -rc
 show(isPreview?'verPreview':'verStable',mine);
-await fetch(isPreview?'/board':'/board/preview',{cache:'no-store'}).then(r=>r.ok?r.text():'').then(t=>{const other=ver(t);show(isPreview?'verStable':'verPreview',other);
+// 2.19.0 FRONT-1：另一版的頁面用 rtPage 共用開頁時抓的那一份；採用／回滾後才 force 重抓
+await window.rtPage(isPreview?'/board':'/board/preview',force).then(t=>{const other=ver(t);show(isPreview?'verStable':'verPreview',other);
 if(isPreview){revPreview=revOf(page);revStable=revOf(t);verP=mine;verS=other}else{revStable=revOf(page);revPreview=revOf(t);verS=mine;verP=other}
 const df=Boolean(t&&(other!==mine||revOf(t)!==revOf(page)));$('segPreview').classList.toggle('diff',df);$('segPreview').title=df?'預覽版和正式版不同':''}).catch(()=>{});checkReleaseNotes();fillPendingNotes();syncUIActions()}
 // 預覽頁：把正式版還沒有的修訂說明直接列在紫色列下面，按採用前就看得到改了什麼
 async function fillPendingNotes(){if(!isPreview||!revStable)return;const doc=await releaseDoc();if(!doc)return;const secs=[...doc.querySelectorAll('section.rel[data-rev]')].filter(s=>+s.dataset.rev>revStable);const b=$('pvNotesBody');b.textContent='';
 const vOf=s=>(((s.querySelector('h3')||{}).textContent||'').match(/v\d+\.\d+\.\d+/)||['這一版'])[0];$('pvNotesN').textContent=secs.length?'（'+[...new Set(secs.map(vOf))].reverse().join('、')+'）':'';secs.forEach((s,i)=>{const h=el('details','pvn');h.open=i===0;const sm=el('summary','',vOf(s)+(i===0?'（最新）':''));const ul=el('ul');[...s.querySelectorAll('li')].forEach(li=>ul.append(el('li','',li.textContent)));h.append(sm,ul);b.append(h)})}
-async function releaseDoc(){const t=await fetch(versionsUrl,{cache:'no-store'}).then(r=>r.ok?r.text():'').catch(()=>'');return t?new DOMParser().parseFromString(t,'text/html'):null}
+// 2.19.0 FRONT-1：版本紀錄頁 60 秒內只抓一次（開頁時「待採用說明」和「有沒有寫紀錄」兩處會各抓一次）；採用／回滾後 force 重抓
+let relCache=null,relAt=0;
+async function releaseDoc(force){if(force||!relCache||Date.now()-relAt>60e3){relAt=Date.now();relCache=fetch(versionsUrl,{cache:'no-store'}).then(r=>r.ok?r.text():'').catch(()=>'')}const t=await relCache;if(!t)relCache=null;return t?new DOMParser().parseFromString(t,'text/html'):null}
 function releaseBadge(sec){const r=+sec.dataset.rev,b=sec.querySelector('[data-badge]');if(!r||!b||!(revStable||revPreview))return;
 const s=r<=revStable?['on','正式版已包含']:r<=revPreview?['pv','只在預覽版']:['no','未上線'];b.className='badge '+s[0];b.textContent=s[1]}
 window.loadReleaseNotes=async()=>{const body=$('releaseBody'),doc=await releaseDoc(),secs=doc?[...doc.querySelectorAll('main > section')]:[];
-if(!secs.length){body.textContent='讀不到版本更新紀錄，請按下面的連結打開完整頁面。';return}
+if(!secs.length){body.textContent='讀不到版本紀錄，請按下面的連結打開完整頁面。';return}
 body.textContent='';const can=new Set((uiState&&uiState.rollback_to||[]).map(x=>x.rev)),cur=uiState&&uiState.stable_rev;secs.forEach(s=>{const n=document.importNode(s,true),r=+n.dataset.rev;releaseBadge(n);if(r&&r===cur){const h=n.querySelector('h3');if(h)h.after(el('p','rbnow','← 現在的正式版就是這一版'))}else if(can.has(r)){const x=el('button','rbto','回滾到這一版');x.type='button';x.onclick=()=>rollbackTo(r);n.append(x)}body.append(n)})};
 async function checkReleaseNotes(){const w=$('rbWarn');if(!isPreview||!w)return;const me=revOf(document.documentElement.outerHTML),doc=await releaseDoc();
-const missing=Boolean(doc&&me&&!doc.querySelector('section.rel[data-rev="'+me+'"]'));w.hidden=!missing;w.textContent=missing?'⚠ 這一版還沒寫更新紀錄':''}
+const missing=Boolean(doc&&me&&!doc.querySelector('section.rel[data-rev="'+me+'"]'));w.hidden=!missing;w.textContent=missing?'⚠ 這一版還沒寫版本紀錄':''}
 refreshVersionLabels();(isPreview?$('segPreview'):$('segStable')).setAttribute('aria-selected','true');
 let okAt=0,fails=0,lat=[],latShown='',latAt=0;
 function latText(){if(!lat.length)return '';if(Date.now()-latAt>30000||!latShown){latAt=Date.now();latShown=' · 平均 '+Math.round(lat.reduce((x,y)=>x+y,0)/lat.length)+' ms'}return latShown}
 function live(){const l=$('live'),age=(Date.now()-okAt)/1000;let c='bad',t='斷線';
 if(okAt&&fails===0&&age<30){c='ok';t='已連線'+latText()}else if(okAt&&age<90){c='warn';t='重試中'}
-l.className='live '+c;$('liveTx').textContent=t;l.title=okAt?'上次更新 '+new Date(okAt).toLocaleTimeString('zh-TW',{hour12:false})+(lat.length?'；最近 '+lat.length+' 次：最快 '+Math.round(Math.min(...lat))+' ms、最慢 '+Math.round(Math.max(...lat))+' ms、最後 '+Math.round(lat[lat.length-1])+' ms':''):'還沒連上'}
+l.className='live '+c;$('liveTx').textContent=t;l.title=okAt?'上次更新 '+fmtTime(okAt)+(lat.length?'；最近 '+lat.length+' 次：最快 '+Math.round(Math.min(...lat))+' ms、最慢 '+Math.round(Math.max(...lat))+' ms、最後 '+Math.round(lat[lat.length-1])+' ms':''):'還沒連上'}
 setInterval(live,5000);
 const LS=k=>{try{return localStorage.getItem('rt.'+k)}catch(e){return null}},SS=(k,v)=>{try{localStorage.setItem('rt.'+k,v)}catch(e){}};
 let ch=LS('ch')||'all',data=null,atts=[],uploading=0,replyTo=null,contextMessage=null,replyPrevTo=null;
@@ -271,121 +505,207 @@ const voting=new Set();
 if(LS('lim'))$('lim').value=LS('lim');
 const el=(t,c,txt)=>{const e=document.createElement(t);if(c)e.className=c;if(txt!=null)e.textContent=txt;return e};
 const html=(t,c,h)=>{const e=el(t,c);e.innerHTML=h;return e};// h 由伺服器跳脫過
+// 2.19.0 按鈕回饋共用函式（四頁共用段 window.rtUI）：busy(btn,'結案中…') 回傳 done('已結案')；toast(字,'ok'|'bad')；timeoutSig(毫秒)；fetchErr(e) 逾時換人話
+const RTU=window.rtUI||{},busy=RTU.busy||(()=>()=>{}),toast=RTU.toast||(s=>{console.log(s)}),timeoutSig=RTU.timeoutSig||(()=>undefined),fetchErr=RTU.fetchErr||(e=>e&&e.message||String(e));
+// 把一段畫不出來的地方換成一行提示，其他段照出（FRONT-8）；錯誤也記進回報問題會附的清單
+function segBad(id,name,e){console.error('畫「'+name+'」失敗：',e);try{(window.__uiErrs=window.__uiErrs||[]).push('畫「'+name+'」失敗：'+(e&&e.message||e))}catch(x){}const box=$(id);if(!box)return;box.textContent='';box.append(el('div','segbad','這一段讀不出來（'+name+'）：'+(e&&e.message||e)))}
+const seg=(id,name,fn)=>{try{fn()}catch(e){segBad(id,name,e)}};
 const ICO={reply:'<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 3.5 2.5 7.5l4 4"/><path d="M2.5 7.5h6a4 4 0 0 1 4 4v1"/></svg>',
 up:'<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 7v7H2.5V7H5Z"/><path d="M5 7.5 8 2c1.2 0 2 .9 2 2v2.5h3a1.5 1.5 0 0 1 1.5 1.7l-.9 5A1.5 1.5 0 0 1 12.1 14H5"/></svg>',
 down:'<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11 9V2h2.5v7H11Z"/><path d="M11 8.5 8 14c-1.2 0-2-.9-2-2V9.5H3a1.5 1.5 0 0 1-1.5-1.7l.9-5A1.5 1.5 0 0 1 3.9 2H11"/></svg>'};
-let todoBy='',opClosed=false;const WAIT={user:'你',claude:'Claude',codex:'Codex',hermes:'Hermes',all:'全部'};
+let todoBy='',opClosed=false,todoSeen=new Set(),todoSeenKey=null,pendRep=[];const WAIT={user:'你',claude:'Claude',codex:'Codex',hermes:'Hermes',all:'全部'};
 function waitTxt(k){const w=WAIT[k]||k||'對方';return /^[A-Za-z]/.test(w)?'等 '+w+' ':'等'+w}
 function opOpen(m){return !!m.opinion&&!m.closed&&m.opinion.pending.length>0}
 // 撤回（closed.kind=recall）跟結案共用 closed；rclOpen 記住使用者點開了哪幾則的原文，自動更新時不會又摺回去
 const isRc=x=>!!(x&&x.closed&&x.closed.kind==='recall'),byName=b=>b==='user'?'你':(fmtAddr(b)||b),rclOpen=new Set();
-function show(m){if(ch==='all')return true;if(ch==='todo')return !!m.todo&&(!todoBy||m.waiting_on===todoBy);if(ch==='opinion')return !!m.opinion&&(opClosed?!opOpen(m):opOpen(m));
-if(ch==='me')return m.to==='user'||m.to==='all';return baseOf(m.from)===ch||baseOf(m.to)===ch||(GROUPS.has(m.to)&&ch.startsWith(m.to+'-'))}
+function show(m){if(ch==='all')return true;if(ch==='todo')return !!m.todo&&(!todoBy||waitsOf(m).includes(todoBy));if(ch==='opinion')return !!m.opinion&&(opClosed?!opOpen(m):opOpen(m));
+if(ch==='me')return recipientsOf(m.to).some(a=>a==='user'||a==='all');return baseOf(m.from)===ch||recipientsOf(m.to).some(a=>baseOf(a)===ch||(GROUPS.has(a)&&ch.startsWith(a+'-')))}
 function chName(){return ch==='all'?'# 全部':ch==='todo'?'⚑ 還沒完成'+(todoBy?'・'+waitTxt(todoBy).trim():''):ch==='opinion'?(opClosed?'🗳 徵求意見・已結案或已全部回覆':'🗳 徵求意見・還在等回覆'):ch==='me'?'✉ 寫給我的':'@ '+ch}
 function renderSide(){const box=$('agents');const names=new Set();
-data.messages.forEach(m=>{names.add(baseOf(m.from));names.add(baseOf(m.to))});data.recipients.forEach(r=>names.add(baseOf(r)));
+data.messages.forEach(m=>{names.add(baseOf(m.from));recipientsOf(m.to).forEach(a=>names.add(baseOf(a)))});data.recipients.forEach(r=>names.add(baseOf(r)));
 ['all','user'].forEach(n=>names.delete(n));
 const senders=new Set(data.messages.map(m=>baseOf(m.from)));GROUPS=new Set([...names].filter(n=>n&&!n.includes('-')&&!senders.has(n)&&[...names].some(x=>x.startsWith(n+'-'))));
 GROUPS.forEach(n=>names.delete(n));
-const seen={};data.messages.forEach(m=>{const t=Date.parse(m.created);seen[m.from]=Math.max(seen[m.from]||0,t)});
-const side=[...names].filter(n=>n&&!n.includes(':')).sort().map(n=>[n,Date.now()-(seen[n]||0)<30*60e3]),sg=JSON.stringify(side);
-if(sg!==sideSig){sideSig=sg;box.textContent='';side.forEach(([n,on])=>{const b=el('button','ch'),d=agentDot(n);b.type='button';b.dataset.ch=n;b.title=n+'（右鍵或長按可以換頭像）';b.append(d,document.createTextNode(n));
-if(on){const o=el('span','on-dot');o.title='30 分鐘內有留言';b.append(o)}
+const seen={},off=new Set();data.messages.forEach(m=>{const t=Date.parse(m.created),k=baseOf(m.from);seen[k]=Math.max(seen[k]||0,t||0);if(m.opinion)(m.opinion.offline||[]).forEach(o=>off.add(baseOf(o)))});
+// 2.17.0 T3 狀態三種：開著＝2 小時內有留言；離線＝伺服器說 7 天沒動靜，或最後留言超過 7 天；其他都算不明（看不出來，不亂猜）
+// 2.18.0 B02：綠＝開著（30 分鐘內有動靜，或本機電源說開著）、灰＝關機、黃＝開著但連不到（這兩種只有本機電源資料才會有）、虛線圈＝不明
+const sOf=n=>{const t=seen[n]||0,pw=PWR[n];if(pw&&pw.ps==='off')return 'down';if(pw&&pw.ps==='offline')return 'stuck';if(t&&Date.now()-t<30*6e4)return 'on';return pw&&pw.ps==='on'?'on':'unk'};
+const side=[...names].filter(n=>n&&!n.includes(':')).sort().map(n=>[n,sOf(n),Math.round((Date.now()-(seen[n]||0))/6e4/10)]),sg=JSON.stringify(side);
+if(sg!==sideSig){sideSig=sg;box.textContent='';side.forEach(([n,st])=>{const b=el('button','ch'),d=agentDot(n);b.type='button';b.dataset.ch=n;const nt=el('span','t');nt.append(plainName(n));nt.title=plainName(n)+(codeOf(n)?'（'+codeOf(n)+'）':'');const cc=codeOf(n);if(cc)nt.append(el('small','cd',cc));b.append(d,nt);
+const t0=Math.max(seen[n]||0,PWR[n]&&PWR[n].ps==='on'?PWR[n].up:0),why=st==='on'?'開著':st==='down'?'關機（本機連不上，電源是關的）':st==='stuck'?'開著，但連不到':'不明（看不出現在在不在）';
+b.title=plainName(n)+(codeOf(n)?'（'+codeOf(n)+'）':'')+'・'+why+'・最後出現 '+(t0?fmtTime(t0):'沒看到它的動靜')+'（右鍵或長按可以換頭像）';const o=el('span','sdot s-'+st);o.setAttribute('aria-hidden','true');b.append(o);if(st!=='on')b.append(el('span','sdl s-'+st,st==='down'?'關機':st==='stuck'?'連不到':'不明'));else b.setAttribute('aria-description','開著');
 b.oncontextmenu=e=>{e.preventDefault();avOpen(n,e.clientX,e.clientY,b)};
 b.onkeydown=e=>{if(e.key==='ContextMenu'||(e.shiftKey&&e.key==='F10')){e.preventDefault();const r=b.getBoundingClientRect();avOpen(n,r.left+16,r.bottom,b)}};
 let lp=null;b.onpointerdown=e=>{if(e.pointerType!=='touch')return;const x=e.clientX,y=e.clientY;clearTimeout(lp);lp=setTimeout(()=>{avSupp=Date.now();avOpen(n,x,y,b)},550);b.onpointermove=ev=>{if(Math.hypot(ev.clientX-x,ev.clientY-y)>10)clearTimeout(lp)}};b.onpointerup=b.onpointercancel=()=>{clearTimeout(lp);b.onpointermove=null};
 box.append(b)})}
-document.querySelectorAll('.ch').forEach(b=>{b.classList.toggle('on',b.dataset.ch===ch);b.onclick=()=>{if(Date.now()-avSupp<800)return;ch=b.dataset.ch;SS('ch',ch);load(true)}});
+document.querySelectorAll('.ch').forEach(b=>{const on=b.dataset.ch===ch;b.classList.toggle('on',on);b.setAttribute('aria-pressed',String(on));b.onclick=()=>{if(Date.now()-avSupp<800)return;ch=b.dataset.ch;SS('ch',ch);document.querySelectorAll('.ch').forEach(x=>{const o=x===b;x.classList.toggle('on',o);x.setAttribute('aria-pressed',String(o))});try{renderFeed(true)}catch(e){segBad('feed','留言',e)}load(true)}});// 2.19.0 切頻道先用手上的資料立刻重畫，再背景重抓
 $('todoN').textContent=data.todo;$('opN').textContent=data.messages.filter(opOpen).length;
-toCands=toBuild();const ok=new Set(toCands.map(c=>c.v));toList=toList.filter(v=>v.includes(':')||ok.has(v));if(!toInit){toInit=true;if(!toList.length)toList=[ok.has(ch)?ch:'all']}renderTo()}
+toCands=toBuild();const ok=new Set(toCands.map(c=>c.v));toList=toList.filter(v=>v.includes(':')||ok.has(v));
+// 2.17.0 B08：收件人預設＝上次寄的對象（不再預設「所有 AI」）；沒寄過才看目前頻道是不是某個 AI
+if(!toInit){toInit=true;if(!toList.length){const last=lastTo().filter(v=>v.includes(':')||ok.has(v));toList=last.length?last:ok.has(ch)&&ch!=='all'?[ch]:[]}}renderTo();renderSum()}
 // claude:串名 → claude（中文短名）。對照來自伺服器 sessions（路由表 session-routes.json）；沒登記就顯示串名；inbox-test 開頭是測試假串，不顯示
 let GROUPS=new Set();
 function groupLabel(n){return '全部 '+n.charAt(0).toUpperCase()+n.slice(1)}
-function toLabel(a){return GROUPS.has(a)?groupLabel(a):(fmtAddr(a)||a)}
+function recipientsOf(a){return (a||'').split(',').map(v=>v.trim()).filter(Boolean)}
+function waitsOf(m){return Array.isArray(m.waiting_all)?m.waiting_all:[m.waiting_on]}
+function toLabel(a){return GROUPS.has(a)?groupLabel(a):plainName(fmtAddr(a)||a)}
+function recipientsLabel(to){return recipientsOf(to).map(a=>toLabel(a)+(sessOf(a)?'・'+sessOf(a):'')).join('、')}
+function appendRecipients(ln,to){recipientsOf(to).forEach((a,i)=>{ln.append(el('span','to',(i?'、':'→ ')+toLabel(a)));const s=sessOf(a);if(s)ln.append(el('span','sess',s))})}
 function isTestSess(l){return /^inbox-test/.test(l||'')}
 function sessShort(l){const t=((data&&data.sessions)||{})[l];return t?t.split(/[（(]/)[0].trim()||l:l}
 function aliasAddr(a,al){const i=(a||'').indexOf(':'),b=i<0?a:a.slice(0,i);return al[b]?al[b]+(i<0?'':a.slice(i)):a}
-function applyAliases(m,al){if(!m||!al||!Object.keys(al).length)return m;m.from=aliasAddr(m.from,al);if((m.to||'').includes(':'))m.to=aliasAddr(m.to,al);if(m.readers)m.readers=m.readers.map(r=>aliasAddr(r,al));
+function applyAliases(m,al){if(!m||!al||!Object.keys(al).length)return m;m.from=aliasAddr(m.from,al);if((m.to||'').includes(':'))m.to=recipientsOf(m.to).map(a=>a.includes(':')?aliasAddr(a,al):a).join(',');if(m.readers)m.readers=m.readers.map(r=>aliasAddr(r,al));
 if(m.reply)m.reply.from=aliasAddr(m.reply.from,al);return m}
 function baseOf(a){return (a||'').split(':')[0]}
+// 2.18.0 B04：白話名字，代號降成小灰字。表上沒有的名字照原樣顯示
+const PN={'claude-laptop':'Claude 主機','codex-laptop':'Codex 主機','codex-desk':'Codex DESK 伺服器','codex-max':'本地 Max','codex-mini':'本地 Mini','codex-pc':'Codex PC','hermes-alpha':'Hermes 甲','hermes-beta':'Hermes 乙','hermes-gamma':'Hermes 丙',gemini:'Gemini 雙子星',atri:'Atri',user:'你',codex:'Codex（裝置未記錄）',claude:'Claude',hermes:'Hermes'};
+function plainName(a){a=String(a||'');const i=a.indexOf(':'),b=i<0?a:a.slice(0,i);return PN[b]?PN[b]+(i<0?'':'・'+sessShort(a.slice(i+1))):a}
+function codeOf(a){const b=baseOf(a);return PN[b]&&b!=='user'&&PN[b].toLowerCase()!==b?b:''}
+function nmEl(a,cls){const s=el('span',cls||'nm n-'+agentAv(a).id,plainName(a)),c=codeOf(a);if(c)s.append(el('small','cd',c));return s}
+function swEl(k){const i=el('i','sw s-'+k);i.setAttribute('aria-hidden','true');return i}
+let PWR={},pwAt=0;const PWID={desk:'codex-desk',pc:'codex-pc','lmstudio-max':'codex-max','lmstudio-mini':'codex-mini'};
+// 2.18.0 B02：本地四台機器的開關機狀態（額度頁的電源收集資料，超過 30 分鐘沒更新就當沒有）；其他人沒有「還活著」的訊號，只看 30 分鐘內有沒有留言
+async function loadPower(){if(Date.now()-pwAt<60e3)return;pwAt=Date.now();try{const r=await fetch('/board/api/usage',{headers:{Accept:'application/json'}});if(!r.ok)return;const j=await r.json(),o={};
+(j.providers||[]).forEach(p=>{const k=PWID[p.id],up=Date.parse(p.updated);if(k&&p.power_state&&up&&Date.now()-up<30*6e4)o[k]={ps:p.power_state,up}});
+if(JSON.stringify(o)!==JSON.stringify(PWR)){PWR=o;if(data)renderSide()}}catch(e){}}
 function fmtAddr(a){const i=(a||'').indexOf(':');if(i<0)return a;return isTestSess(a.slice(i+1))?null:a.slice(0,i)}
 function sessOf(a){const i=(a||'').indexOf(':');if(i<0)return '';const l=a.slice(i+1);return isTestSess(l)?'':sessShort(l)}
 function fromWithSess(from,sess){const s=sess&&!isTestSess(sess)?sessShort(sess):'';return s?from+'・'+s:from}
 function fmtFrom(from,sess){return from}
 function who(n){n=(n||'').toLowerCase();for(const k of['claude','codex','hermes','user'])if(n.startsWith(k))return k;return'other'}
-// 代理頭像（v2.0.0）：一個代理一個固定顏色和字；Codex 各台用機器代號，Hermes 用中文名第一個字
+// 代理頭像（2.17.0 四頁共用對照表）：Claude＝CC 橘、Codex laptop＝CX 中性黑白、codex-desk＝EP 青、codex-mini＝MI 銀灰虛線框、Hermes＝HM 紫、Antigravity／Gemini＝AG 藍、使用者＝我 綠。
+// id 沿用舊的（xd、alpha…），伺服器存的自訂頭像才對得上；顏色由 CSS 的 .a-<id> 決定。表上沒有的 Codex（PC、Max）用中性色，只留機器代號分得出
 function agentAv(n){const s=(n||'').toLowerCase(),A=(id,label)=>({id,label,zh:/[^\x00-\x7f]/.test(label)});
-const id0=s.split(':')[0].trim();
-if(id0==='user'||/使用者/.test(s))return A('user','使');
-const m=/^(claude|codex|hermes)((?:-[a-z0-9]+)*)$/.exec(id0);if(m&&!m[2])return A(m[1],m[1]==='claude'?'CC':m[1]==='codex'?'CD':'H');
-if(/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/.test(id0)&&id0!=='all'&&id0.length<=64){const dev=m?m[2].slice(1):id0;return A(id0,dev.replace(/-/g,'').slice(0,2).toUpperCase())}
-if(/claude|\bcc\b/.test(s))return A('claude','CC');if(/codex|\bcd\b/.test(s))return A('codex','CD');if(/hermes/.test(s))return A('hermes','H');
+if(/使用者|^user\b/.test(s))return A('user','你');if(/claude|\bcc\b/.test(s))return A('claude','CC');
+if(/\batri\b|亞托莉/.test(s))return A('atri','AT');if(/antigravity|gemini|\bagy\b|雙子/.test(s))return A('ag','AG');
+if(/codex|\bcd\b/.test(s))return /desk/.test(s)?A('desk','EP'):/mini/.test(s)?A('mini','MI'):/pc/.test(s)?A('pc','W6'):/max/.test(s)?A('max','MX'):/995|xd/.test(s)?A('xd','CX'):A('codex','CX');
+if(/hermes/.test(s))return A('hermes','HM');
 const f=[...(n||'').trim()][0]||'?';return A('other',f.toUpperCase())}
+// 時間（2.18.0 T4／B06）：12 小時制不帶秒「上午 6:44」；不是今天加「10/26」；完整時間（含秒、含年）放 title。整頁不再出現「2 小時前」這類相對時間
+function fmtTime(d,sec,date){d=d instanceof Date?d:new Date(d);if(isNaN(d))return '—';const p=n=>String(n).padStart(2,'0'),h=d.getHours(),t=(h<12?'上午':'下午')+' '+(h%12||12)+':'+p(d.getMinutes())+(sec?':'+p(d.getSeconds()):'');
+if(date)return d.getFullYear()+'/'+(d.getMonth()+1)+'/'+d.getDate()+' '+t;return d.toDateString()===new Date().toDateString()?t:(d.getMonth()+1)+'/'+d.getDate()+' '+t}
+// 伺服器給的「YYYY-MM-DD HH:MM」或「MM-DD HH:MM」（當地時間）轉成同一種寫法
+function fmtStr(s){s=String(s||'').trim();const m=s.match(/^(?:(\d{4})-)?(\d\d)-(\d\d)[ T](\d\d):(\d\d)/);if(!m)return s;const y=+m[1]||new Date().getFullYear(),mk=yy=>Date.parse(yy+'-'+m[2]+'-'+m[3]+'T'+m[4]+':'+m[5]+':00'+window.RT_TZS);let t=mk(y);if(!m[1]&&t>Date.now()+864e5)t=mk(y-1);return isNaN(t)?s:fmtTime(t)}
+// 伺服器只給了「剛剛／N 分鐘前／N 小時前」的地方（認領、研究）：換算成時刻；小時只能估，前面加「約」
+function fmtWhen(s){s=String(s||'').trim();let m;if(s==='剛剛')return fmtTime(Date.now());if(m=s.match(/^(\d+) 分鐘前$/))return fmtTime(Date.now()-m[1]*6e4);if(m=s.match(/^(\d+) 小時前$/))return '約 '+fmtTime(Date.now()-(+m[1]+.5)*36e5);return fmtStr(s)}
+function fmtAgo(t){const s=Math.max(0,(Date.now()-t)/1e3);return s<60?'剛剛':s<3600?Math.floor(s/60)+' 分鐘前':s<86400?Math.floor(s/3600)+' 小時前':Math.floor(s/86400)+' 天前'}
 function agentDot(n){const v=agentAv(n),d=el('span','agv sm a-'+v.id+(v.zh?' zh':''),v.label);d.setAttribute('aria-hidden','true');return d}
-function rtTzo(){return +((document.querySelector('meta[name="rt-tz-offset"]')||{}).content)||0}function rtTzs(){const o=rtTzo(),a=Math.abs(o);return(o<0?'-':'+')+String(Math.floor(a)).padStart(2,'0')+':'+String(Math.round(a%1*60)).padStart(2,'0')}function fullTime(ts){const d=new Date(ts);if(isNaN(d))return'時間未記錄';const x=new Date(d.getTime()+rtTzo()*36e5).toISOString();return x.slice(0,10)+' '+x.slice(11,19)+'（UTC'+rtTzs()+'）'}
-function renderFeed(stick){const f=$('feed'),near=f.scrollHeight-f.scrollTop-f.clientHeight<120;f.textContent='';
-const ms=data.messages.filter(show);let last=null,lastDay=null;
-if(ch==='todo'){const bar=el('div','tdbar'),tb=data.todo_by||{};[['','全部 '+(data.todo||0)]].concat(['codex','claude','hermes','user','all'].filter(k=>tb[k]).map(k=>[k,waitTxt(k).trim()+' '+tb[k]])).forEach(([k,label])=>{const b=el('button',k===todoBy?'on':'',label);b.type='button';b.onclick=()=>{todoBy=k;renderFeed(true)};bar.append(b)});f.append(bar)}
-if(ch==='opinion'){const bar=el('div','tdbar'),n=data.messages.filter(m=>m.opinion&&!opOpen(m)).length;[[false,'還在等回覆'],[true,'看已結案或已全部回覆的 '+n]].forEach(([k,label])=>{const b=el('button',k===opClosed?'on':'',label);b.type='button';b.onclick=()=>{opClosed=k;renderFeed(true)};bar.append(b)});f.append(bar)}
+function fullTime(ts){const d=new Date(ts);return isNaN(d)?'時間未記錄':fmtTime(d,true,true)}
+// 2.19.0 剛送出那則的狀態小字：送出中… → ✓ 已送到
+function pstEl(p){return el('span','pst'+(p.state==='sent'?' ok':''),p.state==='sent'?'✓ 已送到':'⏳ 送出中…')}
+// U03：「還沒完成」照時間排，最新在最上面；對這則的回覆不另排，仍串在原信底下（由下面 kids 負責，舊的在上）
+function todoNewestFirst(a){return a.slice().sort((x,y)=>(Date.parse(y.created)||0)-(Date.parse(x.created)||0))}
+function renderFeed(stick){const f=$('feed'),near=f.scrollHeight-f.scrollTop-f.clientHeight<120,ae0=document.activeElement,bfk=ae0&&ae0.classList&&ae0.classList.contains('bdx')?ae0.dataset.mid:'';f.textContent='';
+// 「還沒完成」篩選：原信底下串著回覆（尤其是你自己的回覆）；你回覆後原信不再算等你，這次瀏覽先留著、淡一點，切篩選或重新整理才消失
+// 送出完成後才收掉暫存列；優先核對伺服器回的 ID，避免舊的同主旨留言讓「送出中」提早消失。舊伺服器沒有 ID 才以時間、收件人、引用比對。
+const all=data.messages;pendRep=pendRep.filter(p=>{
+if(Date.now()-p.at>=3e5)return false;if(p.state!=='sent')return true;
+const batches=p.deliveries&&p.deliveries.length?p.deliveries:p.serverIds&&p.serverIds.length?p.serverIds.map(id=>({id})):[{to:p.to}];
+return !batches.every(b=>all.some(x=>b.id?x.id===b.id:x.from==='user'&&!(p.knownIds||[]).includes(x.id)&&Date.parse(x.created)>=Math.floor(p.at/1000)*1000&&plain(x.subject)===p.plainSubject&&recipientsOf(x.to).slice().sort().join(',')===recipientsOf(b.to).slice().sort().join(',')&&(x.reply&&x.reply.id||'')===(p.reply&&p.reply.id||'')))});
+let ms=all.filter(show);const kept=new Set(),isTd=ch==='todo',kidsAll=isTd?all.concat(pendRep.filter(p=>p.reply)):[];
+if(isTd){if(todoSeenKey!==todoBy){todoSeen=new Set();todoSeenKey=todoBy}ms.forEach(m=>todoSeen.add(m.id));const shown=new Set(ms.map(m=>m.id));
+all.forEach(m=>{if(!shown.has(m.id)&&todoSeen.has(m.id)&&!isRc(m)&&kidsAll.some(x=>x.from==='user'&&x.reply&&x.reply.id===m.id))kept.add(m.id)});ms=all.filter(m=>shown.has(m.id)||kept.has(m.id));ms=todoNewestFirst(ms);
+ms=ms.filter(m=>!kept.has(m.id)).concat(ms.filter(m=>kept.has(m.id)))}// 2.19.0 你回覆過的（.answered）沉到待辦區最下面
+else{todoSeenKey=null;todoSeen=new Set()}
+const tmpShow=p=>ch==='all'||ch==='me'?ch==='all':ch==='todo'?!p.reply:ch==='opinion'?!!p.ask&&!opClosed:recipientsOf(p.to).some(a=>baseOf(a)===ch||(GROUPS.has(a)&&ch.startsWith(a+'-')));
+const tmps=pendRep.filter(p=>!(isTd&&p.reply)&&tmpShow(p));ms=isTd?tmps.concat(ms):ms.concat(tmps);
+const inFeed=new Set(ms.map(m=>m.id));let last=null,lastDay=null;
+if(ch==='todo'){const bar=el('div','tdbar'),tb=data.todo_by||{};[['','全部 '+(data.todo||0)]].concat(['codex','claude','hermes','user','all'].filter(k=>tb[k]).map(k=>[k,waitTxt(k).trim()+' '+tb[k]])).forEach(([k,label])=>{const b=el('button',k===todoBy?'on':'',label);b.type='button';b.setAttribute('aria-pressed',String(k===todoBy));b.onclick=()=>{todoBy=k;renderFeed(true)};bar.append(b)});bar.append(el('span','tdnote','最新在上，你回過的在最下面'));f.append(bar)}
+if(ch==='opinion'){const bar=el('div','tdbar'),n=data.messages.filter(m=>m.opinion&&!opOpen(m)).length;[[false,'還在等回覆'],[true,'看已結案或已全部回覆的 '+n]].forEach(([k,label])=>{const b=el('button',k===opClosed?'on':'',label);b.type='button';b.setAttribute('aria-pressed',String(k===opClosed));b.onclick=()=>{opClosed=k;renderFeed(true)};bar.append(b)});f.append(bar)}
 if(!ms.length)f.append(el('div','empty',ch==='todo'?'目前沒有還沒完成的待辦':ch==='opinion'?(opClosed?'沒有已結案的徵求意見':'沒有還在等回覆的徵求意見'):'這裡還沒有留言'));
 ms.forEach(m=>{if(m.day!==lastDay){f.append(el('div','day',m.day));lastDay=m.day;last=null}
-const t=Date.parse(m.created),grp=last&&last.from===m.from&&last.to===m.to&&t-Date.parse(last.created)<5*60e3;
-const urgent=!!m.todo,rc=isRc(m),row=el('article','m'+(grp?'':' first')+(urgent?' urgent':'')+(rc?' recalled':''));
-if(grp)row.append(el('div','gap',m.tw.slice(-5)));
+const t=Date.parse(m.created),grp=last&&last.from===m.from&&last.to===m.to&&Math.abs(t-Date.parse(last.created))<5*60e3;
+const urgent=!!m.todo,rc=isRc(m),row=el('article','m'+(grp?'':' first')+(urgent?' urgent':'')+(rc?' recalled':'')+(kept.has(m.id)?' answered':'')+(m.tmp?' pend':''));
+if(grp)row.append(el('div','gap',''));// 2.17.0：時間一律在名字那一行（12 小時制帶秒），左邊不再重複
 else{const v=agentAv(m.from),a=el('div','av agv a-'+v.id);a.title=m.from;a.setAttribute('aria-hidden','true');a.append(el('span','',v.label));row.append(a)}
 const c=el('div','mc');
 row.id='message-'+m.id;row.dataset.messageId=m.id;
-row.oncontextmenu=e=>{if(getSelection().toString())return;e.preventDefault();openMenu(m,e.clientX,e.clientY)};
-const ln=el('div','ln');ln.append(el('span','tm',fullTime(m.created)),el('span','nm w-'+m.who,m.from==='codex'?'codex（裝置未記錄）':m.from));const fs=m.from_session&&!isTestSess(m.from_session)?sessShort(m.from_session):(m.to&&m.to.includes(':')&&baseOf(m.to)===baseOf(m.from)?'舊信，未記串名':'');if(fs)ln.append(el('span','sess',fs));
-ln.append(el('span','to','→ '+toLabel(m.to)));const ts=sessOf(m.to);if(ts)ln.append(el('span','sess',ts));c.append(ln)
+if(!m.tmp)row.oncontextmenu=e=>{if(getSelection().toString())return;e.preventDefault();openMenu(m,e.clientX,e.clientY)};
+const ln=el('div','ln'),tmE=el('span','tm',fmtTime(m.created));tmE.title=fullTime(m.created);ln.append(tmE,nmEl(m.from));const fs=m.from_session&&!isTestSess(m.from_session)?sessShort(m.from_session):(recipientsOf(m.to).some(a=>a.includes(':')&&baseOf(a)===baseOf(m.from))?'舊信，未記串名':'');if(fs)ln.append(el('span','sess',fs));
+appendRecipients(ln,m.to);c.append(ln)
 // 已撤回：原位置只留一行「↩ 已撤回：理由（誰、時間）」，原文收進 box，點開才看得到
 let fold=null;const box=rc?el('div','rbody'):c;
 if(rc){const c0=m.closed,s=el('summary'),t=el('span','rt','↩ 已撤回：');fold=el('details','rcl');fold.open=rclOpen.has(m.id);fold.ontoggle=()=>{fold.open?rclOpen.add(m.id):rclOpen.delete(m.id)};
-t.append(el('b','',c0.reason||'沒寫理由'),'（'+byName(c0.by)+'、'+c0.at+'）'+(c0.replies>0?'・撤回前已有 '+c0.replies+' 則回覆':''));s.append(t,el('span','rx'));fold.append(s)}
+t.append(el('b','',c0.reason||'沒寫理由'),'（'+byName(c0.by)+'、'+fmtStr(c0.at)+'）'+(c0.replies>0?'・撤回前已有 '+c0.replies+' 則回覆':''));s.append(t,el('span','rx'));fold.append(s)}
 if(m.reply){const pr=data.messages.find(x=>x.id===m.reply.id),gone=isRc(m.reply)||!!m.reply.recalled||isRc(pr);
-const q=html('button','quote'+(gone?' gone':''),'↪ '+(gone?'<span class="qrc">原信已撤回</span>':'')+escapeText(fromWithSess(m.reply.from,m.reply.from_session))+'：'+m.reply.subject);q.type='button';q.onclick=()=>showOriginal(m.reply.id);box.append(q)}
-box.append(html('div','sj',m.subject));if(m.body)box.append(html('div','bd',m.body));
+const q=html('button','quote'+(gone?' gone':''),'↪ '+(gone?'<span class="qrc">原信已撤回</span>':'')+escapeText(fromWithSess(m.reply.from,m.reply.from_session))+'：'+m.reply.subject);q.type='button';q.onclick=()=>showOriginal(m.reply.id,q);box.append(q)}
+box.append(html('div','sj',m.subject));if(m.body){const bd=html('div','bd'+(bdOpen.has(m.id)?'':' clamp'),m.body);bd.dataset.mid=m.id;box.append(bd)}
 if(m.attachments.length){const g=el('div','imgs');m.attachments.forEach(id=>{const a=el('a');a.href='/board/files/'+encodeURIComponent(id);a.target='_blank';a.rel='noopener';
 const i=el('img');i.loading='lazy';i.alt='附件圖片';i.src=a.href;a.append(i);g.append(a)});box.append(g)}
 if(m.ref)box.append(el('div','rf','📄 '+m.ref));
-const tg=el('div','tg'),toUser=m.to==='user';
-if(rc);else if(m.closed){const c0=m.closed,byUser=c0.by==='user',seen=toUser&&byUser&&(c0.reason==='使用者已看過'||c0.reason==='使用者已處理');tg.append(el('span','t rd',seen?'✓ 你已'+(c0.reason==='使用者已處理'?'處理好了':'看過')+'（'+c0.at+'）':'✓ 已結案：'+c0.reason+'（'+(byUser?'你':(fmtAddr(c0.by)||c0.by))+'、'+c0.at+'）'))}
-else if(m.todo)tg.append(el('span','t hot','⚑ '+waitTxt(m.waiting_on)+'處理'));
+const tg=el('div','tg'),toUser=recipientsOf(m.to).includes('user');
+if(m.tmp)tg.append(pstEl(m));else if(rc);else if(m.closed){const c0=m.closed,byUser=c0.by==='user',seen=toUser&&byUser&&(c0.reason==='使用者已看過'||c0.reason==='使用者已處理');tg.append(el('span','t rd',seen?'✓ 你已'+(c0.reason==='使用者已處理'?'處理好了':'看過')+'（'+fmtStr(c0.at)+'）':'✓ 已結案：'+c0.reason+'（'+(byUser?'你':(fmtAddr(c0.by)||c0.by))+'、'+fmtStr(c0.at)+'）'))}
+else if(m.todo)tg.append(el('span','t hot','⚑ '+waitsOf(m).map(waitTxt).join('、')+'處理'));
 else if(m.needs_action)tg.append(el('span','t act','⚑ 要對方動手・已有人讀'));
-const rgp={};m.readers.forEach(r=>{const b=fmtAddr(r);if(!b)return;rgp[b]=rgp[b]||new Set();const s=sessOf(r);if(s)rgp[b].add(s);else if(!r.includes(':')&&who(r)==='claude')rgp[b].add('全部串')});const rd=Object.keys(rgp);{const r=el('span','t rd'+(rd.length?'':' none'));if(rd.length){r.append('✓ 已讀 ',el('b','',rd.join('、')));r.title=rd.map(n=>rgp[n].size?n+'：'+[...rgp[n]].join('、'):n).join('；')}else r.textContent=toUser?'✉ 給你':'○ 還沒有 AI 讀';if(!(m.closed&&!rd.length))tg.append(r)}if(m.project&&m.project!=='general')tg.append(el('span','t pj','#'+m.project));
-if(m.opinion){const o=m.opinion,off=o.offline||[],op=el('div','op'),n=o.responded.length+o.pending.length;op.append(el('b','','🗳 徵求意見 '+o.responded.length+'/'+n+' 已回'));if(!o.pending.length)op.append(el('span','done','✓ 已全部回覆'));if(o.responded.length)op.append(el('span','ok','已回：'+o.responded.join('、')));if(o.pending.length)op.append(el('span','wait','未回：'+o.pending.join('、')));if(off.length){const s=el('span','off','未連線：'+off.join('、'));s.title='最近 7 天沒有動靜，不算未回';op.append(s)}box.append(op)}
-box.append(tg);if(fold){fold.append(box);c.append(fold)}const actions=el('div','actions');
-if(rc){const u=html('button','','<span>↩ 取消撤回</span>');u.type='button';u.title='恢復成撤回前的樣子';u.onclick=()=>closeMsg(m,'',true,'recall');actions.append(u)}
+const rgp={};m.readers.forEach(r=>{const b=fmtAddr(r);if(!b)return;rgp[b]=rgp[b]||new Set();const s=sessOf(r);if(s)rgp[b].add(s);else if(!r.includes(':')&&who(r)==='claude')rgp[b].add('全部串')});const rd=Object.keys(rgp);{const r=el('span','t rd'+(rd.length?'':' none'));if(rd.length){r.append('✓ 已讀 ',el('b','',rd.map(plainName).join('、')));r.title=rd.map(n=>rgp[n].size?n+'：'+[...rgp[n]].join('、'):n).join('；')}else r.textContent=toUser?'✉ 給你':'○ 還沒有 AI 讀';if(!(m.closed&&!rd.length)&&!m.tmp)tg.append(r)}if(m.project&&m.project!=='general')tg.append(el('span','t pj','#'+m.project));
+if(m.opinion){const o=m.opinion,off=o.offline||[],op=el('div','op'),n=o.responded.length+o.pending.length;op.append(el('b','','🗳 徵求意見 '+o.responded.length+'/'+n+' 已回'));if(!o.pending.length)op.append(el('span','done','✓ 已全部回覆'));if(o.responded.length)op.append(el('span','ok','已回：'+o.responded.map(plainName).join('、')));if(o.pending.length)op.append(el('span','wait','未回：'+o.pending.map(plainName).join('、')));if(off.length){const s=el('span','off','未連線：'+off.map(plainName).join('、'));s.title='最近 7 天沒有動靜，不算未回';op.append(s)}box.append(op)}
+if(kept.has(m.id))tg.prepend(el('span','t rd','✓ 已回覆・不再算等你'));box.append(tg);if(fold){fold.append(box);c.append(fold)}const actions=el('div','actions');
+if(m.tmp);// 剛送出的那則還沒有正式 id，不給按鈕
+else if(rc){const u=html('button','','<span>↩ 取消撤回</span>');u.type='button';u.title='恢復成撤回前的樣子';u.onclick=()=>closeMsg(m,'',true,'recall',u);actions.append(u)}
 else{const reply=html('button','',ICO.reply+'<span>引用回覆</span>');reply.type='button';reply.onclick=()=>setReply(m);actions.append(reply);
-for(const [v,label] of [[1,'讚'],[-1,'倒讚']]){const b=html('button','',(v===1?ICO.up:ICO.down)+'<span class="n">'+((m.votes||{})[v===1?'up':'down']||0)+'</span>');b.type='button';b.title=label;b.setAttribute('aria-label',label);b.setAttribute('aria-pressed',String((m.votes||{}).mine===v));b.disabled=voting.has(m.id);b.onclick=()=>vote(m,v);actions.append(b)}
-if(m.closed){const u=html('button','','<span>取消結案</span>');u.type='button';u.onclick=()=>closeMsg(m,'',true);actions.append(u)}
-else if(toUser){const done=m.todo&&m.waiting_on==='user',b=html('button','','<span>'+(done?'處理好了':'看過了')+'</span>');b.type='button';b.onclick=()=>closeMsg(m,done?'使用者已處理':'使用者已看過');actions.append(b)}
+for(const [v,label] of [[1,'讚'],[-1,'倒讚']]){const b=html('button','',(v===1?ICO.up:ICO.down)+'<span class="n">'+((m.votes||{})[v===1?'up':'down']||0)+'</span>');b.type='button';b.title=label;b.setAttribute('aria-label',label);b.setAttribute('aria-pressed',String((m.votes||{}).mine===v));b.disabled=voting.has(m.id);if(voting.has(m.id))b.setAttribute('aria-busy','true');b.onclick=()=>vote(m,v);actions.append(b)}
+if(m.closed){const u=html('button','','<span>取消結案</span>');u.type='button';u.onclick=()=>closeMsg(m,'',true,'',u);actions.append(u)}
+else if(toUser){const done=m.todo&&waitsOf(m).includes('user'),b=html('button','','<span>'+(done?'處理好了':'看過了')+'</span>');b.type='button';b.onclick=()=>closeMsg(m,done?'使用者已處理':'使用者已看過','','',b);actions.append(b)}
 else if(m.needs_action||m.opinion){const b=html('button','','<span>結案</span>');b.type='button';b.onclick=()=>askClose(m);actions.append(b)}
 const mo=html('button','more','<span aria-hidden="true">⋯</span>');mo.type='button';mo.title='更多（撤回）';mo.setAttribute('aria-label','更多：撤回這則');mo.setAttribute('aria-haspopup','menu');
 mo.onclick=e=>{e.stopPropagation();const r=mo.getBoundingClientRect();openMenu(m,r.left,r.bottom+4,r.top-4)};actions.append(mo)}
-c.append(actions);row.append(c);f.append(row);last=m});
+c.append(actions);
+if(isTd){const kids=kidsAll.filter(x=>x.reply&&x.reply.id===m.id&&!inFeed.has(x.id)&&!isRc(x)).sort((a,b)=>Date.parse(a.created)-Date.parse(b.created));
+if(kids.length){const th=el('div','rpl');th.setAttribute('role','group');th.setAttribute('aria-label','對這則的回覆');kids.forEach(x=>{const me=x.from==='user',it=el('div','rpi'+(me?' me':'')+(x.tmp?' tmp':'')),h=el('div','rh'),tm=el('span','tm',fmtTime(x.created));tm.title=fullTime(x.created);
+h.append(el('b','',byName(x.from)+(me||!/^[A-Za-z]/.test(byName(x.from))?'':' ')+'回覆了：'),tm);if(x.tmp)h.append(pstEl(x));it.append(h,html('div','rt',x.subject));if(x.body)it.append(html('div','rb',x.body));th.append(it)});c.append(th)}}
+row.append(c);f.append(row);last=m});
 $('title').textContent=chName();$('cnt').textContent='顯示 '+ms.length+' 則（最近 '+data.messages.length+' / 共 '+data.total+' 則）';
-if(stick||near)f.scrollTop=f.scrollHeight}
+bdFold(f,bfk);feedDrawn=feedKey();if(isTd){if(stick)f.scrollTop=0}else if(stick||near)f.scrollTop=f.scrollHeight}
+// 2.22.1 效能：留言區「畫過什麼」的簽章（目前篩選＋今天的日期＋留言相關資料；日期是因為跨過午夜時 fmtTime 要補日期，data.sessions 是因為路由表改名後串名要跟著變）。自動更新抓回來的資料跟上次畫的一樣，就不把 500 則清掉重畫；白板那段本來就這樣做（wbSig）
+let feedDrawn='';
+function feedKey(){return ch+'|'+todoBy+'|'+opClosed+'|'+new Date().toDateString()+'|'+JSON.stringify([data.messages,data.todo,data.todo_by,data.total,data.aliases,data.sessions])}
+// 2.18.0 B07：內文超過 4 行先收起來，按「看全文 ▾」才全部顯示（再按「收起 ▴」收回）；自動更新重畫時記得哪幾則展開過
+const bdOpen=new Set();
+// 2.22.1 效能：先把每一則的高度全部讀完（瀏覽器只排版一次），再統一改 DOM。原本讀一則改一則，500 則就逼瀏覽器重排 500 次（切回公告欄卡 1～3 秒的主因）
+function bdFold(f,fk){const rows=[...f.querySelectorAll('.bd[data-mid]')].map(bd=>{const id=bd.dataset.mid,open=bdOpen.has(id);return{bd,id,open,fold:open||bd.scrollHeight>bd.clientHeight+4}});
+rows.forEach(({bd,id,open,fold})=>{if(!fold){bd.classList.remove('clamp');return}
+const b=el('button','bdx',open?'收起 ▴':'看全文 ▾');b.type='button';b.dataset.mid=id;b.setAttribute('aria-expanded',String(open));b.onclick=()=>{const o=!bdOpen.has(id);o?bdOpen.add(id):bdOpen.delete(id);bd.classList.toggle('clamp',!o);b.textContent=o?'收起 ▴':'看全文 ▾';b.setAttribute('aria-expanded',String(o))};bd.after(b);if(fk===id)b.focus({preventScroll:true})})}
+// 白板卡的說明（下一步／現在、摘要、原文）也是 4 行：看不到的（手機上沒打開的抽屜、沒展開的卡）等看得到再量
+// 2.22.1 效能：同 bdFold，先全部量完再改
+function wbFold(){const rows=[...document.querySelectorAll('#claims .wf:not([data-fd])')].map(x=>{if(!x.getClientRects().length)return null;const cs=getComputedStyle(x),card=x.closest('.pc'),id=(card&&card.dataset.fk||'')+'|'+x.classList[0],lh=parseFloat(cs.lineHeight)||parseFloat(cs.fontSize)*1.5,mh=Math.round(lh*4);return{x,id,open:bdOpen.has(id),mh,fold:x.scrollHeight>mh+4}}).filter(Boolean);
+rows.forEach(({x,id,open,mh,fold})=>{x.dataset.fd='1';if(!fold)return;x.style.setProperty('--mh',mh+'px');x.classList.toggle('clamp',!open);
+const bt=el('button','bdx',open?'收起 ▴':'看全文 ▾');bt.type='button';bt.setAttribute('aria-expanded',String(open));
+bt.onclick=e=>{e.stopPropagation();const o=!bdOpen.has(id);o?bdOpen.add(id):bdOpen.delete(id);x.classList.toggle('clamp',!o);bt.textContent=o?'收起 ▴':'看全文 ▾';bt.setAttribute('aria-expanded',String(o))};(x.closest('.pl')||x).after(bt)})}
+try{new ResizeObserver(()=>requestAnimationFrame(wbFold)).observe($('claims'))}catch(e){}
 const wbOpen=new Set();// 自動更新時保留使用者展開的項目
 function wbItem(key,done,head,body){const d=el('details','wi'+(done?' done':''));d.open=wbOpen.has(key);d.ontoggle=()=>{d.open?wbOpen.add(key):wbOpen.delete(key)};
 const s=el('summary');head(s);d.append(s,html('div','wd',body));return d}
 function renderWhiteboard(){const ae=document.activeElement,fk=ae&&ae.dataset?ae.dataset.wbk||'':'',rs=data.research||{items:[]},rl=$('rsList'),sl=$('stList');rl.textContent='';sl.textContent='';
-$('rsMeta').textContent=rs.items.length?rs.items.filter(i=>!i.done).length+' 項未完成'+(rs.when?'．'+rs.when+' '+rs.who:''):'';
+$('rsMeta').textContent=rs.items.length?rs.items.filter(i=>!i.done).length+' 項未完成'+(rs.when?'．'+fmtWhen(rs.when)+' '+plainName(rs.who):''):'';
 if(!rs.items.length)rl.append(el('div','cnt','目前沒有待研究主題（research 專案狀態裡寫「1. …」就會出現）'));
 rs.items.forEach(i=>rl.append(wbItem('r'+i.n,i.done,s=>{s.append(el('span','pj',i.n+'.'),html('span','',i.title));if(i.done)s.append(el('span','st st-done','完成'))},i.detail)));
-const st=data.statuses||[],wt=new Set(st.filter(p=>p.stage!=='done'&&WB_WAIT.test(wbPlain(p.now))));
+const st=data.statuses||[],W=wbWaiting(),wt=new Set(st.filter(p=>W.wait.has(p.project)));
 // 專案卡 v1.7.0：參考 Linear／GitHub Projects，每張卡資訊位置固定，先看主管、做事、下一步、進度，技術細節收在展開後
 const F={run:['進行中',p=>p.stage!=='done'],wait:['等我決定',p=>wt.has(p)],done:['已完成',p=>p.stage==='done']};
 if(!F[wbF])wbF='run';const fl=$('stFilter');fl.textContent='';
-Object.entries(F).forEach(([k,[name,fn]])=>{const b=el('button','',name),n=st.filter(fn).length;b.type='button';b.dataset.wbk='f-'+k;b.setAttribute('aria-pressed',k===wbF);b.append(el('small','',n));
+// 2.19.0 「等我決定」的數字不算你已經答過的那幾張
+Object.entries(F).forEach(([k,[name,fn]])=>{const b=el('button','',name),n=st.filter(fn).filter(p=>k!=='wait'||!W.ans.has(p.project)).length;b.type='button';b.dataset.wbk='f-'+k;b.setAttribute('aria-pressed',k===wbF);b.prepend(swEl(k));b.append(el('small',k==='wait'&&n>0?'wn':'',n));
 b.onclick=()=>{wbF=k;renderWhiteboard()};fl.append(b)});
 $('stMeta').textContent=st.length?'共 '+st.length+' 個':'';
-const pk=p=>{const n=+p.priority||0;return n>=1&&n<=4?n:n===5?9:4.5},show=st.filter(F[wbF][1]).map((p,i)=>[p,i]).sort((a,b)=>pk(a[0])-pk(b[0])||a[1]-b[1]).map(x=>x[0]);
+const pk=p=>{const n=+p.priority||0;return (n>=1&&n<=4?n:n===5?9:4.5)+(W.ans.has(p.project)?100:0)},show=st.filter(F[wbF][1]).map((p,i)=>[p,i]).sort((a,b)=>pk(a[0])-pk(b[0])||a[1]-b[1]).map(x=>x[0]);// 答過的排最下面
 if(!show.length)sl.append(el('div','cnt',!st.length?'還沒有任何專案進度':wbF==='wait'?'目前沒有等你決定的專案':wbF==='done'?'還沒有完成的專案':'沒有進行中的專案'));
 let sep=false;show.forEach(p=>{if(+p.priority===5&&!sep&&wbF!=='done'){sep=true;sl.append(el('div','pcsep','暫停（P5）'))}sl.append(wbCard(p))});
-if(fk){const e=document.querySelector('[data-wbk="'+fk+'"]');if(e)e.focus({preventScroll:true})}}// 每 10 秒重畫後把鍵盤焦點放回原本那顆
+if(fk){const e=document.querySelector('[data-wbk="'+fk+'"]');if(e)e.focus({preventScroll:true})}wbFold()}// 每 10 秒重畫後把鍵盤焦點放回原本那顆
 // 「等我決定」只認明確在等使用者的說法；「使用者已批准」這類不算
 const WB_WAIT=/等(?:待)?使用者|請使用者|要使用者|使用者(?:決定|批准|核准|確認|回答|回覆|看|採用|點頭|選)|等你|你決定|你批准|你核准/;
+// 2.19.0 「等我決定」答過要下沉：記在 localStorage rt.wbAns＝{專案:{hash:「現在」那行的雜湊,at:時間}}；
+// 伺服器回來「現在」文字變了（雜湊不同）或專案不再等你，記號自動清掉。WBW.wait＝在等你的專案、WBW.ans＝其中你已答過的
+const wbHash=s=>{let h=5381;for(const c of String(s||''))h=(h*33+c.codePointAt(0))>>>0;return h.toString(36)};
+let WBW={wait:new Set(),ans:new Set()};
+function wbAnsLoad(){try{const o=JSON.parse(LS('wbAns')||'{}');return o&&typeof o==='object'?o:{}}catch(e){return{}}}
+function wbWaiting(){const st=(data&&data.statuses)||[],a=wbAnsLoad(),wait=new Set(),ans=new Set();let chg=false;
+st.forEach(p=>{const w=p.stage!=='done'&&WB_WAIT.test(wbPlain(p.now)),r=a[p.project];if(w)wait.add(p.project);if(r){if(w&&r.hash===wbHash(wbPlain(p.now)))ans.add(p.project);else{delete a[p.project];chg=true}}});
+if(chg)SS('wbAns',JSON.stringify(a));WBW={wait,ans};return WBW}
+function wbAnswer(p,on){const a=wbAnsLoad(),nm=p.name?plain(p.name):p.project;if(on)a[p.project]={hash:wbHash(wbPlain(p.now)),at:Date.now()};else delete a[p.project];SS('wbAns',JSON.stringify(a));
+try{renderWhiteboard()}catch(e){segBad('stList','白板',e)}renderSum();toast(on?'已標記答過：'+nm+'。等 AI 更新卡片後會自己消失':'已取消標記：'+nm,'ok')}
+function wbAnsRow(p){if(!WBW.wait.has(p.project)||p.stage==='done')return null;const an=WBW.ans.has(p.project),r=el('div','ansr'),b=el('button','ansb',an?'還沒答':'我答過了');b.type='button';
+b.title=an?'取消標記，這張卡回到「等我決定」':'按了這張卡會變淡、沉到最下面，「等我決定」不再算它；等 AI 更新卡片後自動消失';b.onclick=e=>{e.stopPropagation();wbAnswer(p,!an)};
+if(an)r.append(el('span','anst','✓ 已答，等 AI 更新'));r.append(b);return r}
 let wbF='run';// 不記住篩選：每次開頁都從「進行中」開始，免得新專案被藏起來
 const wbTmp=document.createElement('span');
 function wbPlain(h){wbTmp.innerHTML=h||'';return wbTmp.textContent}// 共用一個元素把伺服器跳脫過的字還原
@@ -408,64 +728,95 @@ const tags=el('span','pts'),pri=+p.priority||0;if(pri>=1&&pri<=5){const g=el('sp
 tags.append(el('span','pt st-'+p.stage,p.stage_label));tb.append(html('span','ring',wbRing(dn,steps.length,done)),pn,tags);h.append(tb);
 if(p.lead||p.doers){const r=el('div','ppl');if(p.lead)r.append(el('span','k','主管'),...wbPeople(p.lead));
 if(p.doers){if(p.lead)r.append(el('span','psep','｜'));r.append(el('span','k','做事'),...wbPeople(p.doers))}h.append(r)}
-const line=(k,v,cls)=>{const row=el('div','pl '+cls);row.append(el('span','k',k),html('span','v',v));return row};
-if(nx)h.append(line('下一步',nx.t,'nx'));else if(p.now)h.append(line('現在',p.now,'nw'));else if(!has)h.append(html('div','psm',p.summary));
-if(steps.length){const g=el('div','pg'),bar=el('span','bar'),fill=el('i');fill.style.width=Math.round(dn*100/steps.length)+'%';bar.append(fill);bar.setAttribute('aria-hidden','true');
-g.append(bar,el('span','',dn+'/'+steps.length+' 個小目標'+(dn===steps.length?'・全部完成':'')));h.append(g)}
-c.append(h);const foot=el('div','pf');
-if(nx&&p.now){const nw=html('span','nw',p.now);nw.prepend(el('b','','現在'));foot.append(nw)}
+const line=(k,v,cls)=>{const row=el('div','pl '+cls);row.append(el('span','k',k),html('span','v wf',v));return row};
+if(nx)h.append(line('下一步',nx.t,'nx'));else if(p.now)h.append(line('現在',p.now,'nw'));else if(!has)h.append(html('div','psm wf',p.summary));
+{const ar=wbAnsRow(p);if(ar){h.append(ar);if(WBW.ans.has(p.project))c.classList.add('ans')}}// 2.19.0 等你決定的卡：「我答過了」／「還沒答」
+// 2.17.0 小目標進度條：一格一個小目標（綠＝已勾、藍＝下一步、灰＝還沒），超過 12 個改成一條連續的
+if(steps.length){const g=el('div','pg'),many=steps.length>12,bar=el('span','pbar'+(many?' cont':''));bar.setAttribute('aria-hidden','true');
+if(many){const fill=el('b');fill.style.width=Math.round(dn*100/steps.length)+'%';bar.append(fill)}else steps.forEach(x=>bar.append(el('i',x.done?'ok':x===nx?'cur':'')));
+const n=el('span','pgn'+(dn===steps.length?' all':''));if(dn===steps.length)n.textContent='✓ 全部 '+steps.length+' 個完成';else{n.append('小目標 ',el('b','',dn),'／'+steps.length)}g.append(bar,n);h.append(g)}
+if(!done&&p.epoch&&Date.now()/1e3-p.epoch>7*86400){c.classList.add('stale');c.title='超過 7 天沒更新'}
+c.dataset.fk=key;c.append(h);const foot=el('div','pf');
+if(nx&&p.now){const nw=html('span','nw wf',p.now);nw.prepend(el('b','','現在'));foot.append(nw)}
 const bits=[];if(p.day)bits.push((done?'做了 ':'第 ')+p.day+' 天');if(p.updates!=null)bits.push('更新 '+p.updates+' 次');if(bits.length)foot.append(el('span','',bits.join('・')));
-const tm=el('span','tm',p.when+' ');tm.title=p.tw+(p.since?'（'+p.since+' 開始）':'');tm.append(el('span','nm w-'+p.whoc,p.who));foot.append(tm);
+const tm=el('span','tm',(p.epoch?fmtTime(p.epoch*1e3):fmtWhen(p.when))+' ');tm.title=(p.epoch?fullTime(p.epoch*1e3):fmtStr(p.tw))+(p.since?'（'+p.since+' 開始）':'');tm.append(nmEl(p.who));foot.append(tm);
 if(!has)foot.append(el('span','miss','還沒照新格式寫主管、做事和小目標'));c.append(foot);
 const det=el('div','pd');
 if(has){if(steps.length){det.append(el('h6','','小目標'));const ul=el('ul','chk');steps.forEach(x=>{const cur=x===nx,li=el('li',x.done?'ok':cur?'cur':'no');
 li.append(el('span','i',x.done?'✓':cur?'→':'○'),html('span','',x.t));ul.append(li)});det.append(ul)}
 if(detail){const t=el('details','tech'),sm=el('summary','','技術細節');sm.dataset.wbk='t'+p.project;t.open=wbOpen.has('t'+p.project);t.ontoggle=()=>{t.open?wbOpen.add('t'+p.project):wbOpen.delete('t'+p.project)};
-t.append(sm,html('div','',detail));det.append(t)}}else det.append(html('div','raw',p.text));
+t.append(sm,html('div','',detail));det.append(t)}}else det.append(html('div','raw wf',p.text));
 c.append(det);
-h.onclick=e=>{if(e.target.closest('a'))return;if(Date.now()-pcSupp<800)return;const o=!c.classList.contains('open');o?wbOpen.add(key):wbOpen.delete(key);c.classList.toggle('open',o);c.classList.add('anim');tb.setAttribute('aria-expanded',o)};
+h.onclick=e=>{if(e.target.closest('a'))return;if(Date.now()-pcSupp<800)return;const o=!c.classList.contains('open');o?wbOpen.add(key):wbOpen.delete(key);c.classList.toggle('open',o);c.classList.add('anim');tb.setAttribute('aria-expanded',o);wbFold()};
 c.oncontextmenu=e=>{if(getSelection().toString()||e.target.closest('a'))return;e.preventDefault();pcOpenMenu(p,c,h,e.clientX,e.clientY)};
+c.addEventListener('keydown',e=>{if(e.key==='Escape'&&c.classList.contains('open')&&$('pcMenu').hidden){e.stopPropagation();h.onclick({target:h});tb.focus()}});// Esc 收起展開的卡
 let lp=null;c.onpointerdown=e=>{if(e.pointerType!=='touch')return;const x=e.clientX,y=e.clientY;clearTimeout(lp);lp=setTimeout(()=>{pcSupp=Date.now();pcOpenMenu(p,c,h,x,y)},550);c.onpointermove=ev=>{if(Math.hypot(ev.clientX-x,ev.clientY-y)>10)clearTimeout(lp)}};c.onpointerup=c.onpointercancel=()=>{clearTimeout(lp);c.onpointermove=null};
 tb.onkeydown=e=>{if(e.key==='ContextMenu'||(e.shiftKey&&e.key==='F10')){e.preventDefault();const r=tb.getBoundingClientRect();pcOpenMenu(p,c,h,r.left+16,r.bottom,r.top)}};
 return c}
 function renderClaims(){const ae=document.activeElement,fk=ae&&ae.dataset?ae.dataset.wbk||'':'',b=$('claimList'),fl=$('clFilter'),cs=data.claims||[],nOld=cs.filter(c=>c.old).length;
 b.textContent='';fl.textContent='';$('clMeta').textContent=cs.length?'共 '+cs.length+' 台':'';if(!nOld)clF='on';
-if(nOld)[['on','進行中',c=>!c.old],['old','已過期',c=>c.old]].forEach(([k,name,fn])=>{const x=el('button','',name);x.type='button';x.dataset.wbk='c-'+k;x.setAttribute('aria-pressed',k===clF);x.append(el('small','',cs.filter(fn).length));x.onclick=()=>{clF=k;renderClaims()};fl.append(x)});
+if(nOld)[['on','進行中',c=>!c.old],['old','已過期',c=>c.old]].forEach(([k,name,fn])=>{const x=el('button','',name);x.type='button';x.dataset.wbk='c-'+k;x.setAttribute('aria-pressed',k===clF);x.prepend(swEl(k==='on'?'run':'old'));x.append(el('small','',cs.filter(fn).length));x.onclick=()=>{clF=k;renderClaims()};fl.append(x)});
 const show=cs.filter(c=>clF==='old'?c.old:!c.old);
 if(!show.length)b.append(el('div','cnt',!cs.length?'目前沒有人認領任何機器':clF==='old'?'沒有過期的認領':'目前沒有進行中的認領'));
 show.forEach(c=>b.append(clCard(c)));
-if(fk){const e=b.parentNode.querySelector('[data-wbk="'+CSS.escape(fk)+'"]');if(e)e.focus({preventScroll:true})}}
+if(fk){const e=b.parentNode.querySelector('[data-wbk="'+CSS.escape(fk)+'"]');if(e)e.focus({preventScroll:true})}wbFold()}
 let clF='on';// 過期的認領預設收在「已過期」裡
-function clName(a){const p=a.split('-');return p.map((x,i)=>i===0||/^[a-z]+\d*$/.test(x)&&!/^\d/.test(x)?x.charAt(0).toUpperCase()+x.slice(1):x).join(' ')}// codex-desk → Codex Desk
+function clName(a){const p=a.split('-');return p.map((x,i)=>i===0||/^[a-z]+\d*$/.test(x)&&!/^\d/.test(x)?x.charAt(0).toUpperCase()+x.slice(1):x).join(' ')}// codex-pc → Codex PC
 function clHead(s){// 取第一句（括號裡的逗號不切），太長就截
 let out='',dp=0;for(const ch of s){if('（('.includes(ch))dp++;else if('）)'.includes(ch))dp=Math.max(0,dp-1);if(!dp&&out.length>=8&&'，。；;\n'.includes(ch))break;out+=ch}
 out=out.trim();return out.length>90?out.slice(0,88)+'…':out}
 function clCard(c){const key='c'+c.target+'|'+c.agent,raw=wbPlain(c.text).trim(),m=raw.match(/^([^：:\n]{1,24}串)\s*[：:]\s*/),thr=m?m[1]:'',body=m?raw.slice(m[0].length):raw;
 const d=el('article','pc'+(c.old?' done':'')+(wbOpen.has(key)?' open':'')),h=el('div','pch'),tb=el('button','l1');tb.type='button';tb.dataset.wbk=key;tb.setAttribute('aria-expanded',wbOpen.has(key));
 tb.append(el('span','pn mono',c.target),el('span','pt '+(c.old?'st-old':'st-implementing'),c.old?'已過期':'進行中'));h.append(tb);
-const r=el('div','ppl'),av=agentAv(c.agent),pp=el('span','pp a-'+av.id),nm=clName(c.agent);pp.title=c.agent;pp.append(el('i',av.zh?'zh':'',av.label),el('b','',nm));r.append(el('span','k','誰'),pp);
+const r=el('div','ppl'),av=agentAv(c.agent),pp=el('span','pp a-'+av.id),nm=PN[baseOf(c.agent)]?plainName(c.agent):clName(c.agent);pp.title=c.agent;pp.append(el('i',av.zh?'zh':'',av.label),el('b','',nm));if(codeOf(c.agent))pp.append(el('small','cd',codeOf(c.agent)));r.append(el('span','k','誰'),pp);
 if(thr)r.append(el('span','psep','｜'),el('span','pcode',thr));h.append(r);
 if(body){const row=el('div','pl nx');row.append(el('span','k','在做'),el('span','v',clHead(body)));h.append(row)}
-d.append(h);const foot=el('div','pf');foot.append(el('span','tm',c.when+' 更新'));if(c.old)foot.append(el('span','miss','超過 24 小時沒更新，可能做完忘了放掉'));d.append(foot);
-const det=el('div','pd');det.append(html('div','raw',c.text));d.append(det);
-h.onclick=e=>{if(e.target.closest('a'))return;const o=!d.classList.contains('open');o?wbOpen.add(key):wbOpen.delete(key);d.classList.toggle('open',o);d.classList.add('anim');tb.setAttribute('aria-expanded',o)};
+d.dataset.fk=key;d.append(h);const foot=el('div','pf');foot.append(el('span','tm',fmtWhen(c.when)+' 更新'));if(c.old)foot.append(el('span','miss','超過 24 小時沒更新，可能做完忘了放掉'));d.append(foot);
+const det=el('div','pd');det.append(html('div','raw wf',c.text));d.append(det);
+h.onclick=e=>{if(e.target.closest('a'))return;const o=!d.classList.contains('open');o?wbOpen.add(key):wbOpen.delete(key);d.classList.toggle('open',o);d.classList.add('anim');tb.setAttribute('aria-expanded',o);wbFold()};
 return d}
-async function load(stick){const lim=(ch==='todo'||ch==='opinion')?500:+$('lim').value;
-try{const t0=performance.now();const r=await fetch('/board/api/feed?limit='+lim,{headers:{Accept:'application/json'}});if(r.status===401){location.href='/board';return}
-data=await r.json();if(data.error)throw new Error(data.error);(data.messages||[]).forEach(m=>applyAliases(m,data.aliases));syncUIActions(data);lat.push(performance.now()-t0);if(lat.length>10)lat.shift();okAt=Date.now();fails=0;err('');avApply();renderSide();renderFeed(stick);wbSteady()}
-catch(e){fails++;err('讀取失敗：'+e.message)}finally{live()}}
-function err(s){$('err').hidden=!s;$('err').textContent=s||''}
+// 2.19.0 FRONT-6／FRONT-8：抓資料（fetchFeed）和畫畫面（applyFeed）分開。
+// 同一個瀏覽器開了好幾個公告欄分頁時，只有領頭的那個真的打伺服器，其他分頁收它用 BroadcastChannel('rt-board') 廣播的資料
+const BC=(()=>{try{return new BroadcastChannel('rt-board')}catch(e){return null}})();let bcLast=null;
+let feedRequest=0;
+const feedLimit=()=>(ch==='todo'||ch==='opinion')?500:+$('lim').value;
+const feedScope=()=>(isPreview?'preview':'stable')+':'+(document.querySelector('meta[name="board-version"]')?.content||'')+':'+(document.querySelector('meta[name="board-revision"]')?.content||'')+':'+feedLimit();
+if(BC)BC.onmessage=e=>{const m=e.data;if(!m||m.type!=='feed'||!m.data||m.scope!==feedScope())return;bcLast={at:Date.now(),data:m.data,okAt:m.okAt,scope:m.scope};if(m.pollMs)pollMs=m.pollMs;if(window.rtPageHidden()||rfrBusy)return;
+try{applyFeed(m.data,false,{okAt:m.okAt,fromPeer:true})}catch(x){}nextAt=Date.now()+pollMs+1500;live();renderRfr();renderSum()};// 排在領頭分頁之後 1.5 秒：它活著就一直由它抓
+async function fetchFeed(fresh=false){const lim=feedLimit(),t0=performance.now();
+const r=await fetch('/board/api/feed?multi_to=1&limit='+lim,{headers:{Accept:'application/json',...(fresh?{'X-RT-Fresh':'1'}:{})},signal:timeoutSig(20000)});if(r.status===401){location.href='/board';return null}
+// 錯誤寫人話：502／504 是反向代理連不到伺服器；回來的不是 JSON 多半是登入頁或錯誤頁
+if(!r.ok)throw new Error(r.status===502||r.status===504?'反向代理連不到公告欄伺服器（'+r.status+'）':'伺服器回 '+r.status);
+if(!/json/i.test(r.headers.get('content-type')||''))throw new Error('伺服器回的不是資料（可能是登入頁或錯誤頁）');
+let d;try{d=await r.json()}catch(e){throw new Error('伺服器回的不是資料（可能是登入頁或錯誤頁）')}if(d&&d.error)throw new Error(d.error);
+lat.push(performance.now()-t0);if(lat.length>10)lat.shift();return d}
+window.addEventListener('rt:data-updated',e=>{if(e.detail.startsWith('/board/api/feed?')&&!window.rtPageHidden())load(false)});
+// 畫畫面：分四段各自 try/catch，一段壞了其他段照出，壞的那段顯示一行「這一段讀不出來」
+function applyFeed(d,stick,o){o=o||{};data=d;(data.messages||[]).forEach(m=>applyAliases(m,data.aliases));syncUIActions(data);okAt=o.okAt||Date.now();fails=0;errLoadClear();
+seg('agents','左側名單',()=>{avApply();renderSide()});seg('feed','留言',()=>{if(stick||pendRep.length||feedKey()!==feedDrawn)renderFeed(stick)});seg('stList','白板',wbSteady);if(!o.fromPeer)loadPower()}
+async function load(stick,fresh=false){const scope=feedScope(),request=++feedRequest;try{const d=await fetchFeed(fresh);if(!d||scope!==feedScope()||request!==feedRequest)return;
+const sig=wbHash(JSON.stringify(d));if(sig===feedSig)sameN++;else{sameN=0;feedSig=sig}pollMs=sameN>=3?20000:10000;// 連續 3 次沒變化就放慢到 20 秒
+if(BC)try{BC.postMessage({type:'feed',data:d,okAt:Date.now(),pollMs,scope})}catch(e){}
+applyFeed(d,stick,{})}
+catch(e){if(scope===feedScope()&&request===feedRequest){fails++;err('讀取失敗：'+fetchErr(e))}}finally{if(scope===feedScope()&&request===feedRequest){live();renderRfr();renderSum()}}}
+// 2.19.0 錯誤那行可以附一顆「重送」（retry＝按了要做的事）
+let errSticky=false;// 2.19.0 送出失敗（有「重送」鈕）的錯誤要留到下一次送出，不被每 10 秒的背景更新洗掉
+function err(s,retry){const e=$('err');e.hidden=!s;e.textContent=s||'';errSticky=!!(s&&retry);if(s&&retry){const b=el('button','','重送');b.type='button';b.onclick=retry;e.append(b)}}
+function errLoadClear(){if(!errSticky)err('')}
 function escapeText(s){const d=el('span','',s);return d.innerHTML}
 function plain(s){const d=html('div','',s);return d.textContent}
 // 寄給（v2.2.0）：像寄信軟體一樣打字找人、可選多位。toList＝目前選的地址（all、群組、身分或「身分:串名」）
 let toList=[],toCands=[],toInit=false,toHi=0,toNav=false,toShown=[];
 function toBuild(){const ids=((data&&data.recipients)||[]).filter(r=>!r.includes(':')&&r!=='user'),out=[];
 const zh=v=>'',nick=v=>/^claude/.test(v)?' cc claude 克勞德':/^codex/.test(v)?' cd codex':' '+zh(v);
-ids.forEach(r=>{const label=r==='all'?'所有 AI':GROUPS.has(r)?groupLabel(r):clName(r)+(zh(r)?'（'+zh(r)+'）':''),sub=r==='all'?'all':GROUPS.has(r)?'群發':r;out.push({v:r,label,sub,key:(r+' '+label+' '+agentAv(r).label+nick(r)+(r==='all'?' 全部 所有':'')).toLowerCase(),rank:r==='all'?0:GROUPS.has(r)?1:2})});
+ids.forEach(r=>{const label=r==='all'?'所有 AI':GROUPS.has(r)?groupLabel(r):PN[r]?plainName(r):clName(r)+(zh(r)?'（'+zh(r)+'）':''),sub=r==='all'?'all':GROUPS.has(r)?'群發':r;out.push({v:r,label,sub,key:(r+' '+label+' '+agentAv(r).label+nick(r)+(r==='all'?' 全部 所有':'')).toLowerCase(),rank:r==='all'?0:GROUPS.has(r)?1:2})});
 const cl=ids.find(r=>/^claude-/.test(r)&&!GROUPS.has(r));if(cl)Object.entries((data&&data.sessions)||{}).forEach(([l,ti])=>{if(isTestSess(l))return;out.push({v:cl+':'+l,label:sessShort(l),sub:'Claude 的串・'+l,key:(l+' '+ti+' '+cl+nick(cl)).toLowerCase(),rank:3})});
 return out.sort((a,b)=>a.rank-b.rank)}
 function toName(v){const c=toCands.find(x=>x.v===v);if(c)return c.label;const i=v.indexOf(':');return i<0?toLabel(v):fromWithSess(v.slice(0,i),v.slice(i+1))}
-function renderTo(){const box=$('toChips');box.textContent='';toList.forEach(v=>{const c=el('span','tochip'),x=el('button','','×');x.type='button';x.setAttribute('aria-label','拿掉 '+toName(v));x.onclick=e=>{e.stopPropagation();toDel(v);$('toIn').focus()};c.append(agentDot(v.includes(':')?baseOf(v):v),el('b','',toName(v)),x);c.title=v;box.append(c)});$('toIn').placeholder=toList.length?'':'打字找人'}
+function renderTo(){const box=$('toChips');box.textContent='';toList.forEach(v=>{const c=el('span','tochip'),x=el('button','','×');x.type='button';x.setAttribute('aria-label','拿掉 '+toName(v));x.onclick=e=>{e.stopPropagation();toDel(v);$('toIn').focus()};c.append(agentDot(v.includes(':')?baseOf(v):v),el('b','',toName(v)),x);c.title=v;box.append(c)});const tb=toTabSug();$('toIn').placeholder=tb.length?'Tab 帶入 '+tb.map(toName).join('、'):toList.length?'':'打字找人';compSync()}
+// 2.17.0 B08：在「寄給」按 Tab 帶入被回覆的人（正在引用回覆時）或上次寄的對象；已經都在名單裡就照常跳到下一格
+function lastTo(){try{const a=JSON.parse(LS('lastTo')||'[]');return Array.isArray(a)?a.filter(x=>typeof x==='string'&&x):[]}catch(e){return[]}}
+function toTabSug(){let s=[];if(replyTo){const b=replyTo.from_session&&!isTestSess(replyTo.from_session)?replyTo.from+':'+replyTo.from_session:replyTo.from;if(b&&b!=='user')s=[b]}if(!s.length)s=lastTo();return s.filter(v=>!toList.includes(v)&&!(toList.includes('all')&&v==='all'))}
 function toAdd(v){toList=v==='all'?['all']:toList.filter(x=>x!=='all'&&x!==v).concat(v);renderTo()}
 function toDel(v){toList=toList.filter(x=>x!==v);renderTo()}
 function toClose(){$('toSug').hidden=true;$('toIn').setAttribute('aria-expanded','false');$('toIn').removeAttribute('aria-activedescendant')}
@@ -474,7 +825,7 @@ function toPick(i){const c=toShown[i];if(!c)return;toAdd(c.v);$('toIn').value=''
 $('toBox').onclick=e=>{if(e.target===$('toBox')||e.target.classList.contains('tol')||e.target===$('toChips'))$('toIn').focus()};
 $('toIn').onfocus=()=>{toHi=0;toNav=false;toOpen()};$('toIn').onblur=()=>{if($('toIn').value.trim()){toHi=0;toOpen();toPick(0)}toClose();$('toIn').value=''};
 $('toIn').oninput=()=>{const v=$('toIn').value;toHi=0;toNav=false;if(/[,，、]$/.test(v)){$('toIn').value=v.slice(0,-1);toOpen();if($('toIn').value.trim())toPick(0);return}toOpen()};
-$('toIn').onkeydown=e=>{if(e.isComposing||e.keyCode===229)return;const open=!$('toSug').hidden,q=$('toIn').value.trim();if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();if(!open){toOpen();return}const n=toShown.length;if(n){toNav=true;toHi=(toHi+(e.key==='ArrowDown'?1:n-1))%n;toOpen()}}else if(e.key==='Enter'||(e.key==='Tab'&&!e.shiftKey&&q)){if(open&&toShown.length&&(q||toNav)){e.preventDefault();toPick(toHi);toNav=false}else if(e.key==='Enter'){e.preventDefault();$('txt').focus()}}else if(e.key==='Backspace'&&!$('toIn').value&&toList.length){e.preventDefault();toDel(toList[toList.length-1]);if(open)toOpen()}else if(e.key==='Escape'&&open){e.preventDefault();e.stopPropagation();toClose()}};
+$('toIn').onkeydown=e=>{if(e.isComposing||e.keyCode===229)return;const open=!$('toSug').hidden,q=$('toIn').value.trim();if(e.key==='Tab'&&!e.shiftKey&&!q&&!toNav){const s=toTabSug();if(s.length){e.preventDefault();s.forEach(toAdd);toHi=0;toOpen();return}}if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();if(!open){toOpen();return}const n=toShown.length;if(n){toNav=true;toHi=(toHi+(e.key==='ArrowDown'?1:n-1))%n;toOpen()}}else if(e.key==='Enter'||(e.key==='Tab'&&!e.shiftKey&&q)){if(open&&toShown.length&&(q||toNav)){e.preventDefault();toPick(toHi);toNav=false}else if(e.key==='Enter'){e.preventDefault();$('txt').focus()}}else if(e.key==='Backspace'&&!$('toIn').value&&toList.length){e.preventDefault();toDel(toList[toList.length-1]);if(open)toOpen()}else if(e.key==='Escape'&&open){e.preventDefault();e.stopPropagation();toClose()}};
 function setReply(m){if(!replyTo)replyPrevTo=[...toList];replyTo=m;$('replyLabel').textContent='回覆 '+fromWithSess(m.from,m.from_session)+'：'+plain(m.subject)+(isRc(m)?'（原信已撤回）':'');$('replyBanner').hidden=false;
 const back=m.from_session&&!isTestSess(m.from_session)?m.from+':'+m.from_session:'';
 if(back)toList=[back];else if(m.from&&m.from!=='user')toList=[m.from];renderTo();$('txt').focus();$('context').hidden=true}
@@ -491,9 +842,21 @@ function pcOpenMenu(p,c,h,x,y,yUp){$('context').hidden=true;pcCur={p,c,h,back:do
 $('pcHead').textContent=(p.name?plain(p.name)+'（'+p.project+'）':p.project);$('pcOpen').textContent=c.classList.contains('open')?'收起這張卡':'展開這張卡';const pg=$('pcPing');pg.hidden=typeof p.pingpong!=='boolean';pg.textContent=p.pingpong?'⇄ 關掉乒乓':'⇄ 打開乒乓';if(!p.pingpong)pg.append(el('small','pgx','無人值守時會輪流處理這個專案裡標了「乒乓」的待辦'));const pr=$('pcPrio');pr.hidden=typeof p.priority!=='number';pr.querySelectorAll('button').forEach(b=>{const on=+b.dataset.p===(+p.priority||0);b.classList.toggle('on',on);b.setAttribute('aria-checked',on)});m.hidden=false;
 const w=m.offsetWidth,hh=m.offsetHeight;m.style.left=Math.max(8,Math.min(x,innerWidth-w-8))+'px';m.style.top=(yUp!=null&&y+hh>innerHeight-8?Math.max(8,yUp-hh):Math.max(8,Math.min(y,innerHeight-hh-8)))+'px';$('pcSay').focus()}
 function pcClose(back){const m=$('pcMenu');if(m.hidden)return;m.hidden=true;if(back&&pcCur&&pcCur.back&&pcCur.back.isConnected)pcCur.back.focus()}
-function setProj(p){projSel={code:p.project,name:p.name?plain(p.name):''};const l=$('projLabel');l.textContent='對專案 ';l.append(el('b','',projSel.name||projSel.code));if(projSel.name)l.append('（'+projSel.code+'）');l.append(' 發留言');$('projBanner').hidden=false;txt.placeholder='對「'+(projSel.name||projSel.code)+'」發留言，Enter 送出、Shift+Enter 換行';if($('claims').classList.contains('open'))setClaims(false);txt.focus()}
+// 回覆專案：「寄給」換成這張卡「做事」欄列的每一位；只寫 Claude 這種大分類時，優先用最近一次更新者（卡上的 claude-laptop），再沒有才用大分類本身。卡上沒有做事欄就回空陣列，維持原本收件人
+function projTargets(p){const doers=wbSplit(wbPlain(p.doers)).map(x=>x.replace(/\s*[（(].*$/,'').trim()).filter(Boolean);if(!doers.length)return[];
+const cands=toBuild(),nz=x=>String(x||'').toLowerCase().replace(/[\s\-_・:：]/g,''),out=[],add=v=>{if(v&&!out.includes(v))out.push(v)};
+const KIND={claude:'claude',cc:'claude',codex:'codex',cd:'codex',hermes:'hermes'};
+doers.forEach(n=>{const k=nz(n);if(wbKind(n)==='user')return;
+let c=cands.find(x=>x.rank>=2&&!x.v.includes(':')&&(nz(x.v)===k||nz(x.label)===k));if(c)return add(c.v);
+const m=k.match(/^(claude|codex|hermes|cc|cd)(.*)$/),rest=m?m[2]:k;
+if(rest.length>=2){c=cands.find(x=>x.rank===3&&(nz(x.label)===rest||rest.includes(nz(x.label))&&nz(x.label).length>=2));if(c)return add(c.v)}
+c=cands.find(x=>x.rank===3&&nz(x.label)===k);if(c)return add(c.v);
+if(m){const kind=KIND[m[1]],w=String(p.who||'');
+if(who(w)===kind){const ss=p.who_session||p.session||'';add(w.includes(':')||!ss?w:w+':'+ss)}else add(kind)}});
+return out}
+function setProj(p){projSel={code:p.project,name:p.name?plain(p.name):''};const tg=projTargets(p);if(tg.length){toList=tg;renderTo()}const l=$('projLabel');l.textContent='對專案 ';l.append(el('b','',projSel.name||projSel.code));if(projSel.name)l.append('（'+projSel.code+'）');l.append(' 發留言');$('projBanner').hidden=false;txt.placeholder='對「'+(projSel.name||projSel.code)+'」發留言，Enter 送出、Shift+Enter 換行';if($('claims').classList.contains('open'))setClaims(false);txt.focus()}
 function clearProj(){projSel=null;$('projBanner').hidden=true;txt.placeholder=txt.dataset.ph}
-function pcTip(s){const b=$('pcTip');b.textContent=s;b.hidden=false;clearTimeout(pcTipT);pcTipT=setTimeout(()=>b.hidden=true,2000)}
+function pcTip(s,k){toast(s,k||(/沒|失敗|不能/.test(s)?'bad':'ok'),2500)}// 2.19.0 改走共用的小提示；沒／失敗 自動變紅
 $('pcSay').onclick=()=>{const c=pcCur;pcClose();if(c)setProj(c.p)};
 $('pcOpen').onclick=()=>{const c=pcCur;pcClose(true);if(!c)return;const k=[...document.querySelectorAll('.pc .l1')].find(b=>b.dataset.wbk==='p'+c.p.project),h=k&&k.parentNode;if(h&&h.onclick){h.onclick({target:h});k.focus()}};
 function pcCopyOld(s){const a=document.createElement('textarea'),f=document.activeElement;a.value=s;a.setAttribute('readonly','');a.style.cssText='position:fixed;left:-9999px;top:0';document.body.append(a);a.select();let ok=false;try{ok=document.execCommand('copy')}catch(e){}a.remove();if(f&&f.focus)f.focus();return ok}
@@ -503,18 +866,18 @@ $('pcWarnNo').onclick=()=>{const c=pcCur;pcClose(true);if(c)pcTip('沒有打開�
 $('pcWarnYes').onclick=()=>{const c=pcCur;if(c)pcSetPing(c)};
 const PRIO_TIP=['','最優先','第二優先','第三優先','第四優先','暫停：先不做，排在最後'];
 $('pcPrio').onclick=e=>{const b=e.target.closest('button');if(b&&pcCur)pcSetPrio(pcCur,+b.dataset.p)};
-async function pcSetPrio(c,n){pcClose(true);const nm=c.p.name?plain(c.p.name):c.p.project;try{const r=await fetch('/board/api/project/priority',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify({project:c.p.project,priority:n})}),d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||r.status);c.p.priority=+d.priority||0;pcTip((c.p.priority?'已設成 '+(c.p.priority===5?'P5 暫停':'P'+c.p.priority)+'：':'已拿掉優先序：')+nm);load()}catch(e){pcTip('優先序沒改成：'+e.message)}}
+async function pcSetPrio(c,n){pcClose(true);const nm=c.p.name?plain(c.p.name):c.p.project,t=toast('優先序設定中…','',15000);try{const r=await fetch('/board/api/project/priority',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify({project:c.p.project,priority:n}),signal:timeoutSig(15000)}),d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||('伺服器回 '+r.status));c.p.priority=+d.priority||0;t.remove();pcTip((c.p.priority?'已設成 '+(c.p.priority===5?'P5 暫停':'P'+c.p.priority)+'：':'已拿掉優先序：')+nm);load()}catch(e){t.remove();pcTip('優先序沒改成：'+fetchErr(e))}}
 // 白板原地更新：資料沒變就不重畫；有變才重畫，以畫面上第一張看得到的卡為錨，重畫後放回同一個高度。
 // 專案選單開著時先不畫（選單綁著那張卡），關掉後下一輪再畫
 let wbSig='',sideSig='';
 function wbSteady(){const s=JSON.stringify([data.statuses,data.research,data.claims]);if(s===wbSig||!$('pcMenu').hidden)return;wbSig=s;
 const box=$('claims'),y=box.scrollTop,top=box.getBoundingClientRect().top;let ak='',ay=0;
 for(const k of box.querySelectorAll('.pc .l1[data-wbk]')){const r=k.getBoundingClientRect();if(r.bottom>top){ak=k.dataset.wbk;ay=r.top;break}}
-renderClaims();renderWhiteboard();box.scrollTop=y;
+try{renderClaims()}catch(e){segBad('claimList','認領',e)}try{renderWhiteboard()}catch(e){segBad('stList','白板',e)}box.scrollTop=y;// 2.19.0 一段壞了另一段照畫
 if(ak&&y>0){const k=[...box.querySelectorAll('.pc .l1[data-wbk]')].find(x=>x.dataset.wbk===ak);if(k)box.scrollTop+=k.getBoundingClientRect().top-ay}}
 // 頭像（v2.3.0）：avatars＝{agentAv 代號: 圖檔}，用一段樣式蓋過預設字母；左邊名單右鍵換
 let avCur=null,avPend=null,avSupp=0;
-function avApply(){const a=data&&data.avatars;let css='';if(a&&typeof a==='object')for(const[k,f]of Object.entries(a)){if(!/^[a-z0-9-]{1,64}$/.test(k)||!/^[0-9a-f]{24}\.(png|jpg|webp|gif)$/.test(f))continue;
+function avApply(){const a=data&&data.avatars;let css='';if(a&&typeof a==='object')for(const[k,f]of Object.entries(a)){if(!/^[a-z0-9-]{1,24}$/.test(k)||!/^[0-9a-f]{24}\.(png|jpg|webp|gif)$/.test(f))continue;
 css+='.agv.a-'+k+'.a-'+k+',.pp.a-'+k+' i{background:center/cover no-repeat url("/board/files/'+f+'");color:transparent}.av.agv.a-'+k+' span{visibility:hidden}'}const s=$('avCss');if(s.textContent!==css)s.textContent=css}
 function avOpen(n,x,y,back){pcClose();$('context').hidden=true;const v=agentAv(n),a=data&&data.avatars,ok=!!a&&typeof a==='object',can=ok&&v.id!=='other',m=$('avMenu'),h=$('avHead');avCur={n,id:v.id,back};
 h.textContent='';h.append(agentDot(n),el('span','',n));$('avPick').disabled=!can;$('avReset').hidden=!(can&&a[v.id]);
@@ -525,28 +888,29 @@ function avClose(back){const m=$('avMenu');if(m.hidden)return;m.hidden=true;if(b
 async function avSquare(f){if(!/^image\//.test(f.type))throw new Error('只能用圖片');const u=URL.createObjectURL(f);try{const im=new Image();im.src=u;await im.decode();const s=Math.min(im.naturalWidth,im.naturalHeight);if(!s)throw new Error('讀不到這張圖');
 const cv=document.createElement('canvas');cv.width=cv.height=256;cv.getContext('2d').drawImage(im,(im.naturalWidth-s)/2,(im.naturalHeight-s)/2,s,s,0,0,256,256);
 const b=await new Promise(r=>cv.toBlob(r,'image/webp',.9));return b&&b.type==='image/webp'?b:await new Promise(r=>cv.toBlob(r,'image/png'))}finally{URL.revokeObjectURL(u)}}
-async function avSet(c,file){const r=await fetch('/board/api/avatar',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify({who:c.id,file})}),d=await r.json().catch(()=>({}));
-if(!r.ok)throw new Error(d.error||r.status);data.avatars=d.avatars||{};avApply();pcTip(file?c.n+' 的頭像換好了':c.n+' 換回預設字母了')}
+async function avSet(c,file){const r=await fetch('/board/api/avatar',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify({who:c.id,file}),signal:timeoutSig(15000)}),d=await r.json().catch(()=>({}));
+if(!r.ok)throw new Error(d.error||('伺服器回 '+r.status));data.avatars=d.avatars||{};avApply();pcTip(file?c.n+' 的頭像換好了':c.n+' 換回預設字母了')}
 $('avPick').onclick=()=>{if(!avCur)return;avPend=avCur;avClose();const f=$('avFile');f.value='';f.click()};
 $('avFile').onchange=async()=>{const f=$('avFile').files[0],c=avPend;avPend=null;if(!f||!c)return;pcTip('頭像上傳中…');
-try{const b=await avSquare(f),r=await fetch('/board/upload',{method:'POST',headers:{'Content-Type':b.type},body:b}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||r.status);await avSet(c,j.id)}catch(e){pcTip('頭像沒換成：'+e.message)}};
-$('avReset').onclick=async()=>{const c=avCur;avClose(true);if(c)try{await avSet(c,'')}catch(e){pcTip('沒換回來：'+e.message)}};
+try{const b=await avSquare(f),r=await fetch('/board/upload',{method:'POST',headers:{'Content-Type':b.type},body:b,signal:timeoutSig(30000)}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('伺服器回 '+r.status));await avSet(c,j.id)}catch(e){pcTip('頭像沒換成：'+fetchErr(e))}};
+$('avReset').onclick=async()=>{const c=avCur;avClose(true);if(c)try{await avSet(c,'')}catch(e){pcTip('沒換回來：'+fetchErr(e))}};
 $('avMenu').addEventListener('keydown',e=>{const bs=[...$('avMenu').querySelectorAll('button')].filter(b=>!b.hidden&&!b.disabled),i=bs.indexOf(document.activeElement);
 if((e.key==='ArrowDown'||e.key==='ArrowUp')&&bs.length){e.preventDefault();bs[(i+(e.key==='ArrowDown'?1:bs.length-1))%bs.length].focus()}else if(e.key==='Escape'||e.key==='Tab'){e.preventDefault();e.stopPropagation();avClose(true)}});
 document.addEventListener('pointerdown',e=>{if(!$('avMenu').contains(e.target))avClose()},true);addEventListener('resize',()=>avClose());
-async function pcSetPing(c){pcClose(true);const on=!c.p.pingpong,nm=c.p.name?plain(c.p.name):c.p.project;try{const r=await fetch('/board/api/project/pingpong',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify({project:c.p.project,on})}),d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||r.status);c.p.pingpong=!!d.pingpong;pcTip((d.pingpong?'已打開乒乓：':'已關掉乒乓：')+nm);load()}catch(e){pcTip('乒乓開關沒改成：'+e.message)}}
+async function pcSetPing(c){pcClose(true);const on=!c.p.pingpong,nm=c.p.name?plain(c.p.name):c.p.project,t=toast((on?'打開':'關掉')+'乒乓中…','',15000);try{const r=await fetch('/board/api/project/pingpong',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify({project:c.p.project,on}),signal:timeoutSig(15000)}),d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||('伺服器回 '+r.status));c.p.pingpong=!!d.pingpong;t.remove();pcTip((d.pingpong?'已打開乒乓：':'已關掉乒乓：')+nm);load()}catch(e){t.remove();pcTip('乒乓開關沒改成：'+fetchErr(e))}}
 $('cancelProj').onclick=()=>{clearProj();txt.focus()};
 $('pcMenu').addEventListener('keydown',e=>{const bs=[...$('pcMenu').querySelectorAll('button:not([hidden])')].filter(b=>b.offsetParent),i=bs.indexOf(document.activeElement);if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();bs[(i+(e.key==='ArrowDown'?1:bs.length-1))%bs.length].focus()}else if(e.key==='Home'||e.key==='End'){e.preventDefault();bs[e.key==='Home'?0:bs.length-1].focus()}else if(e.key==='Escape'||e.key==='Tab'){e.preventDefault();e.stopPropagation();pcClose(true)}});
 document.addEventListener('pointerdown',e=>{if(!$('pcMenu').contains(e.target))pcClose()},true);
 $('claimList').addEventListener('scroll',()=>pcClose(),{passive:true});addEventListener('resize',()=>pcClose());
 document.addEventListener('keydown',e=>{if(e.key==='Escape')$('context').hidden=true});$('feed').addEventListener('scroll',()=>$('context').hidden=true);
-async function showOriginal(id){let row=$('message-'+id);if(row){row.scrollIntoView({block:'center'});row.classList.add('flash');setTimeout(()=>row.classList.remove('flash'),1600);return}
-try{const r=await fetch('/board/api/message/'+encodeURIComponent(id),{headers:{Accept:'application/json'}}),m=await r.json();if(!r.ok)throw new Error(m.error||r.status);applyAliases(m,data&&data.aliases);
-const b=$('originalBody');b.textContent='';if(isRc(m))b.append(el('div','ogone','↩ 這則已撤回：'+(m.closed.reason||'')+'（'+byName(m.closed.by)+'、'+m.closed.at+'）'));b.append(el('div','nm',fromWithSess(m.from,m.from_session)+' → '+toLabel(m.to)+(sessOf(m.to)?'・'+sessOf(m.to):'')),html('div','sj',m.subject),html('div','bd',m.body));
-for(const id of m.attachments||[]){const i=el('img');i.src='/board/files/'+encodeURIComponent(id);i.alt='原留言附件';i.style.maxWidth='100%';b.append(i)}$('original').showModal()}catch(e){err('原留言讀取失敗：'+e.message)}}
+async function showOriginal(id,btn){let row=$('message-'+id);if(row){row.scrollIntoView({block:'center'});row.classList.add('flash');setTimeout(()=>row.classList.remove('flash'),1600);return}
+const done=busy(btn);try{const r=await fetch('/board/api/message/'+encodeURIComponent(id),{headers:{Accept:'application/json'},signal:timeoutSig(15000)}),m=await r.json().catch(()=>({}));if(!r.ok)throw new Error(m.error||('伺服器回 '+r.status));done();applyAliases(m,data&&data.aliases);
+const b=$('originalBody');b.textContent='';if(isRc(m))b.append(el('div','ogone','↩ 這則已撤回：'+(m.closed.reason||'')+'（'+byName(m.closed.by)+'、'+m.closed.at+'）'));b.append(el('div','nm',fromWithSess(m.from,m.from_session)+' → '+recipientsLabel(m.to)),html('div','sj',m.subject),html('div','bd',m.body));
+for(const id of m.attachments||[]){const i=el('img');i.src='/board/files/'+encodeURIComponent(id);i.alt='原留言附件';i.style.maxWidth='100%';b.append(i)}$('original').showModal()}catch(e){done();err('原留言讀取失敗：'+fetchErr(e));toast('原留言讀取失敗：'+fetchErr(e),'bad')}}
 // kind='recall' 走撤回端點（作廢）；其餘照舊是結案
-async function closeMsg(m,reason,undo,kind){const rcl=kind==='recall',what=rcl?(undo?'取消撤回':'撤回'):(undo?'取消結案':'結案');try{const body=new URLSearchParams({message_id:m.id});if(undo)body.set('undo','yes');else body.set('reason',reason);
-const r=await fetch(rcl?'/board/preview/recall':'/board/preview/close',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/x-www-form-urlencoded'},body});const j=await r.json();if(!r.ok)throw new Error(j.error||r.status);err('');await load(false)}catch(e){err(what+'失敗：'+e.message)}}
+// 2.19.0 btn＝按下去的那顆：做的時候「○○中…」、做完小提示「已○○」；逾時 15 秒
+async function closeMsg(m,reason,undo,kind,btn){const rcl=kind==='recall',what=rcl?(undo?'取消撤回':'撤回'):(undo?'取消結案':'結案'),done=busy(btn,what+'中…');try{const body=new URLSearchParams({message_id:m.id});if(undo)body.set('undo','yes');else body.set('reason',reason);
+const r=await fetch(rcl?'/board/preview/recall':'/board/preview/close',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/x-www-form-urlencoded'},body,signal:timeoutSig(15000)});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('伺服器回 '+r.status));err('');done(reason==='使用者已看過'?'已標成看過了':reason==='使用者已處理'?'已標成處理好了':'已'+what);await load(false)}catch(e){done();err(what+'失敗：'+fetchErr(e));toast(what+'失敗：'+fetchErr(e),'bad',4000)}}
 let closing=null,closeKind='';const QUICK={close:['已完成','已被取代','不需要了'],recall:['寄錯對象','內容有誤','不需要了']};
 function askClose(m,kind){closing=m;closeKind=kind==='recall'?'recall':'';const d=$('closeDlg'),rcl=!!closeKind,q=$('closeQuick'),h=$('closeHint'),rd=[...new Set(m.readers.map(fmtAddr).filter(Boolean))];d.classList.toggle('recall',rcl);
 $('closeTitle').textContent=rcl?'撤回這則（作廢）':'結案';$('closeOk').textContent=rcl?'撤回':'結案';$('closeSubj').textContent=plain(m.subject);h.hidden=!rcl;
@@ -555,10 +919,10 @@ q.textContent='';(rcl?QUICK.recall:QUICK.close).forEach(r=>{const b=el('button',
 $('closeReason').value='';$('closeOk').disabled=true;d.showModal();$('closeReason').focus()}
 {const d=$('closeDlg'),inp=$('closeReason'),ok=$('closeOk'),sync=()=>{ok.disabled=!inp.value.trim()};inp.oninput=()=>{d.querySelectorAll('.cquick button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.r===inp.value)));sync()};
 $('closeQuick').onclick=e=>{const b=e.target.closest('button');if(!b)return;inp.value=b.dataset.r;inp.oninput()};d.querySelector('.nx').onclick=d.querySelector('.ccancel').onclick=()=>d.close();d.addEventListener('click',e=>{if(e.target===d)d.close()});
-inp.onkeydown=e=>{if(e.key==='Enter'&&!ok.disabled){e.preventDefault();ok.click()}};ok.onclick=async()=>{const m=closing,reason=inp.value.trim();if(!m||!reason)return;d.close();await closeMsg(m,reason,false,closeKind)}}
+inp.onkeydown=e=>{if(e.key==='Enter'&&!ok.disabled){e.preventDefault();ok.click()}};ok.onclick=async()=>{const m=closing,reason=inp.value.trim();if(!m||!reason)return;await closeMsg(m,reason,false,closeKind,ok);if(d.open)d.close()}}// 2.19.0 視窗留著顯示「結案中…」，做完才關
 async function vote(m,value){if(voting.has(m.id))return;voting.add(m.id);renderFeed(false);
-try{const r=await fetch('/board/preview/vote',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({message_id:m.id,vote:String((m.votes||{}).mine===value?0:value)})});
-const j=await r.json();if(!r.ok)throw new Error(j.error||r.status);err('');await load(false)}catch(e){err('表決失敗：'+e.message)}finally{voting.delete(m.id);renderFeed(false)}}
+try{const r=await fetch('/board/preview/vote',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({message_id:m.id,vote:String((m.votes||{}).mine===value?0:value)}),signal:timeoutSig(15000)});
+const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('伺服器回 '+r.status));err('');await load(false)}catch(e){err('表決失敗：'+fetchErr(e));toast('表決失敗：'+fetchErr(e),'bad')}finally{voting.delete(m.id);renderFeed(false)}}
 $('lim').onchange=()=>{SS('lim',$('lim').value);load(true)};
 function setClaims(o){$('claims').classList.toggle('open',o);$('claimsBack').hidden=!o;$('claimsBtn').setAttribute('aria-expanded',String(o))}(()=>{const g=$('wbGrip'),root=document.documentElement,MIN=280,max=()=>Math.max(MIN,Math.min(760,innerWidth-(innerWidth>1100?560:40)));
 const cur=()=>$('claims').getBoundingClientRect().width,set=(w,save)=>{w=Math.round(Math.min(max(),Math.max(MIN,w)));root.style.setProperty('--wbw',w+'px');g.setAttribute('aria-valuenow',w);if(save)SS('wbw',w)};
@@ -573,9 +937,9 @@ $('claimsBtn').onclick=()=>setClaims(!$('claims').classList.contains('open'));$(
 function renderPrev(){const p=$('prev');p.textContent='';atts.forEach((a,i)=>{const d=el('div','pi'+(a.id?'':' up')),im=el('img');im.src=a.url;im.alt='待傳圖片';
 const x=el('button','','×');x.type='button';x.setAttribute('aria-label','移除這張');x.onclick=()=>{URL.revokeObjectURL(a.url);atts.splice(i,1);renderPrev()};d.append(im,x);p.append(d)})}
 async function addFiles(files){for(const f of files){if(!f.type.startsWith('image/'))continue;if(atts.length>=6){err('一則最多 6 張');break}
-const a={url:URL.createObjectURL(f),id:null};atts.push(a);renderPrev();uploading++;$('send').disabled=true;
-try{const r=await fetch('/board/upload',{method:'POST',headers:{'Content-Type':f.type},body:f});const j=await r.json();if(!r.ok)throw new Error(j.error||r.status);a.id=j.id;err('')}
-catch(e){err('上傳失敗：'+e.message);atts.splice(atts.indexOf(a),1)}finally{uploading--;$('send').disabled=uploading>0;renderPrev()}}}
+const a={url:URL.createObjectURL(f),id:null};atts.push(a);renderPrev();uploading++;if(!sending){$('send').disabled=true;$('send').textContent='圖片上傳中…'}
+try{const r=await fetch('/board/upload',{method:'POST',headers:{'Content-Type':f.type},body:f,signal:timeoutSig(30000)});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('伺服器回 '+r.status));a.id=j.id;err('')}
+catch(e){err('上傳失敗：'+fetchErr(e));toast('圖片沒傳上去：'+fetchErr(e),'bad');atts.splice(atts.indexOf(a),1)}finally{uploading--;if(!sending){$('send').disabled=uploading>0;$('send').textContent=uploading>0?'圖片上傳中…':'送出'}renderPrev()}}}
 $('pick').onclick=()=>$('file').click();$('file').onchange=e=>{addFiles([...e.target.files]);e.target.value=''};
 $('txt').addEventListener('paste',e=>{const fs=[...(e.clipboardData||{}).files||[]];if(fs.length){e.preventDefault();addFiles(fs)}});
 const box=$('box');['dragenter','dragover'].forEach(t=>box.addEventListener(t,e=>{e.preventDefault();box.classList.add('drag')}));
@@ -585,34 +949,72 @@ box.addEventListener('drop',e=>addFiles([...e.dataTransfer.files]));
 const txt=$('txt');txt.dataset.ph=txt.placeholder;txt.value=LS('draft')||'';
 txt.oninput=()=>{SS('draft',txt.value);txt.style.height='auto';txt.style.height=Math.min(txt.scrollHeight,innerHeight*.4)+'px'};
 txt.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&e.keyCode!==229){e.preventDefault();send()}});
-$('send').onclick=send;
-async function send(){if(uploading)return;const raw=txt.value.trim(),ids=atts.filter(a=>a.id).map(a=>a.id);if(!raw&&!ids.length)return;
+$('send').onclick=()=>send();
+// 2.19.0 SEND-1：按下去立刻「送出中…」，剛送的那則先插進 feed（所有篩選都插，不只待辦），每個 POST 最多等 15 秒；
+// 成功＝小提示「已送到 ○○」、清草稿、背景重抓（不擋畫面）；失敗或逾時＝草稿留著、錯誤附「重送」鈕
+let sending=false;
+function dayOf(d){return (d.getMonth()+1)+' 月 '+d.getDate()+' 日'}// 跟伺服器的 day 同一種寫法，才會排在同一天底下
+async function send(){if(uploading||sending)return;const rp=replyTo,raw=txt.value.trim(),ids=atts.filter(a=>a.id).map(a=>a.id);if(!raw&&!ids.length)return;
 let lines=raw.split('\n'),subject=(lines.shift()||'').trim(),body=lines.join('\n').trim();
 if(!subject)subject='（截圖）';if([...subject].length>80){body=raw;subject=[...subject].slice(0,78).join('')+'…'}
-// 群組已涵蓋的成員不重寄（選了「全部 Codex」又選 codex-desk，codex-desk 只收一則）
+// 群組已涵蓋的成員不重寄（選了「全部 Codex」又選 codex-pc，pc 只收一則）
 const tos=toList.filter(v=>v.includes(':')||!toList.some(g=>g!==v&&GROUPS.has(g)&&v.startsWith(g+'-'))).map(v=>replyTo&&replyTo.from_session&&!isTestSess(replyTo.from_session)&&v===replyTo.from?replyTo.from+':'+replyTo.from_session:v);// 回某串的留言就寄回那一串
 if(!tos.length){err('請先選收件人：在「寄給」打字找人');$('toIn').focus();return}
-$('send').disabled=true;const fails=[],batches=data&&data.multi_to===true?[tos.join(',')]:tos;
+sending=true;const done=busy($('send'),'送出中…');err('');const fails=[],batches=data&&data.multi_to===true?[tos.join(',')]:tos,now=new Date();
+const tmp={id:'tmp-'+Date.now(),tmp:true,state:'sending',at:Date.now(),serverIds:[],deliveries:[],knownIds:(data.messages||[]).map(m=>m.id),from:'user',from_session:'',to:tos.join(','),subject:escapeText(subject),body:escapeText(body),plainSubject:subject,created:now.toISOString(),day:dayOf(now),
+reply:rp?{id:rp.id,from:rp.from,from_session:rp.from_session,subject:rp.subject}:null,attachments:[],readers:[],votes:{up:0,down:0,mine:0},project:projSel?projSel.code:'',needs_action:$('na').checked,ask:$('ask').checked,ref:''};
+pendRep.push(tmp);try{renderFeed(true)}catch(e){segBad('feed','留言',e)}
 try{for(const toAddr of batches){try{const r=await fetch('/board/send',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/x-www-form-urlencoded'},
-body:new URLSearchParams({to:toAddr,subject,body,needs_action:$('na').checked?'yes':'no',ask_opinion:$('ask').checked?'yes':'no',attachments:ids.join(','),reply_to:replyTo?replyTo.id:'',project:projSel?projSel.code:''})});
-const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||r.status)}catch(e){fails.push([toAddr,e.message])}}
+body:new URLSearchParams({to:toAddr,subject,body,needs_action:$('na').checked?'yes':'no',ask_opinion:$('ask').checked?'yes':'no',attachments:ids.join(','),reply_to:replyTo?replyTo.id:'',project:projSel?projSel.code:''}),signal:timeoutSig(15000)});
+const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('伺服器回 '+r.status));if(!j||j.sent!==true)throw new Error(j&&j.error||'伺服器沒有確認送達，請重新整理後重試');const id=typeof j.id==='string'?j.id:'';tmp.deliveries.push({to:toAddr,id});if(id)tmp.serverIds.push(id)}catch(e){fails.push([toAddr,fetchErr(e)])}}
 if(fails.length){const sent=batches.length-fails.length;if(sent){toList=fails.flatMap(f=>f[0].split(','));renderTo()}throw new Error((sent?'寄給 '+fails.map(f=>f[0].split(',').map(toName).join('、')).join('、')+' 沒送出（其他人已收到，再按送出只會重寄給沒送出的）：':'')+fails[0][1])}
-txt.value='';SS('draft','');atts.forEach(a=>URL.revokeObjectURL(a.url));atts=[];renderPrev();clearReply();clearProj();$('na').checked=false;$('ask').checked=false;err('');txt.oninput();await load(true)}
-catch(e){err('送出失敗：'+e.message)}finally{$('send').disabled=false}}
+const sentTo=[...toList];SS('lastTo',JSON.stringify(sentTo));txt.value='';SS('draft','');atts.forEach(a=>URL.revokeObjectURL(a.url));atts=[];renderPrev();replyPrevTo=null;clearReply();toList=sentTo;renderTo();clearProj();$('na').checked=false;$('ask').checked=false;err('');txt.oninput();
+tmp.state='sent';try{renderFeed(ch!=='todo')}catch(e){}done('已送到 '+tos.map(toName).join('、'));
+load(true)}// 背景重抓，不擋畫面；伺服器資料回來後以伺服器那則為準
+catch(e){pendRep=pendRep.filter(p=>p!==tmp);try{renderFeed(false)}catch(x){}err('送出失敗：'+e.message+'。草稿還在。',()=>send());toast('沒送出：'+e.message,'bad',4000);done()}
+finally{sending=false;done()}}
+// 2.17.0 總狀態燈：一句話告訴你要不要往下看。● 正常、▲ 有事等你、✕ 連不上（顏色以外有形狀）
+function renderSum(){const bar=$('sumbar'),ic=$('sumIcon'),tx=$('sumTx'),acts=$('sumActs');if(!bar)return;const age=(Date.now()-okAt)/1e3;
+const W=wbWaiting(),wait=W.wait.size-W.ans.size,ansN=W.ans.size,um=((data&&data.todo_by)||{}).user||0,todo=(data&&data.todo)||0;// 2.19.0 答過的不算「等你」
+let k,icon,s;if(!okAt||fails>0&&age>30){k='bad';icon='✕';s=okAt?'連不上伺服器：畫面停在 '+fmtTime(okAt)+'，會自動重試':'還連不上伺服器，會自動重試'}
+else if(wait||um){k='warn';icon='▲';s='有事等你'+(todo>um?'（另有 '+(todo-um)+' 則待辦在等 AI）':'')}
+else{k='ok';icon='●';s=(todo?'沒有等你的事；'+todo+' 則待辦在等 AI 處理':'一切正常，沒有等你的事')+(ansN?'；'+ansN+' 張你答過的卡在等 AI 更新':'')}
+const sig=[k,s,wait,um].join('|');if(bar.dataset.sig===sig)return;bar.dataset.sig=sig;bar.className='sumbar '+k;ic.textContent=icon;tx.textContent=s;acts.textContent='';
+const ae=document.activeElement,fk=ae&&ae.dataset?ae.dataset.sumk:'';
+if(wait){const b=el('button','wbadge');b.type='button';b.dataset.sumk='w';b.append('等我決定 ',el('b','',wait));b.title='白板上明確在等你決定的專案';b.onclick=()=>{wbF='wait';wbSig='';renderWhiteboard();if(innerWidth<=1100)setClaims(true);const l=$('stFilter');if(l)l.scrollIntoView({block:'nearest'})};acts.append(b)}
+if(um){const b=el('button','wbadge'+(wait?' sub':''));b.type='button';b.dataset.sumk='u';b.append('留言等你處理 ',el('b','',um));b.onclick=()=>{ch='todo';todoBy='user';SS('ch',ch);load(true)};acts.append(b)}
+if(fk){const e=acts.querySelector('[data-sumk="'+fk+'"]');if(e)e.focus({preventScroll:true})}}
+// 2.17.0 B11 顯示設定：右上齒輪，裡面放一次顯示幾則、深淺色、「已讀」說明、帳號登出
+{const g=$('gearBtn'),p=$('gearPop'),set=o=>{p.hidden=!o;g.setAttribute('aria-expanded',String(o))};g.onclick=e=>{e.stopPropagation();set(p.hidden);if(!p.hidden)$('lim').focus()};
+document.addEventListener('pointerdown',e=>{if(!p.hidden&&!p.contains(e.target)&&!g.contains(e.target))set(false)},true);
+p.addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();set(false);g.focus()}});
+const thm=()=>{const cur=document.documentElement.dataset.theme||'';p.querySelectorAll('[data-thm]').forEach(b=>b.setAttribute('aria-checked',String(b.dataset.thm===cur)))};
+p.querySelectorAll('[data-thm]').forEach(b=>b.onclick=()=>{const v=b.dataset.thm;if(v)document.documentElement.dataset.theme=v;else delete document.documentElement.dataset.theme;try{v?localStorage.setItem('rt.theme',v):localStorage.removeItem('rt.theme')}catch(e){}thm()});thm()}
+// 2.17.0 B08 手機（760px 以下）：輸入框平常收成一行，點了（或有草稿、引用、圖片）才展開
+var compMQ=matchMedia('(max-width:760px)');
+function compSync(){const b=$('box'),t=$('txt');if(!b||!t||!compMQ)return;const act=b.contains(document.activeElement)||t.value.trim()||atts.length||replyTo||projSel||uploading,mini=compMQ.matches&&!act;
+if(b.classList.contains('mini')!==mini)b.classList.toggle('mini',mini);t.placeholder=mini?'寫留言'+(toList.length?'給 '+toList.map(toName).join('、'):'')+'…':projSel?'對「'+(projSel.name||projSel.code)+'」發留言，Enter 送出、Shift+Enter 換行':t.dataset.ph||t.placeholder}
+$('box').addEventListener('focusin',compSync);$('box').addEventListener('focusout',()=>setTimeout(compSync,0));compMQ.addEventListener('change',compSync);
 // 預覽開關
 let uiBusy=false,uiState=null,uiAction='';
 function syncUIActions(state){if(state!==undefined)uiState=state;
 // 不能採用不一定是「已是正式版」：server 會分開回 current（內容相同）和 blocked（為什麼擋）
 const known=uiState&&typeof uiState.can_promote==='boolean',current=known&&(typeof uiState.current==='boolean'?uiState.current:!uiState.can_promote&&uiState.has_stable),blocked=known&&!current&&uiState.blocked||'';
 $('promote').disabled=uiBusy||!known||!uiState.can_promote;$('rollback').disabled=uiBusy||!known||!uiState.can_rollback;
+// 2.19.0 採用／回滾做的時候按鈕標 aria-busy、字改「…中」
+const rb=uiBusy&&uiAction==='/board/rollback';['promote','rollback','rollbackStable'].forEach(id=>{const b=$(id);if(uiBusy&&(id==='promote'?uiAction==='/board/promote':rb))b.setAttribute('aria-busy','true');else b.removeAttribute('aria-busy')});
+$('rollback').textContent=rb?'回滾中…':'正式版回滾上一版';$('rollbackStable').textContent=rb?'回滾中…':'回滾上一版';
 $('promote').textContent=uiBusy&&uiAction==='/board/promote'?'正在採用…':current?'已是正式版':blocked?'暫時不能採用':known?'採用成正式版':'確認版本中…';
 $('publishState').textContent=uiBusy?'正在處理，請稍候':current?'此預覽內容已採用':blocked?'⚠ '+blocked:known?'':'尚未確認目前版本';
-const status=document.querySelector('[data-release-state]');if(status)status.textContent=!isPreview?'':current?'跟正式版一樣，沒有待採用':blocked?'暫時不能採用':'還沒採用';
+// 採用鈕只看兩件事：現在是預覽網址，而且預覽版號跟正式版號不同。
+// 以前只看 server 的 current：版號一樣、只是某一頁檔案有差，也會冒出採用鈕和「有新版本」提示
+const diffVer=Boolean(verP&&verS&&verP!==verS),sameVer=Boolean(verP&&verS&&verP===verS);
+const status=document.querySelector('[data-release-state]');if(status)status.textContent=!isPreview?'':sameVer?'跟正式版一樣':diffVer?(blocked?'暫時不能採用':'還沒採用'):'';
 // 預覽和正式版一樣時不顯示預覽入口與採用按鈕；有還沒採用的修訂才顯示。回滾一直留著：預覽頁在紫色列，正式版頁在版本紀錄視窗底部
-const pending=known&&!current;
-$('navPreview').hidden=!isPreview&&!pending;$('seg').hidden=!pending;if(pending)$('segPreview').title='預覽版有還沒採用的修改';
+const pending=known&&!current&&diffVer;
+$('navPreview').hidden=true;/* 正式網址不出「預覽」分頁，要看預覽用版本條的「看預覽版」 */$('seg').hidden=true;/* 切換改用頂端版本條的切換鈕，不再出現兩個 */if(pending)$('segPreview').title='預覽版有還沒採用的修改';
 $('pending').hidden=isPreview||!pending;if(pending&&!isPreview)$('pendingTx').textContent=verP&&verS&&verP!==verS?'預覽版是 v'+verP+'（正式版是 v'+verS+'）。':'預覽版有新的修改。';$('pvNotes').hidden=!isPreview||!pending;
-if(isPreview){$('promote').hidden=current;$('publishState').hidden=current;$('pvTitle').textContent=current?'預覽版目前跟正式版一樣，沒有待採用的修改':'這是預覽版：正式的公告欄不受影響'}
+if(isPreview){$('promote').hidden=!diffVer;$('publishState').hidden=!diffVer;$('pvbar').classList.toggle('same',sameVer);$('pvTitle').textContent=sameVer?'預覽和正式版一樣（v'+verS+'）':'這是預覽版：正式的公告欄不受影響'}
 $('rbStable').hidden=!known||!uiState.can_rollback;$('rollbackStable').disabled=uiBusy||!known||!uiState.can_rollback}
 function notify(title,body){const d=$('notice');$('noticeTitle').textContent=title;$('noticeBody').textContent=body;if(!d.open)d.showModal();d.querySelector('.nok').focus()}
 {const d=$('notice');d.querySelector('.nx').onclick=d.querySelector('.nok').onclick=()=>d.close();d.addEventListener('click',e=>{if(e.target===d)d.close()});
@@ -621,32 +1023,46 @@ try{const s=sessionStorage.getItem('boardNotice');if(s){sessionStorage.removeIte
 const IMPACT={backend:'後端程式',db:'資料庫或資料格式',deps:'依賴套件',arch:'架構'};
 async function relList(){const doc=await releaseDoc();return doc?[...doc.querySelectorAll('section.rel[data-rev]')].map(s=>{const h=s.querySelector('h3'),p=s.querySelector('p');return{rev:+s.dataset.rev,v:h&&h.childNodes[0]?h.childNodes[0].textContent.trim():'',when:((p&&p.textContent||'').match(/\d{4}-\d\d-\d\d \d\d:\d\d/)||[''])[0],impact:(s.dataset.impact||'').split(',').filter(k=>IMPACT[k])}}):[]}
 function askBox(o){return new Promise(res=>{const d=$('rbAsk'),y=$('rbAskYes'),c=$('rbAskC');$('rbAskT').textContent=o.title;const fill=(box,lines)=>{box.textContent='';lines.forEach(t=>box.append(el('p','',t)));box.hidden=!lines.length};fill($('rbAskB'),o.lines);fill($('rbAskW'),o.warn);fill($('rbAskF'),o.fast);$('rbAskL').hidden=!o.need;$('rbAskLt').textContent=o.need;c.checked=false;y.textContent=o.yes;y.className=o.warn.length?'danger':'go';y.disabled=Boolean(o.need);c.onchange=()=>{y.disabled=Boolean(o.need)&&!c.checked};let done=false;const end=v=>{if(done)return;done=true;if(d.open)d.close();res(v)};y.onclick=()=>end(true);$('rbAskNo').onclick=()=>end(false);d.onclose=()=>end(false);d.showModal();$('rbAskNo').focus()})}
-async function askRelease(kind,from,to){const all=await relList(),find=r=>all.find(x=>x.rev===r),nm=r=>r?r.v+(r.when?'（'+r.when.slice(5)+'）':''):'讀不到版號的那一版';
+async function askRelease(kind,from,to){const all=await relList(),find=r=>all.find(x=>x.rev===r),nm=r=>r?r.v+(r.when?'（'+fmtStr(r.when)+'）':''):'讀不到版號的那一版';
 const span=all.filter(r=>kind==='rollback'?r.rev>to&&r.rev<=from:r.rev>from&&r.rev<=to),a=find(from),b=find(to),list=span.map(nm).join('、');
-const hit=span.filter(r=>r.impact.length),what=[...new Set(hit.flatMap(r=>r.impact))].map(k=>IMPACT[k]).join('、'),hitTx=hit.map(r=>r.v+'（'+(r.when?r.when.slice(5)+'，':'')+r.impact.map(k=>IMPACT[k]).join('、')+'）').join('、');
-const fresh=span.filter(r=>r.when&&Date.now()-Date.parse(r.when.replace(' ','T')+':00'+rtTzs())<48*3600e3);
+const hit=span.filter(r=>r.impact.length),what=[...new Set(hit.flatMap(r=>r.impact))].map(k=>IMPACT[k]).join('、'),hitTx=hit.map(r=>r.v+'（'+(r.when?fmtStr(r.when)+'，':'')+r.impact.map(k=>IMPACT[k]).join('、')+'）').join('、');
+const fresh=span.filter(r=>r.when&&Date.now()-Date.parse(r.when.replace(' ','T')+':00'+window.RT_TZS)<48*3600e3);
 if(kind==='rollback')return askBox({title:'回滾到 '+nm(b)+'？',
- lines:['正式版會從 '+nm(a)+' 換回 '+nm(b)+'，公告欄、記憶頁、版本紀錄三頁一起換。',span.length?'會撤掉這 '+span.length+' 次修改：'+list+'。':'','現在這一版會先留備份，換錯了可以再從「更新紀錄」換回來。'].filter(Boolean),
+ lines:['正式版會從 '+nm(a)+' 換回 '+nm(b)+'，公告欄、記憶、監控、額度 4 頁和版本紀錄一起換。',span.length?'會撤掉這 '+span.length+' 次修改：'+list+'。':'','現在這一版會先留備份，換錯了可以再從「版本紀錄」換回來。'].filter(Boolean),
  warn:hit.length?['⚠ 特別注意：'+hitTx+' 有動到'+what+'。','這個按鈕只換回網頁，伺服器程式、資料庫、套件都不會跟著退回。舊網頁配上新的後端，可能有按鈕沒反應、欄位顯示不出來，或資料看起來對不上。','後端要一起退，得另外請 AI 處理，不能只靠這裡。']:[],
  fast:fresh.length>=2?['最近改得很快：要撤掉的版本裡有 '+fresh.length+' 版是兩天內才放的，前後可能互相依賴。建議一次只退一版，確認沒問題再退下一版。']:[],
  need:hit.length?'我知道後端、資料庫不會跟著退回':'',yes:hit.length?'我了解，仍要回滾':'確定回滾'});
 return askBox({title:'採用 '+nm(b)+' 成正式版？',
- lines:['正式版會從 '+nm(a)+' 換成 '+nm(b)+'，公告欄、記憶頁、版本紀錄三頁一起換。',span.length>1?'這次一起帶上 '+span.length+' 次修改：'+list+'。':'','舊的正式版會先備份，有問題可以從「更新紀錄」回滾。'].filter(Boolean),
+ lines:['正式版會從 '+nm(a)+' 換成 '+nm(b)+'，公告欄、記憶、監控、額度 4 頁和版本紀錄一起換。',span.length>1?'這次一起帶上 '+span.length+' 次修改：'+list+'。':'','舊的正式版會先備份，有問題可以從「版本紀錄」回滾。'].filter(Boolean),
  warn:hit.length?['⚠ 特別注意：'+hitTx+' 有動到'+what+'。','後端已經先上線，採用只換網頁。之後如果回滾，網頁退得回去，後端不會跟著退。']:[],
  fast:fresh.length>=3?['最近改得很快：兩天內放了 '+fresh.length+' 版，採用後請先用一下，確認沒問題。']:[],need:'',yes:'採用成正式版'})}
-async function act(path,ask,payload){if(uiBusy||!uiState||(path==='/board/promote'&&!uiState.can_promote))return;await refreshVersionLabels();if(!await ask())return;
+async function act(path,ask,payload){if(uiBusy||!uiState||(path==='/board/promote'&&!uiState.can_promote))return;await refreshVersionLabels(true);if(!await ask())return;
 uiBusy=true;uiAction=path;syncUIActions();let reloadPage=false,title='',body='';const before=verS,target=verP;
-try{const r=await fetch(path,{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify(payload||{})});const j=await r.json();if(!r.ok)throw new Error(j.error||r.status);
+try{const r=await fetch(path,{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify(payload||{}),signal:timeoutSig(60000)});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('伺服器回 '+r.status));
 if(path==='/board/promote'){if(j.changed===false){title='沒有變動';body='這個版本本來就是正式版，沒有重複採用。'}else{title='已採用成正式版';body='正式版從 '+vName(before)+' 換成 '+vName(target)+'。公告欄、記憶頁、版本紀錄一起換了。'}}
 else if(j.changed===false){title='沒有變動';body='正式版本來就是這一版，或剛剛已經回滾過，這次沒有再換。'}
-else{const after=verOf(await fetch('/board',{cache:'no-store'}).then(x=>x.ok?x.text():'').catch(()=>''));title='已回滾';body='正式版從 '+vName(before)+' 換回 '+vName(after)+'。公告欄、記憶頁、版本紀錄一起換了。'}
-reloadPage=!isPreview&&j.changed!==false}catch(e){title='沒有成功';body=String(e.message||e)}
-finally{if(reloadPage){try{sessionStorage.setItem('boardNotice',JSON.stringify({title,body}))}catch(e){}location.reload();return}notify(title,body);uiState=null;syncUIActions();await load(false);await refreshVersionLabels();uiBusy=false;uiAction='';syncUIActions()}}
+else{const after=verOf(await window.rtPage('/board',true));title='已回滾';body='正式版從 '+vName(before)+' 換回 '+vName(after)+'。公告欄、記憶頁、版本紀錄一起換了。'}
+reloadPage=!isPreview&&j.changed!==false}catch(e){title='沒有成功';body=fetchErr(e)}
+finally{if(reloadPage){try{sessionStorage.setItem('boardNotice',JSON.stringify({title,body}))}catch(e){}location.reload();return}notify(title,body);uiState=null;syncUIActions();await load(false);relCache=null;await refreshVersionLabels(true);uiBusy=false;uiAction='';syncUIActions()}}
 $('promote').onclick=()=>act('/board/promote',()=>askRelease('promote',revStable,revPreview));
 function rollbackTo(rev){if(!uiState||!rev)return;const cur=uiState.stable_rev||revStable;if(rev===cur)return;if($('releaseHistory').open)$('releaseHistory').close();act('/board/rollback',()=>askRelease('rollback',revStable||cur,rev),{rev})}
 function rollbackPrev(){const cur=uiState&&(uiState.stable_rev||revStable),older=(uiState&&uiState.rollback_to||[]).map(x=>x.rev).filter(r=>r<cur);if(older.length)rollbackTo(Math.max(...older))}
 $('rollback').onclick=$('rollbackStable').onclick=rollbackPrev;
 // 完整版本紀錄頁的「回滾到這一版」會帶 ?rollback=內部流水號 回到這裡
 function openRollbackFromUrl(){const q=+new URLSearchParams(location.search).get('rollback');if(!q)return;history.replaceState(null,'',location.pathname+location.hash);rollbackTo(q)}
-load(true).then(openRollbackFromUrl);setInterval(()=>{if(!document.hidden)load(false)},10000);
+// 2.17.0 更新列：顯示「最後更新」、倒數環，和手動「更新」。分頁在背景時暫停，切回來立刻抓
+// 2.19.0 FRONT-6 輪詢改動態：前景 10 秒；剛切回來先等 3 秒；連續 3 次資料沒變放慢到 20 秒；別的分頁剛廣播過就這一輪不打
+let pollMs=10000,feedSig='',sameN=0,nextAt=Date.now()+pollMs,rfrBusy=false;
+async function rfrLoad(manual){if(rfrBusy)return;rfrBusy=true;const b=$('rfrBtn');if(manual){b.classList.add('spin');b.setAttribute('aria-busy','true')}try{await load(false,manual)}finally{rfrBusy=false;nextAt=Date.now()+pollMs;b.classList.remove('spin');b.removeAttribute('aria-busy');if(manual&&!fails){const t=$('rfrTx');t.classList.add('flash');setTimeout(()=>t.classList.remove('flash'),900);toast('已更新','ok',1500)}renderRfr()}}
+function renderRfr(){const r=$('rfr'),t=$('rfrTx'),left=Math.max(0,nextAt-Date.now()),sec=Math.ceil(left/1e3),bad=fails>0;r.classList.toggle('bad',bad);
+const tx=bad?'更新失敗，'+sec+' 秒後重試':okAt?fmtTime(okAt):'還沒抓到';if(t.textContent!==tx)t.textContent=tx;t.title=okAt?'頁面上次抓到資料：'+fullTime(okAt):'';
+$('rfrRing').setAttribute('stroke-dashoffset',(37.70*(1-Math.min(1,left/pollMs))).toFixed(2));$('rfrBtn').title=window.rtPageHidden()?'分頁在背景，暫停自動更新':sec+' 秒後自動更新（'+(pollMs/1e3)+' 秒一次）；按一下立刻重抓'}
+$('rfrBtn').onclick=()=>rfrLoad(true);
+setInterval(()=>{if(window.rtPageHidden())return;if(Date.now()<nextAt){renderRfr();return}
+if(bcLast&&bcLast.scope===feedScope()&&Date.now()-bcLast.at<pollMs*1.5&&!rfrBusy){nextAt=Date.now()+pollMs;renderRfr();return}// 同範圍的分頁剛抓過並廣播了，這一輪省下來
+rfrLoad(false)},500);
+document.addEventListener('visibilitychange',()=>{if(window.rtPageHidden())return;sameN=0;pollMs=10000;
+if(bcLast&&bcLast.scope===feedScope()&&Date.now()-bcLast.at<3000){try{applyFeed(bcLast.data,false,{okAt:bcLast.okAt,fromPeer:true})}catch(e){}live();renderSum();nextAt=Date.now()+3000;renderRfr()}
+else rfrLoad(false).then(()=>{nextAt=Date.now()+3000;renderRfr()})});
+load(true).then(openRollbackFromUrl);
 </script></body></html>

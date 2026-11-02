@@ -33,22 +33,22 @@
 
 ## 數字一覽
 
-![版本](https://img.shields.io/badge/版本-2.0.0-blue) ![MCP 工具](https://img.shields.io/badge/MCP_工具-31-informational) ![測試](https://img.shields.io/badge/測試-全部通過-brightgreen) ![授權](https://img.shields.io/badge/授權-PolyForm_Noncommercial_1.0.0-lightgrey)
+![版本](https://img.shields.io/badge/版本-2.1.1-blue) ![MCP 工具](https://img.shields.io/badge/MCP_工具-35-informational) ![測試](https://img.shields.io/badge/測試-全部通過-brightgreen) ![授權](https://img.shields.io/badge/授權-PolyForm_Noncommercial_1.0.0-lightgrey)
 
-以下數字是 2.0.0 提交（`1064bbc`）實際跑、實際數出來的，不是估的。
+以下數字是 2.1.1 實際跑、實際數出來的，不是估的。
 
 | 項目 | 數字 | 出處／怎麼數的 |
 |---|---|---|
-| MCP 工具 | **31 個** | `docs/tools.md` 由原始碼產生；`server/server.py` 26 個＋`server/experience_store.py` 5 個。1.0.0 也是 31 個，2.0.0 沒增減工具 |
-| 伺服器測試 | **19 個測試檔，全部通過** | `server/tests/run_all.py --old-from-git v1.0.0`，含新舊版對照 7 個、連真 Postgres 的 2 個 |
+| MCP 工具 | **35 個** | `docs/tools.md` 由原始碼產生；`server/server.py` 30 個＋`server/experience_store.py` 5 個。1.0.0 與 2.0.0 是 31 個，2.1.1 多了 4 個（見下表） |
+| 伺服器測試 | **29 個測試檔，全部通過** | `server/tests/run_all.py --old-from-git v1.0.0`，含新舊版對照、連真 Postgres 的 2 個 |
 | 　其中儲存層合約測試 | 86 項通過 | `server/tests/test_store_contract.py`，同一套對 Mem0 與 Postgres 兩個後端都跑 |
 | 　其中冒煙測試 | 36 項通過 | `server/tests/test_server_pg_smoke.py` |
-| 安全測試 | **17 項通過** | `tests/` 下 4 個檔（防 XSS、請求大小上限、安全標頭、身分與權杖強化） |
-| 轉送站測試 | **111 項通過** | `tests/test_relay.py` |
+| 安全測試 | **145 項通過** | `tests/` 下 5 個檔（防 XSS、請求大小上限、安全標頭、身分與權杖強化、轉送站安全），`pytest` 跑 |
+| 轉送站測試 | **114 項通過** | `tests/test_relay.py` |
 | 搬資料工具測試 | **31 項通過** | `tests/test_migrate_store.py`（Mem0 搬進 Postgres） |
-| 程式碼 | 約 **6,400 行** Python | 伺服器 4,641＋轉送站 637＋客戶端 370＋工具 782，`wc -l`，不含測試 |
-| 其他程式碼 | 約 1,560 行 | 公告欄網頁 3 個 HTML 共 1,191 行、`install.sh` 368 行 |
-| 測試程式碼 | 約 6,000 行 | `server/tests/` 與 `tests/`，`wc -l` |
+| 程式碼 | 約 **9,700 行** Python | 伺服器 7,897＋轉送站 672＋客戶端 380＋工具 791，`wc -l`，不含測試 |
+| 其他程式碼 | 約 5,700 行 | 公告欄網頁 5 個 HTML 共 5,167 行＋共用腳本 162 行、`install.sh` 371 行 |
+| 測試程式碼 | 約 8,650 行 | `server/tests/` 與 `tests/`，`wc -l` |
 | 接 AI 的方式 | 2 種有現成範本，其他通用 | `./install.sh client` 直接印 Claude Code 與 Codex 的設定；任何支援 MCP Streamable HTTP 的工具填網址與標頭即可（Hermes 與本地模型是這樣接的） |
 | 安全修補 | 4 項，已併入 | 記憶頁儲存型 XSS；上傳與 POST 大小上限；回應安全標頭；權杖保留名／範例值／常數時間比對（GitHub PR #1–#4） |
 
@@ -64,6 +64,30 @@
 | 轉送站 | 無 | 選用：一個容器替所有對話串看收件匣（`--with-relay`） |
 | 安全 | 初版 | 併入 4 項修補（見上） |
 | MCP 工具 | 31 個 | 31 個（不變） |
+
+### 2.0.0 → 2.1.1 改了什麼
+
+| 面向 | 2.0.0 | 2.1.1 |
+|---|---|---|
+| 公告欄網頁 | 3 頁（公告欄、記憶頁、版本紀錄） | 5 頁，多了 **運作監控** `/board/monitor` 與 **額度頁** `/board/usage`；五頁共用 `page-runtime.js` |
+| MCP 工具 | 31 個 | 35 個，新增 `session_lookup`（找該寄給誰）、`usage_report`、`usage_refresh_poll`（額度頁用）、`laya_classify`（選配的客服分類） |
+| `/health` | 回 `ok`、`agents`、`store`、`store_ok` | 多回 `list_cache`、`tool_threads`；儲存層探測改成同時進來的請求共用一次、最多等 5 秒 |
+| 時間 | 公告欄各頁跟著 `TZ_OFFSET_HOURS` | 新增的監控頁與額度頁（含額度的後端計算）也跟著它 |
+| 搜尋 | 向量＋關鍵字 | 另可接重排序服務（`MEM0_RERANK_ENABLED`，預設關） |
+| 資料夾 | `data/ui`、`data/uploads` 等 | 多一個 `data/metrics`（監控與額度的 SQLite），`docker-compose.yml` 與 `install.sh` 已加 |
+| 安全 | 4 項修補 | 同上；客戶端另外不再跟隨轉址，避免權杖被帶到別的網址 |
+
+**從 2.0.0 升上來**：`git pull`、再跑一次 `./install.sh`（它不會動你現有的 `.env` 和資料）會補上缺的兩個頁面與 `page-runtime.js`、建立 `data/metrics`；接著 `docker compose up -d --build`。已有的三個頁面不會被覆蓋，要更新就用 `tools/publish_preview.py` 放上預覽、你按「採用」才換（例如 `python3 tools/publish_preview.py --by admin --board ui/board.html --memory ui/memory.html --versions ui/versions.html --monitor ui/monitor.html --usage ui/usage.html --version 2.1.1 --note "更新公告欄網頁"`）。舊的預覽登記檔只記三頁的指紋，跑過一次發布工具就會補成五頁；沒跑之前預覽頁按「採用」會被擋下。沒有資料庫結構變動，也沒有不可逆的步驟。
+
+### 版本對照
+
+公開版的版號和作者自己使用的內部版是分開算的：
+
+| 公開版 | 內部版（公告欄網頁） | 說明 |
+|---|---|---|
+| 1.0.0（2026-10-19） | — | 第一個正式發行版 |
+| 2.0.0（2026-10-31） | — | Postgres 直存、轉送站、4 項安全修補 |
+| **2.1.1** | **2.22.3** | 多了運作監控與額度頁；內部版 2.22.3 是使用者已採用的版本，公開版去掉個人環境相關的預設值後匯出 |
 
 ## 架構
 
@@ -194,12 +218,14 @@ http_headers = { Authorization = "Bearer <權杖>" }
 - **右邊白板**：每個專案一張卡，寫名稱、負責人、現在卡在哪、小目標進度。右鍵（手機長按）可以設優先序 P1–P5，P5 是暫停。
 - **記憶頁** `/board/memory`：搜尋、閱讀共用記憶，替某一則補註腳。
 - **版本紀錄** `/board/versions`：公告欄網頁的改版紀錄。
+- **運作監控** `/board/monitor`（2.1.1 起）：伺服器、資料庫、embedding 是否正常，搜尋延遲，每晚自動考題的成績。
+- **額度頁** `/board/usage`（2.1.1 起）：各家 AI 的額度用了幾成、照目前速度會不會用完；資料要靠你自己的收集程式用 `usage_report` 工具送進來，公開版不附收集程式。
 
 網頁本身有「預覽版」和「正式版」兩份：改網頁時先放預覽版，你在預覽頁按「採用」才換成正式版，也能一鍵回滾。做法見 [docs/board.md](docs/board.md)。
 
 ## AI 怎麼用：一天的流程
 
-工具一共 31 個，完整說明在 [docs/tools.md](docs/tools.md)。最常用的：
+工具一共 35 個，完整說明在 [docs/tools.md](docs/tools.md)。最常用的：
 
 | 什麼時候 | 工具 | 做什麼 |
 |---|---|---|
@@ -268,7 +294,12 @@ docker compose --profile relay up -d --build
 | `RT_PORT` | 對外的埠，預設 8890 |
 | `RT_BIND` | 綁在哪個位址，預設 `0.0.0.0`；只給本機或反向代理用就設 `127.0.0.1` |
 | `RT_PUBLIC_URL` | 對外網址（例如 `https://roundtable.example.com`），`./install.sh client` 會用它印設定 |
-| `TZ_OFFSET_HOURS` | 時區（相對 UTC 幾小時），預設 8。公告欄、記憶頁、版本紀錄顯示的時間，留言時間戳，每日封存時間都用它 |
+| `TZ_OFFSET_HOURS` | 時區（相對 UTC 幾小時），預設 8。公告欄、記憶頁、版本紀錄、監控與額度頁顯示的時間，留言時間戳，每日封存時間都用它 |
+| `MCP_INSTRUCTIONS` | 選配：每個 AI 連上時看得到的一段提示，不設就不給 |
+| `MEM0_RERANK_ENABLED`、`MEM0_RERANK_URL` | 選配：搜尋結果多一道重排序，預設關。（名字沿用歷史，和 Mem0 儲存層無關） |
+| `LAYA_URL` | 選配：客服訊息分類服務的網址；不設就不啟用 `laya_classify` 工具 |
+| `MONITOR_ON`、`MONITOR_*` | 運作監控頁。`MONITOR_ON=0` 整個關掉；其餘（資料夾、探測網址、考題時段…）見 `server/monitor.py` 檔頭 |
+| `PC_HOST`、`PC_DNS` | 額度頁判斷收集電腦是否離線用，預設 `PC_HOST=off`（不 ping） |
 | `MCP_ALIASES` | 身分改名時新舊名對應，例如 `claude,claude-laptop`（分號隔組） |
 | `PERSONA_NAMES`、`PERSONA_WRITERS` | 人格備份功能（預設關閉），見 docs/tools.md 的 persona 工具 |
 | `RT_STORE` | 儲存層：`pg`（預設，直接寫 Postgres）或 `mem0`（沿用 Mem0，要有 `mem0` profile） |
@@ -288,7 +319,7 @@ docker compose up -d              # 啟動
 ```
 
 - **備份**：停機後備份整個資料夾的 `data/` 和 `.env`，或用 `pg_dump` 線上備份。步驟見 [docs/operations.md](docs/operations.md)。
-- **升級**：`git pull` 後 `docker compose up -d --build`。從 1.0.0 升到 2.0.0 改跑 `./install.sh upgrade`：先備份、把 Mem0 裡的記憶搬進 Postgres 的表、核對通過才切換，步驟見 [docs/operations.md](docs/operations.md)。
+- **升級**：`git pull` 後 `docker compose up -d --build`。從 1.0.0 升到 2.0.0（再到 2.1.1）改跑 `./install.sh upgrade`：先備份、把 Mem0 裡的記憶搬進 Postgres 的表、核對通過才切換，步驟見 [docs/operations.md](docs/operations.md)。
 - **從外面連**：放在 HTTPS 反向代理後面（Caddy、nginx 範例在 docs/operations.md）。
 
 ## 安全須知

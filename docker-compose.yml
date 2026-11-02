@@ -101,6 +101,7 @@ services:
       - ./data/uploads:/uploads
       - ./data/reviews:/reviews
       - ./data/board-auth:/board-auth
+      - ./data/metrics:/metrics    # 運作監控與額度頁的資料（SQLite），重建容器不會掉
       - ./data/skills:/skills-repo:ro
     ports:
       - "${RT_BIND:-0.0.0.0}:${RT_PORT:-8890}:8890"

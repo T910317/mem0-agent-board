@@ -38,7 +38,8 @@ for n in ["httpx", "starlette", "starlette.concurrency", "starlette.requests", "
 _stubmod("mcp.server.fastmcp", FastMCP=FastMCP, Image=_Any)
 _stubmod("experience_store", register=lambda *a, **k: None)
 os.environ.update({"RT_STORE": "mem0", "MEM0_API_KEY": "fake", "MEM0_URL": "http://fake", "MCP_ALIASES": "claude,claude-laptop", "PERSONA_WRITERS": "hermes-gamma,claude", "PERSONA_NAMES": "alpha,beta,gamma", "MCP_TOKEN_CLAUDE": "t1",
-                   "MCP_TOKEN_CODEX_MAX": "t2", "MCP_TOKEN_HERMES": "t3"})
+                   "MCP_TOKEN_CODEX_MAX": "t2", "MCP_TOKEN_HERMES": "t3",
+                   "RT_LIST_CACHE_S": "0"})  # 這個測試直接改假 Mem0 的資料再呼叫 _list_all，要關掉 _list_all 的短快取
 
 DB = []
 CALLS = []

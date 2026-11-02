@@ -65,7 +65,9 @@ class Client:
         CALLS.append(("list", path))
         if FAIL_LIST[0]:
             raise RuntimeError("roundtable 區超過上限")
-        return Resp({"results": list(STORE.values())})
+        uid = (params or {}).get("user_id", "roundtable")
+        return Resp({"results": [m for m in STORE.values() if
+                     ("roundtable-ops" if m["metadata"]["type"] in ("message", "claim") else "roundtable") == uid]})
     def post(self, path, json=None):
         CALLS.append(("search", json))
         f = json["filters"]
@@ -73,6 +75,9 @@ class Client:
         for i, s in VEC.get(json["query"], []):
             m = STORE[i]
             md = m["metadata"]
+            uid = "roundtable-ops" if md["type"] in ("message", "claim") else "roundtable"
+            if f.get("user_id", "roundtable") != uid:
+                continue
             if f.get("project") and md.get("project") != f["project"]:
                 continue
             if f.get("type") and md.get("type") != f["type"]:
@@ -111,6 +116,7 @@ def check(name, cond):
 def reset():
     STORE.clear(); VEC.clear(); CALLS.clear(); FAIL_LIST[0] = False
     NEW._kw_snap.clear()
+    NEW._list_invalidate()  # 本測試直接換掉假資料；正式寫入會由 _st_* 自動失效快取。
 
 
 def ids(res):
@@ -145,17 +151,17 @@ check("預設回精簡版（沒有 version，有全文字數）", set(NEW.memory
 reset()
 for n in range(60):
     STORE["x%02d" % n] = mem("x%02d" % n, "不相干的筆記 %d" % n)
-STORE["apc"] = mem("apc", "APC UPS 網卡 10.0.0.226，管理介面 https", project="homelab-network")
-STORE["near"] = mem("near", "另一台在 10.0.0.22 跟 10.0.0.2260")
-VEC["10.0.0.226"] = [("x%02d" % n, 0.34 - n * 0.001) for n in range(60)]  # 向量前 60 名都不相干
-r = NEW.memory_search("10.0.0.226")
+STORE["apc"] = mem("apc", "APC UPS 網卡 192.0.2.226，管理介面 https", project="homelab-network")
+STORE["near"] = mem("near", "另一台在 192.0.2.22 跟 192.0.2.2260")
+VEC["192.0.2.226"] = [("x%02d" % n, 0.34 - n * 0.001) for n in range(60)]  # 向量前 60 名都不相干
+r = NEW.memory_search("192.0.2.226")
 check("只靠關鍵字補進來的 IP 記憶排第 1", ids(r)[:1] == ["apc"])
-check("10.0.0.22／.2260 不算中 .226", "near" not in ids(r))
-check_old("改前搜不到這則", lambda: "apc" not in ids(OLD.memory_search("10.0.0.226", limit=20)))
-check("補進來的也守 project 篩選", "apc" not in ids(NEW.memory_search("10.0.0.226", project="mem0", limit=20)))
-check("補進來的也守 type 篩選", "apc" not in ids(NEW.memory_search("10.0.0.226", type="decision", limit=20)))
-check("補進來的也守 agent 篩選", "apc" not in ids(NEW.memory_search("10.0.0.226", agent="codex-laptop", limit=20)))
-check("篩選對的時候照樣補進來", ids(NEW.memory_search("10.0.0.226", project="homelab-network"))[:1] == ["apc"])
+check("192.0.2.22／.2260 不算中 .226", "near" not in ids(r))
+check_old("改前搜不到這則", lambda: "apc" not in ids(OLD.memory_search("192.0.2.226", limit=20)))
+check("補進來的也守 project 篩選", "apc" not in ids(NEW.memory_search("192.0.2.226", project="mem0", limit=20)))
+check("補進來的也守 type 篩選", "apc" not in ids(NEW.memory_search("192.0.2.226", type="decision", limit=20)))
+check("補進來的也守 agent 篩選", "apc" not in ids(NEW.memory_search("192.0.2.226", agent="codex-laptop", limit=20)))
+check("篩選對的時候照樣補進來", ids(NEW.memory_search("192.0.2.226", project="homelab-network"))[:1] == ["apc"])
 
 # 3. 類型：一樣相關時，決策、狀態在前，留言在後；本來就不相關的決策不會被抬到含關鍵字的留言前面
 reset()
@@ -165,7 +171,7 @@ for n in range(20):
     STORE["f%02d" % n] = mem("f%02d" % n, "無關 %d" % n)
 VEC["備份規則是什麼"] = [("msg", 0.70), ("note", 0.70), ("dec", 0.70), ("st", 0.70)] + \
     [("f%02d" % n, 0.40 - n * 0.001) for n in range(20)]
-r = ids(NEW.memory_search("備份規則是什麼"))
+r = ids(NEW.memory_search("備份規則是什麼", messages=True))
 check("同分時：決策、狀態 > 筆記 > 留言", r[:4] in (["dec", "st", "note", "msg"], ["st", "dec", "note", "msg"]))
 check_old("改前就照 Mem0 原順序", lambda: ids(OLD.memory_search("備份規則是什麼"))[:4] == ["msg", "note", "dec", "st"])
 reset()
@@ -174,7 +180,7 @@ STORE["junkdec"] = mem("junkdec", "研究待辦清單", "decision")
 for n in range(40):
     STORE["c%02d" % n] = mem("c%02d" % n, "其他筆記 %d" % n)
 VEC["CT307"] = [("hit", 0.31), ("junkdec", 0.30)] + [("c%02d" % n, 0.29 - n * 0.001) for n in range(40)]
-r = ids(NEW.memory_search("CT307"))
+r = ids(NEW.memory_search("CT307", messages=True))
 check("短詞題：含 CT307 的留言仍在不相干的決策前面", r.index("hit") < r.index("junkdec"))
 
 # 4. 常見詞只加一點：大家都有的詞不能把不相關的抬過真正相關的
@@ -202,7 +208,7 @@ STORE["a"] = mem("a", "VM119 的設定")
 VEC["VM119 設定"] = [("a", 0.6)]
 NEW.memory_search("VM119 設定")
 NEW.memory_search("VM119 設定")
-check("30 秒內兩次搜尋只列一次整區", sum(1 for c in CALLS if c[0] == "list") == 1)
+check("30 秒內兩次搜尋只合併列兩層一次", sum(1 for c in CALLS if c[0] == "list") == 2)
 
 # 7. 分數是數字、由高到低
 reset()

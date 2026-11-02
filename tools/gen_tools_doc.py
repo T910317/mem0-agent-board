@@ -12,7 +12,7 @@ def tools(path):
     tree = ast.parse(path.read_text(encoding="utf-8"))
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and any(
-                "tool" in ast.unparse(d) for d in node.decorator_list):
+                ast.unparse(d).split("(")[0].rsplit(".", 1)[-1] == "tool" for d in node.decorator_list):  # @mcp.tool() 才算；functools.wraps 這種名字裡帶 tool 的不算
             a = node.args
             defaults = [None] * (len(a.args) - len(a.defaults)) + list(a.defaults)
             params = []

@@ -2,7 +2,29 @@
 
 版號 X.Y.Z：X 是不相容的大改，Y 是加功能，Z 是修錯。
 
-## 2.0.0（未發布）
+## 2.1.1（2026-11-03）
+
+從 2.0.0 升上來沒有不可逆的步驟，也沒有資料庫結構變動。升級步驟見 README「2.0.0 → 2.1.1 改了什麼」。
+
+**公告欄多兩頁**
+- **運作監控** `/board/monitor`：伺服器、資料庫、embedding（和選配的重排序、Laya）是否正常，搜尋與工具呼叫的延遲，每晚自動考題的成績。資料存在 `data/metrics/metrics.db`，`MONITOR_ON=0` 可關。
+- **額度頁** `/board/usage`：各家 AI 的額度用了幾成、照目前速度會不會在重置前用完、近 14 天消耗。資料靠你自己的收集程式用 `usage_report` 工具送進來（公開版不附收集程式）。
+- 五個頁面共用 `data/ui/page-runtime.js`；`install.sh` 會補上缺的頁面與這支腳本，並建立 `data/metrics`；`tools/publish_preview.py` 多了 `--monitor`、`--usage`。
+
+**新工具（31 → 35）**
+- `session_lookup`：不知道信該寄給誰時，用專案代號或關鍵字查路由表與白板卡；`message_send` 的 `to="auto"` 也用它。
+- `usage_report`、`usage_refresh_poll`：額度頁的資料入口與「請立刻收」旗標。
+- `laya_classify`：選配，把客服訊息分成帳務、技術、業務、其他；要設 `LAYA_URL`，沒設就回「沒有啟用」。
+
+**其他改變**
+- `/health` 多回 `list_cache`、`tool_threads`；儲存層探測改成同時進來的請求共用一次，最多等 5 秒（`RT_HEALTH_PING_S`），逾時回 `store_ok: false`。
+- 新增的監控頁與額度頁（含額度的後端計算）顯示的時間也跟著 `TZ_OFFSET_HOURS`。
+- 搜尋可選接重排序服務（`MEM0_RERANK_ENABLED=1`，預設關）；新增選配的 `MCP_INSTRUCTIONS`（連上時給 AI 的提示）。
+- 客戶端（`rt_client.py`、`roundtable_skills_sync.py`）不再跟隨轉址，權杖不會被帶到別的網址。
+- 公開版的去識別：額度頁預設不 ping 任何電腦（`PC_HOST=off`）；測試資料全是虛構。
+- 測試：伺服器 29 個測試檔、安全 145 項、轉送站 114 項、搬資料 31 項，全部通過。
+
+## 2.0.0（2026-10-31）
 
 > **從 1.x 升到 2.0.0 後，無法乾淨回滾。升級前請先備份。** 查過程式與升級腳本的結果，實際不可逆的有：
 > - **切換後新寫的資料只留在新表**：切成 `RT_STORE=pg` 之後寫進 `rt_memories`／`rt_history` 的記憶、留言、進度卡，沒有任何工具能搬回 Mem0。想退回去（`.env` 的 `RT_STORE` 改回 `mem0`）看到的只是升級前的舊資料，切換後新增與修改的都不見。

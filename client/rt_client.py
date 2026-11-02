@@ -97,13 +97,18 @@ def claude_json_creds() -> tuple:
     return found.pop() if len(found) == 1 else ("", "")
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None  # 權杖只送已配對的端點，不跟隨轉址。
+
+
 def call(ep: tuple, tool: str, args: dict, timeout: float = 20) -> list:
     url, tok = ep
     body = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": tool, "arguments": args}}
     req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST",
                                  headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/json",
                                           "Accept": "application/json, text/event-stream"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    with urllib.request.build_opener(_NoRedirect()).open(req, timeout=timeout) as r:
         raw = r.read().decode("utf-8", errors="replace")
     lines = [ln[5:].strip() for ln in raw.splitlines() if ln.startswith("data:")] or [raw]  # 可能是純 JSON 或 SSE
     out = []
