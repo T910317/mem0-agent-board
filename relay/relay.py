@@ -22,10 +22,14 @@
   LEASE_SECONDS    交給最後一哩後多久沒 ack 就再交一次，預設 300
   GRACE_SECONDS    路由表上 Claude 串的寬限期（秒），預設 600：信寄出後過了這麼久還留在收件匣（收件串沒處理）才排進佇列，
                    讓有自己等信器的串先醒來處理；另外給權杖的身分（Codex）不等，信一到就排。設 0 就都不等
-  TEST_SESSIONS    測試用的寄件串名（逗號隔開），預設 relay-test：這些串寄的信不佔每小時名額、也不被名額擋
   MAX_PINGS        路由表上 Claude 串的每封信最多叫幾次，預設 3：叫過之後信還留在收件匣（收件串沒處理）就再叫一次；
                    叫滿還沒人處理就歸到「暫時還沒解決」（stalled.json，看 /stalled），不再叫、不寫提醒。Codex 身分只起一次線，不重叫
   REPING_SECONDS   叫過之後隔多久再叫（秒），從最後一哩回報送達算起，預設 600，至少 60
+  MAX_ATTEMPTS     同一封信（同一個 key）交給最後一哩幾次還沒回報送達就不再交，歸到「暫時還沒解決」，預設 10
+                   （0.3.0，2026-11-02：之前沒上限，租約到期就每 5 分鐘重交，一封信交了 82 次、每次都叫醒值班串）
+
+收信資格（0.3.0）：路由表上 label 是 unnamed 開頭又沒訂專案（projects 空）的串、或那一列寫了 "archived": true 的串，不看它的收件匣；
+收件串從路由表拿掉（找不到）時，佇列裡還沒送達的信直接拿掉，不再交。
 
 挑信規則（同 wake/inbox_wait.py 的 action 模式）：使用者寄的、要動手（needs_action）、徵求意見
 （you_owe_opinion／ask_opinion）、被撤回要停手（closed.kind=recall）。排進佇列後收件人自己已讀或信被結案，
@@ -63,7 +67,7 @@ try:
 except ImportError:  # 本機沒裝也能跑
     httpx = None
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 MAX_WAIT = 50.0  # 長輪詢最多等幾秒
 TEXT_LIMIT = 4000  # 交出去的本文最多幾字
 SEEN_KEEP = 30 * 86400  # 排過的紀錄留幾秒
@@ -97,10 +101,9 @@ class Config:
         self.max_per_hour = int(env.get("MAX_PER_HOUR") or 3)
         self.lease = float(env.get("LEASE_SECONDS") or 300)
         self.grace = float(env.get("GRACE_SECONDS") or 600)  # Claude 串的寬限期；0 = 不等
-        raw = env.get("TEST_SESSIONS")
-        self.test_sessions = {x.strip() for x in ("relay-test" if raw is None else raw).split(",") if x.strip()}
         self.max_pings = int(env.get("MAX_PINGS") or 3)  # 路由表上 Claude 串的每封信最多叫幾次；Codex 身分固定 1
         self.reping = float(env.get("REPING_SECONDS") or 600)  # 叫過之後隔多久再叫（從回報送達算起）
+        self.max_attempts = int(env.get("MAX_ATTEMPTS") or 10)  # 同一個 key 最多交幾次（0.3.0）
         self.extra: dict[str, str] = {}  # 身分名 -> 權杖（不印、不寫檔）
         for k, v in env.items():
             if k.startswith("RT_TOKEN_") and (v or "").strip():
@@ -133,6 +136,11 @@ class Config:
 _client = None
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None  # MCP 權杖只送設定的端點；與 httpx 預設一樣拒絕轉址。
+
+
 def rpc(url: str, tok: str, name: str, args: dict, timeout: float = 20.0) -> list:
     """呼叫圓桌 MCP 的 tools/call（無狀態模式，不用 initialize）；回傳工具回的 list。"""
     global _client
@@ -147,7 +155,7 @@ def rpc(url: str, tok: str, name: str, args: dict, timeout: float = 20.0) -> lis
         raw = r.text
     else:
         req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST", headers=headers)
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with urllib.request.build_opener(_NoRedirect()).open(req, timeout=timeout) as r:
             raw = r.read().decode("utf-8", errors="replace")
     return parse_result(raw)
 
@@ -198,12 +206,21 @@ def projects_of(routes: dict, mine: dict) -> str:
     return ",".join(projs)
 
 
+def eligible(ent: dict) -> bool:
+    """路由表這一列算不算收信資格（0.3.0）：寫了 archived、或 unnamed 開頭又沒訂專案的，不算。"""
+    if ent.get("archived"):
+        return False
+    return not (str(ent.get("label") or "").startswith("unnamed") and not ent.get("projects"))
+
+
 def targets(cfg: Config) -> list[dict]:
     """這一輪要看哪些收件匣：路由表每一串（帶 session=串名）＋另外給權杖的身分（整個收件匣）。"""
     out = []
     if cfg.token:
         routes = load_routes(cfg.routes)  # 每輪重讀，路由表改了下一輪就生效
         for sid, ent in routes.items():
+            if not eligible(ent):
+                continue  # 0.3.0：unnamed 沒專案、已封存的串不算收信資格
             out.append({"label": ent["label"], "session": sid, "token": cfg.token,
                         "inbox_session": ent["label"], "projects": projects_of(routes, ent), "is_codex": False})
     for name, tok in sorted(cfg.extra.items()):
@@ -341,6 +358,8 @@ class Relay:
             self.last_poll, self.polls = now, self.polls + 1
             self.last_error = "；".join(errors)
             labels = {t["label"] for t in ts}
+            lost = [it for it in self.queue if it["label"] not in labels]  # 0.3.0：收件串找不到了，不再交
+            self.queue = [it for it in self.queue if it["label"] in labels]
             self.pending = {k: v for k, v in self.pending.items() if k.split(":", 1)[0] in labels}
             self.pings = {k: v for k, v in self.pings.items() if k.split(":", 1)[0] in labels}
             self.stalled = {k: v for k, v in self.stalled.items() if k.split(":", 1)[0] in labels}
@@ -348,6 +367,8 @@ class Relay:
             self._save_locked()
             if queued:
                 self.cond.notify_all()
+        for it in lost:
+            log(f'{it["label"]}：收件串不在路由表或沒有收信資格，信 {it["id"][:8]} 從佇列拿掉，不再交')
         if errors:
             log("這輪有收件匣看不到：" + "；".join(details))
         return queued
@@ -402,7 +423,7 @@ class Relay:
                             self.pending[key] = now
                             entered.append(m["id"])
                         continue  # 還在寬限期：留在圓桌，收件串自己醒來處理就不用叫醒
-                if m.get("from") != "user" and (m.get("from_session") or "") not in self.cfg.test_sessions:
+                if m.get("from") != "user":  # 串名是寄件人自填的，不能拿來豁免名額。
                     if budget <= 0:
                         held += 1  # 留在圓桌，下一小時再排
                         continue
@@ -455,15 +476,29 @@ class Relay:
     def take(self, now: float | None = None) -> list[dict]:
         """拿走現在能交的，記成租出去（LEASE_SECONDS 內沒 ack 會再交一次）。"""
         now = time.time() if now is None else now
+        gave_up = []
         with self.lock:
             items = self._deliverable_locked(now)
+            for it in [it for it in items if it.get("attempts", 0) >= self.cfg.max_attempts]:
+                # 0.3.0：交滿 MAX_ATTEMPTS 次還沒回報送達，不再交，歸到「暫時還沒解決」
+                items.remove(it)
+                self.queue.remove(it)
+                base = f'{it["label"]}:{it["id"]}'
+                self.stalled[base] = {"label": it["label"], "id": it["id"], "subject": it.get("subject", ""),
+                                      "from": it.get("from", ""), "pings": it.get("ping", 1),
+                                      "attempts": it.get("attempts", 0), "last_queued": it.get("queued_at", now),
+                                      "stalled_at": now, "created": it.get("created", ""), "why": "交太多次沒送達"}
+                gave_up.append(it)
             for it in items:
                 it["lease_until"] = now + self.cfg.lease
                 it["attempts"] = it.get("attempts", 0) + 1
                 it["delivered_at"] = now
-            if items:
+            if items or gave_up:
                 self._save_locked()
-            return [self._public(it) for it in items]
+            out = [self._public(it) for it in items]
+        for it in gave_up:
+            log(f'{it["label"]}：信 {it["id"][:8]} 交了 {it.get("attempts")} 次都沒回報送達，歸到「暫時還沒解決」，不再交')
+        return out
 
     def wait(self, max_wait: float) -> list[dict]:
         """長輪詢：有能交的就立刻回，不然最多等 max_wait 秒。"""
@@ -505,7 +540,7 @@ class Relay:
                     "queued_labels": labels, "pending": len(self.pending), "polls": self.polls,
                     "stalled": len(self.stalled), "stalled_labels": sorted({v["label"] for v in self.stalled.values()}),
                     "poll_seconds": self.cfg.poll, "grace_seconds": self.cfg.grace,
-                    "max_pings": self.cfg.max_pings, "reping_seconds": self.cfg.reping,
+                    "max_pings": self.cfg.max_pings, "max_attempts": self.cfg.max_attempts, "reping_seconds": self.cfg.reping,
                     "last_poll": now_str(self.last_poll) if self.last_poll else "", "last_error": self.last_error}
 
     def stalled_list(self) -> list[dict]:

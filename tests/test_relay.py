@@ -68,9 +68,6 @@ check("設定齊全沒問題", c.problems() == [])
 check("GRACE_SECONDS 沒設就是 600 秒、設 0 就是 0", R.Config({k: v for k, v in BASE_ENV.items() if k != "GRACE_SECONDS"}).grace == 600
       and R.Config(dict(BASE_ENV, GRACE_SECONDS="")).grace == 600 and c.grace == 0)
 check("GRACE_SECONDS 負的會列出來", any("GRACE" in p for p in R.Config(dict(BASE_ENV, GRACE_SECONDS="-1")).problems()))
-check("TEST_SESSIONS 沒設就是 relay-test、設了照設的、設空就沒有", c.test_sessions == {"relay-test"}
-      and R.Config(dict(BASE_ENV, TEST_SESSIONS="qa, x,")).test_sessions == {"qa", "x"}
-      and R.Config(dict(BASE_ENV, TEST_SESSIONS="")).test_sessions == set())
 
 # 2. 要看哪些收件匣
 ts = R.targets(c)
@@ -346,21 +343,21 @@ check("路由表上沒有的標籤，寬限期紀錄丟掉；還在的留著", s
 check("GRACE_SECONDS=0 就不等（前面各節）", True)
 R.log = lambda msg: None
 
-# 14. 測試信（寄件串名在 TEST_SESSIONS，預設 relay-test）不佔每小時名額、也不被名額擋
+# 14. 寄件串名不能豁免每小時名額；舊的 TEST_SESSIONS 設定也不例外
 rt = R.Relay(cfg_for("c14"))
 box.clear()
 box[("tok-claude", "board-ui")] = [msg(i, act=True) for i in range(51, 54)] + [msg(54, act=True, sess="relay-test"), msg(55, act=True)]
 n = rt.poll_once(now=T)
 keys = {it["key"] for it in rt.queue}
-check("3 封 AI 的信排滿名額，測試信照排、第 4 封一般信留著", n == 4 and key_of(54) in keys and key_of(55) not in keys
+check("3 封 AI 的信排滿名額，測試信與第 4 封一般信都留著", n == 3 and key_of(54) not in keys and key_of(55) not in keys
       and len(rt.wakes["board-ui"]) == 3)
 box[("tok-claude", "board-ui")].append(msg(56, act=True, sess="relay-test"))
-check("名額滿了之後測試信還是照排", rt.poll_once(now=T + 60) == 1 and key_of(56) in {it["key"] for it in rt.queue})
+check("名額滿了之後測試信也不能排", rt.poll_once(now=T + 60) == 0 and key_of(56) not in {it["key"] for it in rt.queue})
 rt2 = R.Relay(cfg_for("c14b", TEST_SESSIONS="qa"))
 box.clear()
 box[("tok-claude", "board-ui")] = [msg(i, act=True) for i in range(61, 64)] + [msg(64, act=True, sess="relay-test"), msg(65, act=True, sess="qa")]
-check("TEST_SESSIONS 改成別的：relay-test 照一般信算、qa 不佔名額", rt2.poll_once(now=T) == 4
-      and key_of(64) not in {it["key"] for it in rt2.queue} and key_of(65) in {it["key"] for it in rt2.queue})
+check("TEST_SESSIONS 改成別的也不能豁免名額", rt2.poll_once(now=T) == 3
+      and key_of(64) not in {it["key"] for it in rt2.queue} and key_of(65) not in {it["key"] for it in rt2.queue})
 
 # 15. 叫過沒人處理：從回報送達起隔 REPING_SECONDS 再叫、最多 MAX_PINGS 次（Codex 只叫一次），叫滿歸「暫時還沒解決」
 logged = []
@@ -486,6 +483,30 @@ check("MAX_PINGS 沒設就是 3、REPING_SECONDS 沒設就是 600、設了照設
 check("MAX_PINGS 0 或 REPING_SECONDS 太短會列出來；1 和 60 可以", any("MAX_PINGS" in p for p in cfg_for("c16b", MAX_PINGS="0").problems())
       and any("REPING_SECONDS" in p for p in cfg_for("c16b", REPING_SECONDS="30").problems())
       and cfg_for("c16b", MAX_PINGS="1", REPING_SECONDS="60").problems() == [])
+
+# 17. 0.3.0（2026-11-02）：重交上限、收信資格、收件串不見就不交
+r17 = R.Relay(cfg_for("c17", MAX_ATTEMPTS="10"))
+it17 = {"key": "board-ui:z1", "label": "board-ui", "session": "local_a", "id": "z1000000-0000", "subject": "沒人收",
+        "from": "x", "queued_at": 1000.0, "attempts": 10, "lease_until": 0.0, "ping": 1}
+it17b = dict(it17, key="board-ui:z2", id="z2000000-0000", attempts=9)
+r17.queue = [it17, it17b]
+got = r17.take(now=2000.0)
+check("交滿 10 次的不再交、歸到暫時還沒解決；9 次的照交（變第 10 次）",
+      [g["key"] for g in got] == ["board-ui:z2"] and "board-ui:z1000000-0000" in r17.stalled
+      and r17.stalled["board-ui:z1000000-0000"]["attempts"] == 10 and len(r17.queue) == 1)
+check("MAX_ATTEMPTS 沒設就是 10", cfg_for("c17x").max_attempts == 10 and r17.health()["max_attempts"] == 10)
+routes17 = tmp / "routes17.json"
+routes17.write_text(json.dumps({"local_nav": {"label": "navigator", "projects": ["*"]},
+    "local_u": {"label": "unnamed-u1", "projects": []}, "local_u2": {"label": "unnamed-u2", "projects": ["relay"]},
+    "local_arc": {"label": "old", "projects": ["x"], "archived": True}}), encoding="utf-8")
+l17 = [t["label"] for t in R.targets(cfg_for("c17r", ROUTES_FILE=str(routes17)))]
+check("unnamed 沒專案、archived 的串不看收件匣；unnamed 有專案的照看", "unnamed-u1" not in l17 and "old" not in l17
+      and "unnamed-u2" in l17 and "navigator" in l17)
+r17g = R.Relay(cfg_for("c17g", ROUTES_FILE=str(routes17)))
+r17g.queue = [dict(it17, attempts=1)]
+box.clear()
+r17g.poll_once(now=3000.0)
+check("收件串不在路由表了：佇列裡的信直接拿掉、不再交", r17g.queue == [] and r17g.take(now=3001.0) == [])
 
 fail = [n for n, ok in results if not ok]
 for n, ok in results:
