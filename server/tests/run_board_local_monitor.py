@@ -1,5 +1,5 @@
 """本機看監控頁用的小伺服器：送 ui/preview/monitor.html，加上照 monitor-page/SPEC.md 格式產生的假 series JSON。
-不碰 Mem0、不碰 VM119；資料全是假的，關掉就沒了。
+不碰 Mem0、不碰 VM819；資料全是假的，關掉就沒了。
 用法：python run_board_local_monitor.py [UI 資料夾（預設 ../ui）] [埠（預設 8907）]
   → http://127.0.0.1:8907/board/monitor （也送 /board/preview/monitor）
 假資料：24h／7d／30d 三份，含 null 斷點（收集器停了一段）、主節點接住比例掉到 90% 的一段、考題 7 天的每日點。"""
@@ -18,8 +18,8 @@ PORT = int(sys.argv[2]) if len(sys.argv) > 2 else 8907
 STEP = {"24h": 300, "7d": 3600, "30d": 86400}
 TOOLS = ["memory_search", "inbox", "message_send", "memory_add", "project_status", "memory_get", "claim_check", "message_ack", "其他"]
 AGENTS = ["claude-laptop", "codex-laptop", "codex-max", "hermes", "claude-relay", "codex-mini", "其他"]
-NODES = [("mini", "Mini 主節點", 31), ("vm121", "VM121 備援", 58), ("emb-gw", "EMB 閘道", 34), ("mem0-api", "mem0-api", 12),
-         ("pg", "VM120 資料庫", 3), ("mcp", "圓桌 MCP", 5)]
+NODES = [("mini", "Mini 主節點", 31), ("vm821", "VM821 備援", 58), ("emb-gw", "EMB 閘道", 34), ("mem0-api", "mem0-api", 12),
+         ("pg", "VM820 資料庫", 3), ("mcp", "圓桌 MCP", 5)]
 
 
 def _iso(ts):
@@ -101,7 +101,7 @@ def fake(rng_key):
         "eval": {"date": time.strftime("%Y-%m-%d", time.localtime(ev["t"][-1])), "hit1": ev["hit1"][-1], "hit5": ev["hit5"][-1],
                  "p50_ms": ev["p50_ms"][-1], "scored": ev["scored"][-1]},
     }
-    nodes = [{"key": k, "label": lb, "up": k != "vm121", "ms": None if k == "vm121" else ms, "since": _iso(now - 86400 * 3)} for k, lb, ms in NODES]
+    nodes = [{"key": k, "label": lb, "up": k != "vm821", "ms": None if k == "vm821" else ms, "since": _iso(now - 86400 * 3)} for k, lb, ms in NODES]
     return {"generated": _iso(now), "range": rng_key, "step_sec": step, "summary": summary, "nodes": nodes,
             "series": {"t": t, "writes": {"add": add, "update": upd, "delete": dele}, "calls": {"human": human, "poll": poll},
                        "calls_by_tool": by_tool, "calls_by_agent": by_agent, "tool_ms": {"p50": tool_p50, "p95": tool_p95},

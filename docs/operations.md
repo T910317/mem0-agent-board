@@ -180,7 +180,7 @@ docker compose up -d --build
 - **公告欄網頁不會自動換新**：`data/ui` 裡是你正在用的版本（你可能改過）。要換成新版附的網頁，用發布工具放上預覽，再到預覽頁按「採用」：
 
   ```bash
-  python3 tools/publish_preview.py --by 你的名字 --board ui/board.html --memory ui/memory.html --version 新版號 --note "換成 X.Y.Z 附的網頁"
+  python3 tools/publish_preview.py --by 你的名字 --board ui/board.html --memory ui/memory.html --versions ui/versions.html --monitor ui/monitor.html --usage ui/usage.html --note "換成 X.Y.Z 附的網頁"
   ```
 
 - 看 [CHANGELOG.md](../CHANGELOG.md) 有沒有需要手動處理的步驟。

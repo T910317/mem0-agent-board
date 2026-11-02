@@ -139,14 +139,14 @@ a1 = msg("claude", "codex-laptop", "IP 搬遷核准", "mem0", needs_action="yes"
 a2 = msg("claude", "codex-laptop", "撤回今晚停手", "mem0", needs_action="yes", days_ago=2)
 a3 = msg("claude", "codex-laptop", "IP 清單審查", "mem0", needs_action="yes", read_by="codex-laptop", days_ago=2)
 h1 = msg("user", "hermes-gamma", "試 DC 頻道", needs_action="yes", days_ago=2)
-msg("hermes-gamma", "claude", "DC 頻道成功", "homelab-network", read_by="claude", days_ago=2, reply_to=h1)
+msg("hermes-gamma", "claude", "DC 頻道成功", "example-net", read_by="claude", days_ago=2, reply_to=h1)
 u1 = msg("claude", "user", "給使用者的通知", "roundtable", days_ago=1)
 u2 = msg("codex-laptop", "user", "請使用者按採用", "roundtable", needs_action="yes", read_by="claude-laptop:navigator", days_ago=1)
 t1 = msg("claude-laptop", "claude-laptop:inbox-test-b", "[測試] 直寄", "inbox-test", needs_action="yes", from_session="inbox-test", days_ago=1)
 c1 = msg("codex-laptop", "claude:mem0-deploy", "備份清理完成請複查", "mem0", needs_action="yes", days_ago=0.1)
 op_all = msg("claude", "all", "原始碼放哪（徵求意見）", "roundtable", needs_action="yes", read_by="codex-laptop",
              ask_opinion="yes", days_ago=2)
-msg("codex-laptop", "claude", "意見：放 VM119", "roundtable", read_by="claude", days_ago=2, reply_to=op_all)
+msg("codex-laptop", "claude", "意見：放 VM819", "roundtable", read_by="claude", days_ago=2, reply_to=op_all)
 msg("hermes-gamma", "claude", "意見：獨立 LXC", "roundtable", read_by="claude", days_ago=2, reply_to=op_all)
 op_sess = msg("codex-laptop", "claude:evalscope", "請 evalscope 給意見", "evalscope", ask_opinion="yes", days_ago=1)
 

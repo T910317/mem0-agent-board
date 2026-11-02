@@ -241,9 +241,9 @@ check("一次最多搬 limit 則，剩下的留到下次", (res["moved"], res["l
 reset()
 S.MSG_ARCHIVE_BATCH = 25
 OLD, OLD2, NOTE = "c80c80c8-0000-4000-8000-000000000080", "d82d82d8-0000-4000-8000-000000000082", "b81b81b8-0000-4000-8000-000000000081"
-msg(OLD, days=30, to="codex-laptop", frm="claude-laptop", from_session="mcp", subject="很舊的 VM119 問題", project="mem0")
+msg(OLD, days=30, to="codex-laptop", frm="claude-laptop", from_session="mcp", subject="很舊的 VM819 問題", project="mem0")
 msg(OLD2, days=30, to="claude-laptop:mcp", frm="codex-laptop", subject="很舊的通知", read_by="", project="mem0")
-put(NOTE, "[筆記] VM119 的現況筆記，" + "很長的內容" * 40 + "，最後提到 192.0.2.93", type="note", project="mem0", days=2)
+put(NOTE, "[筆記] VM819 的現況筆記，" + "很長的內容" * 40 + "，最後提到 192.0.2.13", type="note", project="mem0", days=2)
 S._archive_old_messages(now=NOW)
 # 封存後才有人回覆那則舊信（原信已不在共用區）
 S.current_agent.set("codex-laptop")
@@ -255,31 +255,31 @@ box = S.inbox(session="mcp", projects="mem0")
 check("封存的舊信不在收件匣（沒讀過也一樣）", OLD2 not in [x["id"] for x in box])
 got = [x for x in box if x["id"] == new_id]
 check("回覆本串舊信（專案不在訂閱內）照樣收得到", len(got) == 1)
-check("回覆附的原信資料從封存區補上", bool(got) and (got[0]["reply_to_info"] or {}).get("subject") == "很舊的 VM119 問題")
+check("回覆附的原信資料從封存區補上", bool(got) and (got[0]["reply_to_info"] or {}).get("subject") == "很舊的 VM819 問題")
 try:
     S._send("codex-laptop", "claude-laptop", "回覆不存在的信", "", False, "", "", reply_to=uid(999))
     check("回覆不存在的編號要報錯", False)
 except ValueError:
     check("回覆不存在的編號要報錯", True)
 
-r = S.memory_search("VM119")
+r = S.memory_search("VM819")
 check("一般搜尋找不到封存的留言", OLD not in [x["id"] for x in r])
 check("一般搜尋找得到筆記", NOTE in [x["id"] for x in r])
-r = S.memory_search("VM119", archived=True)
+r = S.memory_search("VM819", archived=True)
 check("archived=true 找得到，編號是原編號", [x["id"] for x in r][:1] == [OLD] and OLD2 in [x["id"] for x in r])
 check("archived=true 標出封存日", bool(r) and r[0].get("archived") == S._now_tw()[:10])
 check("archived=true 的日期是原寄出日", bool(r) and r[0]["date"] == ago(30)[:10])
-rf = S.memory_search("VM119", archived=True, full=True)
+rf = S.memory_search("VM819", archived=True, full=True)
 check("archived=true 帶 full 給全文和原時間", bool(rf) and rf[0]["created"] == ago(30) and rf[0]["text"].startswith("[訊息]"))
 
 # ── 8. 精簡版 ──
-r = S.memory_search("192.0.2.93")
+r = S.memory_search("192.0.2.13")
 b = next(x for x in r if x["id"] == NOTE)
 check("精簡版欄位", set(b) == {"id", "type", "project", "agent", "date", "text", "chars", "score"})
 check("精簡版去掉 [筆記] 標籤", not b["text"].startswith("["))
-check("精簡版截短並註明全文字數", b["text"].startswith("VM119 的現況筆記") and b["chars"] == len(DB[NOTE]["memory"]))
-check("關鍵字在後面時補上那一段", "192.0.2.93" in b["text"] and len(b["text"]) < 200)
-f = next(x for x in S.memory_search("192.0.2.93", full=True) if x["id"] == NOTE)
+check("精簡版截短並註明全文字數", b["text"].startswith("VM819 的現況筆記") and b["chars"] == len(DB[NOTE]["memory"]))
+check("關鍵字在後面時補上那一段", "192.0.2.13" in b["text"] and len(b["text"]) < 200)
+f = next(x for x in S.memory_search("192.0.2.13", full=True) if x["id"] == NOTE)
 check("full=true 給全文和 version", f["text"] == DB[NOTE]["memory"] and f["version"] == S._version(f["text"]))
 check("短的內文整段給", S._snip("[決策] 短短一句", []) == "短短一句")
 

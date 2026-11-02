@@ -140,7 +140,7 @@ a3 = msg("claude", "codex-laptop", "舊名、沒記串名的信", "mem0", needs_
 g1 = msg("codex-laptop", "claude", "寄給全部 Claude", "roundtable", read_by="claude-laptop:navigator", days_ago=1)
 u1 = msg("user", "hermes-gamma", "使用者交辦 Hermes", needs_action="yes", days_ago=1)
 op = msg("claude-laptop", "all", "徵求意見：放哪", "roundtable", ask_opinion="yes", from_session="mcp", days_ago=1)
-r1 = msg("codex-laptop", "claude-laptop:mcp", "意見：放 VM119", "roundtable", reply_to=op, days_ago=0.5)
+r1 = msg("codex-laptop", "claude-laptop:mcp", "意見：放 VM819", "roundtable", reply_to=op, days_ago=0.5)
 r2 = msg("hermes-gamma", "claude-laptop:mcp", "意見：放 LXC", "roundtable", reply_to=op, days_ago=0.5)
 k1 = msg("claude-laptop", "codex-laptop", "已結案的信", "mem0", needs_action="yes", from_session="master",
          closed_by="claude-laptop:master", closed_at="2026-10-16 10:00", closed_reason="已完成", days_ago=1)

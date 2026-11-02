@@ -375,7 +375,7 @@ _LIMIT_KIND = ("five_hour", "seven_day", "model_weekly", "unknown", "none")
 
 
 def _limit(x, now: float):
-    """收集電腦 撞限偵測（limit_probe.py）送的 limit：只收固定幾個欄位，字串截長度、時間轉 epoch；
+    """收集電腦撞限偵測（limit_probe.py）送的 limit：只收固定幾個欄位，字串截長度、時間轉 epoch；
     ts 沒帶、讀不懂或比伺服器時間晚 5 分鐘以上就用伺服器時間。不是物件回 None。"""
     if not isinstance(x, dict):
         return None
@@ -400,9 +400,9 @@ def _probe_out(x):
 
 
 def _claude_status(res: dict, now: float) -> dict:
-    """額度頁頂端要顯示的 Claude 狀態（正常／撞限／超額／收集電腦 離線…），判斷寫在 claude_status.py。
-    PC_HOST 是 收集電腦 的名字或位址（預設 off＝不 ping）；名字向 PC_DNS 查（沒設就用系統的 DNS，
-    DHCP 會登記名字），所以 收集電腦 換 IP 也找得到；PC_PING_FILE 是主機 cron 寫的 ping 結果檔（可不設）。
+    """額度頁頂端要顯示的 Claude 狀態（正常／撞限／超額／收集電腦離線…），判斷寫在 claude_status.py。
+    PC_HOST 是收集電腦的名字或位址（預設 off＝不 ping）；名字向 PC_DNS 查（沒設就用系統的 DNS，
+    DHCP 會登記名字），所以收集電腦換 IP 也找得到；PC_PING_FILE 是主機 cron 寫的 ping 結果檔（可不設）。
     判斷程式不在或出錯，只回「判斷不出來」，不影響額度頁其他資料。"""
     try:
         import claude_status as cs
@@ -433,7 +433,7 @@ def put(report: dict, agent: str = "", now: float = None) -> dict:
         raise ValueError("一次最多 12 家")
     now = time.time() if now is None else now
     source = _txt(report.get("source"), 24) or "?"
-    probe = source.startswith("vm119-probe")
+    probe = source.startswith("vm819-probe")
     got = {"providers": 0, "windows": 0, "days": 0, "skipped": []}
     mt = _model_totals(report["model_totals"]) if has_mt else None
     rr = _reset_radar(report["reset_radar"]) if has_rr else None
@@ -465,13 +465,13 @@ def put(report: dict, agent: str = "", now: float = None) -> dict:
             info = json.loads(row[0]) if row else {}
             # 輕量回報（只有 hook ping／近 15 分 token）：不動「多久前更新」的時間和來源
             light = ("hook" in p or "tok15" in p) and not p.get("windows") and not p.get("daily")
-            if probe:  # 伺服器端的額度探針（2026-10-30）：額度照收，但不算 收集電腦 的心跳，也不改「多久前更新」
+            if probe:  # 伺服器端的額度探針（2026-10-30）：額度照收，但不算收集電腦的心跳，也不改「多久前更新」
                 light = True
                 pr = p.get("probe") if isinstance(p.get("probe"), dict) else {}
                 info["probe"] = {"ts": now, "ok": pr.get("ok") is True or (pr.get("ok") is None and bool(p.get("windows"))),
                                  "error": _txt(pr.get("error"), 40), "version": _txt(pr.get("version"), 12)}
             elif p.get("windows"):
-                info["quota_pc_ts"] = now  # 收集電腦 這邊（statusline、get_usage、收集排程）最後一次送額度百分比
+                info["quota_pc_ts"] = now  # 收集電腦這邊（statusline、get_usage、收集排程）最後一次送額度百分比
             if pid in ("claude", "codex"):  # 只有這兩家有自己的 hook；其他家帶 hook 不收（10/29 Antigravity 被誤判久未回報）
                 _hook(info, p.get("hook"), now)
             _tok15(info, p.get("tok15"), now)

@@ -54,9 +54,9 @@ nav.top a.on{background:var(--ac);border-color:var(--ac);color:var(--on-ac)}
 dialog{background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:12px;width:min(650px,90vw);max-height:80vh;overflow:auto}dialog::backdrop{background:rgba(0,0,0,.4)}
 .av{flex:none;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font-weight:800;color:var(--af);background:currentColor}
 .av span{color:var(--af)}.av.agv{background:var(--a)}
-/* 2.18.0 B04 每台機器固定一種顏色（四頁同一張）：Claude 橘、Codex 主機淺灰、DESK 灰藍、Max 青綠、Mini 深青、PC 藍、Gemini／Atri 灰紫、Hermes 紫、你 赭橘 */
+/* 2.18.0 B04 每台機器固定一種顏色（四頁同一張）：Claude 橘、Codex 主機淺灰、DESK 灰藍、Max 青綠、Mini 深青、PC 藍、Gemini 灰紫、Hermes 紫、你 赭橘 */
 .agv,.pp{--a:#5b6170;--af:#fff}.a-claude{--a:#d97757;--af:#fff}.a-codex,.a-xd{--a:#c9ced8;--af:#1e2128}.a-desk{--a:#8b93a1;--af:#0d1117}.a-max{--a:#2aa198;--af:#0d1117}.a-mini{--a:#2f6f6f;--af:#fff}.a-pc{--a:#1f6f8b;--af:#fff}
-.a-hermes,.a-alpha,.a-beta,.a-gamma{--a:#a371f7;--af:#0d1117}.a-ag,.a-atri{--a:#5b6170;--af:#fff}.a-user{--a:#b4561e;--af:#fff}
+.a-hermes,.a-alpha,.a-beta,.a-gamma{--a:#a371f7;--af:#0d1117}.a-ag,.a-gemini-b{--a:#5b6170;--af:#fff}.a-user{--a:#b4561e;--af:#fff}
 .av.a-xd,.agv.sm.a-xd,.av.a-codex,.agv.sm.a-codex,.pp.a-xd i,.pp.a-codex i{box-shadow:inset 0 0 0 1px rgba(0,0,0,.14)}
 .agv.sm{flex:none;display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--a);color:var(--af);font:800 12px/1 system-ui,sans-serif;letter-spacing:-.02em}.agv.sm.zh{font-size:12px}
 @media(prefers-color-scheme:dark){:root:not([data-theme=light]) :is(.av.agv,.agv.sm,.pp i){box-shadow:0 0 0 1px rgba(255,255,255,.14)}}:root[data-theme=dark] :is(.av.agv,.agv.sm,.pp i){box-shadow:0 0 0 1px rgba(255,255,255,.14)}.gap{flex:none;width:40px;font-size:12px;color:var(--mut);text-align:right;padding-top:3px;font-variant-numeric:tabular-nums}
@@ -558,7 +558,7 @@ function applyAliases(m,al){if(!m||!al||!Object.keys(al).length)return m;m.from=
 if(m.reply)m.reply.from=aliasAddr(m.reply.from,al);return m}
 function baseOf(a){return (a||'').split(':')[0]}
 // 2.18.0 B04：白話名字，代號降成小灰字。表上沒有的名字照原樣顯示
-const PN={'claude-laptop':'Claude 主機','codex-laptop':'Codex 主機','codex-desk':'Codex DESK 伺服器','codex-max':'本地 Max','codex-mini':'本地 Mini','codex-pc':'Codex PC','hermes-alpha':'Hermes 甲','hermes-beta':'Hermes 乙','hermes-gamma':'Hermes 丙',gemini:'Gemini 雙子星',atri:'Atri',user:'你',codex:'Codex（裝置未記錄）',claude:'Claude',hermes:'Hermes'};
+const PN={'claude-laptop':'Claude 主機','codex-laptop':'Codex 主機','codex-desk':'Codex DESK 伺服器','codex-max':'本地 Max','codex-mini':'本地 Mini','codex-pc':'Codex PC','hermes-alpha':'Hermes 甲','hermes-beta':'Hermes 乙','hermes-gamma':'Hermes 丙',gemini:'Gemini 雙子星','gemini-b':'Gemini B',user:'你',codex:'Codex（裝置未記錄）',claude:'Claude',hermes:'Hermes'};
 function plainName(a){a=String(a||'');const i=a.indexOf(':'),b=i<0?a:a.slice(0,i);return PN[b]?PN[b]+(i<0?'':'・'+sessShort(a.slice(i+1))):a}
 function codeOf(a){const b=baseOf(a);return PN[b]&&b!=='user'&&PN[b].toLowerCase()!==b?b:''}
 function nmEl(a,cls){const s=el('span',cls||'nm n-'+agentAv(a).id,plainName(a)),c=codeOf(a);if(c)s.append(el('small','cd',c));return s}
@@ -573,12 +573,12 @@ function sessOf(a){const i=(a||'').indexOf(':');if(i<0)return '';const l=a.slice
 function fromWithSess(from,sess){const s=sess&&!isTestSess(sess)?sessShort(sess):'';return s?from+'・'+s:from}
 function fmtFrom(from,sess){return from}
 function who(n){n=(n||'').toLowerCase();for(const k of['claude','codex','hermes','user'])if(n.startsWith(k))return k;return'other'}
-// 代理頭像（2.17.0 四頁共用對照表）：Claude＝CC 橘、Codex laptop＝CX 中性黑白、codex-desk＝EP 青、codex-mini＝MI 銀灰虛線框、Hermes＝HM 紫、Antigravity／Gemini＝AG 藍、使用者＝我 綠。
+// 代理頭像（2.17.0 四頁共用對照表）：Claude＝CC 橘、Codex laptop＝CX 中性黑白、codex-desk＝DE 青、codex-mini＝MI 銀灰虛線框、Hermes＝HM 紫、Antigravity／Gemini＝AG 藍、使用者＝我 綠。
 // id 沿用舊的（xd、alpha…），伺服器存的自訂頭像才對得上；顏色由 CSS 的 .a-<id> 決定。表上沒有的 Codex（PC、Max）用中性色，只留機器代號分得出
 function agentAv(n){const s=(n||'').toLowerCase(),A=(id,label)=>({id,label,zh:/[^\x00-\x7f]/.test(label)});
 if(/使用者|^user\b/.test(s))return A('user','你');if(/claude|\bcc\b/.test(s))return A('claude','CC');
-if(/\batri\b|亞托莉/.test(s))return A('atri','AT');if(/antigravity|gemini|\bagy\b|雙子/.test(s))return A('ag','AG');
-if(/codex|\bcd\b/.test(s))return /desk/.test(s)?A('desk','EP'):/mini/.test(s)?A('mini','MI'):/pc/.test(s)?A('pc','W6'):/max/.test(s)?A('max','MX'):/995|xd/.test(s)?A('xd','CX'):A('codex','CX');
+if(/\bgemini-b\b/.test(s))return A('gemini-b','GB');if(/antigravity|gemini|\bagy\b|雙子/.test(s))return A('ag','AG');
+if(/codex|\bcd\b/.test(s))return /desk/.test(s)?A('desk','DE'):/mini/.test(s)?A('mini','MI'):/pc/.test(s)?A('pc','PC'):/max/.test(s)?A('max','MX'):/995|xd/.test(s)?A('xd','CX'):A('codex','CX');
 if(/hermes/.test(s))return A('hermes','HM');
 const f=[...(n||'').trim()][0]||'?';return A('other',f.toUpperCase())}
 // 時間（2.18.0 T4／B06）：12 小時制不帶秒「上午 6:44」；不是今天加「10/26」；完整時間（含秒、含年）放 title。整頁不再出現「2 小時前」這類相對時間

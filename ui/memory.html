@@ -463,7 +463,7 @@ main{max-width:1680px;width:100%}
 .mem .mt pre.blk code{font:13px ui-monospace,Consolas,monospace;color:var(--tx)}
 /* 頭像（R11）：四頁同一張對照表 */
 .avatar.av{--av:var(--s-rest);background:var(--av);color:#0d1117;font-size:14px;font-weight:800;letter-spacing:0}
-.avatar.av-cc{--av:#db6d28}.avatar.av-cx{--av:var(--av-cx);color:var(--av-cx-tx)}.avatar.av-ep{--av:#39c5cf}.avatar.av-mi{--av:#8b949e;outline:2px dashed #8b949e;outline-offset:2px}
+.avatar.av-cc{--av:#db6d28}.avatar.av-cx{--av:var(--av-cx);color:var(--av-cx-tx)}.avatar.av-de{--av:#39c5cf}.avatar.av-mi{--av:#8b949e;outline:2px dashed #8b949e;outline-offset:2px}
 .avatar.av-hm{--av:#a371f7}.avatar.av-ag{--av:#58a6ff}.avatar.av-me{--av:#3fb950}.avatar.av-x{--av:var(--bd);color:var(--tx)}
 @media(max-width:760px){.avatar.av{font-size:12px}}
 /* 總狀態燈 */
@@ -539,8 +539,8 @@ main{max-width:1680px;width:100%}
 :root[data-theme="dark"] #rv{--accent-fg:#0d1117;--blue-bg:rgba(56,139,253,.16);--blue-fg:#79c0ff;--green-bg:rgba(46,160,67,.16);--green-fg:#56d364;--red-bg:rgba(248,81,73,.16);--red-fg:#ff7b72;--amber-bg:rgba(187,128,9,.18);--amber-fg:#e3b341;--gray-bg:rgba(110,118,129,.22);--gray-fg:#b7bdc8;--purple-bg:rgba(163,113,247,.16);--purple-fg:#d2a8ff;--solid-green:#238636;--backdrop:rgba(1,4,9,.7);--flash:rgba(187,128,9,.35)}
 :root[data-theme="light"] .ex .tag.high{color:#c0392b}:root[data-theme="dark"] .ex .tag.high{color:#ff7b72}
 /* 頭像（跟公告欄同一張色表） */
-.avatar.av-cc{--av:#d97757;color:#fff}.avatar.av-cx{--av:#c9ced8;color:#1e2128}.avatar.av-ep{--av:#8b93a1;color:#0d1117}.avatar.av-mx{--av:#2aa198;color:#0d1117}
-.avatar.av-mi{--av:#2f6f6f;color:#fff;outline:0}.avatar.av-w6{--av:#1f6f8b;color:#fff}.avatar.av-ag{--av:#5b6170;color:#fff}.avatar.av-me{--av:#b4561e;color:#fff}
+.avatar.av-cc{--av:#d97757;color:#fff}.avatar.av-cx{--av:#c9ced8;color:#1e2128}.avatar.av-de{--av:#8b93a1;color:#0d1117}.avatar.av-mx{--av:#2aa198;color:#0d1117}
+.avatar.av-mi{--av:#2f6f6f;color:#fff;outline:0}.avatar.av-pc{--av:#1f6f8b;color:#fff}.avatar.av-ag{--av:#5b6170;color:#fff}.avatar.av-me{--av:#b4561e;color:#fff}
 /* R02 類型色：篩選鈕前小方塊、卡片上的類型字標同色淡底 */
 .tchip.t-decision,.mem.t-decision{--tc:var(--t-decision)}.tchip.t-note,.mem.t-note{--tc:var(--t-note)}.tchip.t-status,.mem.t-status{--tc:var(--t-status)}
 .tchip.t-message,.mem.t-message{--tc:var(--t-message)}.tchip.t-claim,.mem.t-claim{--tc:var(--t-claim)}
@@ -653,8 +653,8 @@ function fmtTime(d){d=d instanceof Date?d:new Date(d);if(isNaN(d))return '—';c
 if(t.year===n.year&&t.month===n.month&&t.day===n.day)return clk(t);return (t.year!==n.year?t.year+'/':'')+t.month+'/'+t.day+' '+clk(t)}
 function fullTime(d){d=d instanceof Date?d:new Date(d);if(isNaN(d))return '';const t=tp(d);return t.year+'/'+t.month+'/'+t.day+' '+clk(t)}
 function relTime(ts){const s=Date.now()/1000-ts;return s<90?'剛剛':s<3600?Math.floor(s/60)+' 分鐘前':s<86400?Math.floor(s/3600)+' 小時前':Math.floor(s/86400)+' 天前'}
-/* 2.18.0 頭像對照表（跟公告欄同一張）：Claude 家族＝CC 橘、Codex laptop＝CX 淺灰、DESK＝EP 灰、Max＝MX 青綠、Mini＝MI 深青、PC＝68 藍、Gemini／Atri＝AG 灰藍、使用者＝你 棕橘 */
-const AVS=[[/^claude/i,'CC','av-cc'],[/^codex-desk/i,'EP','av-ep'],[/^codex-max/i,'MX','av-mx'],[/^codex-mini/i,'MI','av-mi'],[/^codex-pc/i,'68','av-w6'],[/^codex(-laptop)?$/i,'CX','av-cx'],[/^hermes/i,'HM','av-hm'],[/^(antigravity|gemini|agy|atri)/i,'AG','av-ag'],[/^(user|使用者)$/i,'你','av-me']],AVX={};
+/* 2.18.0 頭像對照表（跟公告欄同一張）：Claude 家族＝CC 橘、Codex laptop＝CX 淺灰、DESK＝DE 灰、Max＝MX 青綠、Mini＝MI 深青、PC＝PC 藍、Gemini 家族＝AG 灰藍、使用者＝你 棕橘 */
+const AVS=[[/^claude/i,'CC','av-cc'],[/^codex-desk/i,'DE','av-de'],[/^codex-max/i,'MX','av-mx'],[/^codex-mini/i,'MI','av-mi'],[/^codex-pc/i,'PC','av-pc'],[/^codex(-laptop)?$/i,'CX','av-cx'],[/^hermes/i,'HM','av-hm'],[/^(antigravity|gemini|agy)/i,'AG','av-ag'],[/^(user|使用者)$/i,'你','av-me']],AVX={};
 function avatarOf(n){for(const [re,l,c] of AVS)if(re.test(n))return [l,c];return [AVX[n]||String(n).replace(/^codex-/i,'').slice(0,2).toUpperCase()||'?','av-x']}
 function decorate(a,addFoot){const av=a.querySelector('.avatar');if(av){const m=avatarOf(a.dataset.agent||'');av.textContent=m[0];av.className='avatar av '+m[1];av.removeAttribute('style');av.title=a.dataset.agent||''}
 const ts=+a.dataset.ts,mh=a.querySelector('.mh');a.querySelectorAll('.stamp').forEach(x=>x.remove());

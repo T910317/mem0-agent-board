@@ -1517,7 +1517,7 @@ def _kw_scores(terms: list, docs: list) -> dict:
     return out
 
 
-# 排序（rerank，2026-10-24，依據 bench/rerank-stress-20261021 千題考試：bge 排混合排序的前 20 名，
+# 排序（rerank，2026-10-24，依據千題考試（題庫自備）：bge 排混合排序的前 20 名，
 # 第 1 名命中 70.5%→86.2%，見 results/metrics_out.md）：混合排序選好候選後，把前 RERANK_TOPN 則的全文
 # 送 llama-server 的 /v1/rerank 重排，沒進前 N 的接在後面照原順序。預設關；逾時、連不上、回傳格式不對
 # 都退回混合排序並記一行 log，搜尋本身不能壞。

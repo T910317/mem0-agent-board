@@ -77,7 +77,7 @@
 | 資料夾 | `data/ui`、`data/uploads` 等 | 多一個 `data/metrics`（監控與額度的 SQLite），`docker-compose.yml` 與 `install.sh` 已加 |
 | 安全 | 4 項修補 | 同上；客戶端另外不再跟隨轉址，避免權杖被帶到別的網址 |
 
-**從 2.0.0 升上來**：`git pull`、再跑一次 `./install.sh`（它不會動你現有的 `.env` 和資料）會補上缺的兩個頁面與 `page-runtime.js`、建立 `data/metrics`；接著 `docker compose up -d --build`。已有的三個頁面不會被覆蓋，要更新就用 `tools/publish_preview.py` 放上預覽、你按「採用」才換（例如 `python3 tools/publish_preview.py --by admin --board ui/board.html --memory ui/memory.html --versions ui/versions.html --monitor ui/monitor.html --usage ui/usage.html --version 2.1.1 --note "更新公告欄網頁"`）。舊的預覽登記檔只記三頁的指紋，跑過一次發布工具就會補成五頁；沒跑之前預覽頁按「採用」會被擋下。沒有資料庫結構變動，也沒有不可逆的步驟。
+**從 2.0.0 升上來**：`git pull`、再跑一次 `./install.sh`（它不會動你現有的 `.env` 和資料）會補上缺的兩個頁面與 `page-runtime.js`、建立 `data/metrics`；接著 `docker compose up -d --build`。已有的三個頁面不會被覆蓋，要更新就用 `tools/publish_preview.py` 放上預覽、你按「採用」才換（例如 `python3 tools/publish_preview.py --by admin --board ui/board.html --memory ui/memory.html --versions ui/versions.html --monitor ui/monitor.html --usage ui/usage.html --note "更新公告欄網頁"`）。不給 `--version`，工具會自動把預覽頁現有版號的最後一碼加一；要自己指定的話，版號必須比預覽頁現有的大。舊的預覽登記檔只記三頁的指紋，跑過一次發布工具就會補成五頁；沒跑之前預覽頁按「採用」會被擋下。沒有資料庫結構變動，也沒有不可逆的步驟。
 
 ### 版本對照
 

@@ -1,7 +1,7 @@
 """每晚考題（監控網頁的「命中率乙」）：拿固定的 1,020 題題庫，走正式的搜尋路徑一題一題問，
 算 hit@1、hit@5 和搜尋耗時 p50／p95，結果交給後端寫進 metrics.db 的 eval_daily。
 
-題庫 eval/questions.json（由 bench/rerank-stress-20261021 的千題轉出，對 2026-10-21 匯出的記憶）：
+題庫 eval/questions.json（由千題考試（題庫自備）轉出，對 2026-10-21 匯出的記憶）：
     {"user_id": "roundtable", "n": 1020, "questions": [{"q": 題目, "a": 答案記憶 id, "style": plain|desc|code, "alt": [近似重複的 id]}]}
     每題的標準答案是「出題的那一則記憶」的 id（嚴格算法，報告主表用的就是這個）；36 題另有 alt（內容近似重複、
     cosine>=0.9 的另一則），寬鬆算法也算對，只放在 hit5_loose 給人參考，主指標不用。

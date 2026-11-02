@@ -1277,7 +1277,7 @@ def default_probes(collector: "Collector", emb_url: str = "", emb_model: str = "
         if url and url.lower() != "off":
             addr = urllib.parse.urlsplit(url).netloc or url
             probes.append((key, f"{label} {addr}", probe_http(url + "/health", timeout=3.0, ok_status=200)))
-    # LAYA 分「慢」：/health 平常從 VM119 量到約 30 毫秒，超過門檻算慢（只是提醒，不算不通）
+    # LAYA 分「慢」：/health 平常從伺服器本機量到約 30 毫秒，超過門檻算慢（只是提醒，不算不通）
     try:
         laya_slow = float(os.environ.get("MONITOR_LAYA_SLOW_MS", "500") or 0)
     except ValueError:

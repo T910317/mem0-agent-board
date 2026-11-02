@@ -193,7 +193,7 @@ check("摘要：兩種都有 at／hit1／今天預定、完成、略過", set(sm
       and sm["idle"]["at"].endswith("Z"))
 check("eval_daily 還在、沒被影響", s["eval_daily"] == {"t": [], "hit1": [], "hit5": [], "p50_ms": [], "scored": []})
 
-# 9. 真題庫成本估算：20 題、題間 1 秒、假搜尋 0.9 秒（照 VM119 每晚考題實測 p50 約 870 毫秒）
+# 9. 真題庫成本估算：20 題、題間 1 秒、假搜尋 0.9 秒（照 VM819 每晚考題實測 p50 約 870 毫秒）
 real = monitor_eval.DEFAULT_QUESTIONS
 if os.path.exists(real):
     import time as _t

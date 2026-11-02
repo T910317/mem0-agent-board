@@ -1195,13 +1195,13 @@ const many=ps.length>1;
 return '<div class="pace" title="現在的速度跟「撐到重置時剛好剩保底」的速度比；偏左用太快、偏右還能多用"><div class="ph"><span class="pb" style="color:'+col+'">'+big+'</span>'+(many?'<small>看'+esc(o.w.label)+'</small>':'')+'</div>'
 +'<div class="ptk" role="img" aria-label="'+esc(big)+'"><i class="mid"></i>'+(pos==null?'':'<b style="left:'+pos.toFixed(1)+'%;background:'+col+'"></b>')+'</div>'
 +'<div class="pcx" aria-hidden="true"><span>用太快</span><span>剛好用完</span><span>還能多用</span></div><div class="psub">'+sub+'</div></div>'}
-// 2.18.0（X04）：Codex 點數餘額。使用者原話「我剩 57,033 點、年底到期，千萬不要碰，要留給代碼審查和 PR 安全掃描」。
+// 2.18.0（X04）：Codex 點數餘額。
 // 收集程式 1.7.0 從 Codex 紀錄的 rate_limits.credits.balance 讀，送 credits {balance, seen_at, changes:[{at,from,to}]}；
-// 伺服器還沒把 credits 傳出來時，先寫使用者 記下的數字，旁邊灰字講清楚。比上次低紅字「點數被扣了 N 點」（7 天內的變動才顯示）
-const CRED0={balance:57033,note:'使用者 記下的數字；伺服器還沒送即時餘額'};
+// 伺服器還沒把 credits 傳出來時，餘額先顯示「—」，旁邊灰字講清楚。比上次低紅字「點數被扣了 N 點」（7 天內的變動才顯示）
+const CRED0={balance:null,note:'伺服器還沒送即時餘額'};
 const NUMF=v=>Math.abs(v)>=10?Math.round(v).toLocaleString('zh-TW'):String(Math.round(v*10)/10);
 function credHtml(p){if(p.id!=='codex')return '';const c=p.credits,has=!!(c&&c.balance!=null&&c.balance!==''&&isFinite(+c.balance)),bal=has?+c.balance:CRED0.balance;
-let h='<div class="cred"><span class="lb">點數餘額</span><b>'+Math.round(bal).toLocaleString('zh-TW')+'</b><span class="cn">（年底到期・不動用）</span>';
+let h='<div class="cred"><span class="lb">點數餘額</span><b>'+(bal==null?'—':Math.round(bal).toLocaleString('zh-TW'))+'</b><span class="cn">（年底到期・不動用）</span>';
 const chs=has&&Array.isArray(c.changes)?c.changes:[],ch=chs[chs.length-1]||null,ct=ch&&T(ch.at);
 if(ch&&ct&&!isNaN(ct)&&Date.now()-ct<7*864e5&&isFinite(ch.from-ch.to)){const up=ch.from-ch.to<0;
 /* 2.22.3 收集程式改成每次變動各記一筆：最後一筆往前 1 小時內、同方向（都是扣或都是變多）的連續幾筆加總，不然只看得到最後一筆 */

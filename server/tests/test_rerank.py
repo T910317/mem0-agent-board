@@ -1,6 +1,6 @@
 """離線測試：memory_search 的排序（rerank）。假的 Mem0 client＋假的 /v1/rerank，不連任何真實服務。
 用法：python test_rerank.py <server.py 目錄>
-涵蓋：正常重排、逾時退回、回錯退回、開關關掉時完全不呼叫。千題考試的命中率見 bench/rerank-stress-20261021。"""
+涵蓋：正常重排、逾時退回、回錯退回、開關關掉時完全不呼叫。千題考試（題庫自備）的命中率見自己的記錄。"""
 import contextlib
 import importlib.util
 import io
