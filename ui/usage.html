@@ -1201,7 +1201,7 @@ return '<div class="pace" title="現在的速度跟「撐到重置時剛好剩�
 const CRED0={balance:null,note:'伺服器還沒送即時餘額'};
 const NUMF=v=>Math.abs(v)>=10?Math.round(v).toLocaleString('zh-TW'):String(Math.round(v*10)/10);
 function credHtml(p){if(p.id!=='codex')return '';const c=p.credits,has=!!(c&&c.balance!=null&&c.balance!==''&&isFinite(+c.balance)),bal=has?+c.balance:CRED0.balance;
-let h='<div class="cred"><span class="lb">點數餘額</span><b>'+(bal==null?'—':Math.round(bal).toLocaleString('zh-TW'))+'</b><span class="cn">（年底到期・不動用）</span>';
+let h='<div class="cred"><span class="lb">點數餘額</span><b>'+(bal==null?'—':Math.round(bal).toLocaleString('zh-TW'))+'</b>';
 const chs=has&&Array.isArray(c.changes)?c.changes:[],ch=chs[chs.length-1]||null,ct=ch&&T(ch.at);
 if(ch&&ct&&!isNaN(ct)&&Date.now()-ct<7*864e5&&isFinite(ch.from-ch.to)){const up=ch.from-ch.to<0;
 /* 2.22.3 收集程式改成每次變動各記一筆：最後一筆往前 1 小時內、同方向（都是扣或都是變多）的連續幾筆加總，不然只看得到最後一筆 */
